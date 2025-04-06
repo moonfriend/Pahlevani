@@ -2,28 +2,28 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/domain/entities/audio/audio_track.dart';
 
-import '../../../domain/entities/track.dart';
 import '../../../domain/repositories/audio_repository.dart';
 
 /// State for the AudioPlayerCubit
 class AudioPlayerState {
   final bool isPlaying;
   final int playingIndex;
-  final List<Track> tracks;
+  final List<AudioTrack> tracks;
   final Duration position;
   final Duration duration;
   final bool isLoading;
   final String? errorMessage;
 
   /// Current track being played or selected
-  Track? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
+  AudioTrack? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
 
   /// Next track in the playlist
-  Track? get nextTrack => tracks.isNotEmpty && playingIndex < tracks.length - 1 ? tracks[playingIndex + 1] : null;
+  AudioTrack? get nextTrack => tracks.isNotEmpty && playingIndex < tracks.length - 1 ? tracks[playingIndex + 1] : null;
 
   /// Previous track in the playlist
-  Track? get previousTrack => tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
+  AudioTrack? get previousTrack => tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
 
   const AudioPlayerState({
     required this.playingIndex,
@@ -39,7 +39,7 @@ class AudioPlayerState {
   AudioPlayerState copyWith({
     int? playingIndex,
     bool? isPlaying,
-    List<Track>? tracks,
+    List<AudioTrack>? tracks,
     Duration? position,
     Duration? duration,
     bool? isLoading,
@@ -109,7 +109,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> loadTracks() async {
     try {
       emit(state.copyWith(isLoading: true));
-      final tracks = await _audioRepository.getTracks();
+      final tracks = await _audioRepository.getAudioTracks();
 
       if (tracks.isEmpty) {
         emit(state.withError('No audio tracks found'));
