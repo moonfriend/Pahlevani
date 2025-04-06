@@ -9,9 +9,6 @@ import '../../models/audio_track_model.dart';
 abstract class AudioLocalDataSource {
   /// Get all audio tracks from metadata file
   Future<List<AudioTrack>> getAudioTracks();
-
-  /// Get audio track by index
-  Future<AudioTrack?> getAudioTrackByIndex(int index);
 }
 
 /// Implementation of [AudioLocalDataSource] that reads from assets
@@ -35,14 +32,5 @@ class AudioLocalDataSourceImpl implements AudioLocalDataSource {
     } catch (e) {
       throw Exception('Failed to load audio tracks: $e');
     }
-  }
-
-  @override
-  Future<AudioTrack?> getAudioTrackByIndex(int index) async {
-    final tracks = await getAudioTracks();
-    if (index >= 0 && index < tracks.length) {
-      return tracks[index];
-    }
-    return null;
   }
 }
