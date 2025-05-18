@@ -1,11 +1,13 @@
-import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
-import '../../data/datasources/audio/audio_local_datasource.dart';
-import '../../data/repositories_impl/audio_repository_impl.dart';
-import '../../domain/repositories/audio_repository.dart';
+import '../../data/datasources/playlist/playlist_local_database.dart';
+import '../../data/datasources/playlist/playlist_local_datasource.dart';
+import '../../data/datasources/playlist/playlist_remote_datasource.dart';
+import '../../data/repositories_impl/playlist_repository_impl.dart';
+import '../../domain/repositories/playlist_repository.dart';
 import '../../presentation/bloc/player/audio_player_cubit.dart';
+import '../../presentation/bloc/playlist/playlist_cubit.dart';
 
 /// GetIt instance for dependency injection
 final getIt = GetIt.instance;
@@ -25,44 +27,54 @@ class DependencyInjection {
   Future<void> init() async {
     if (_initialized) return;
 
+    // Initialize Hive
+    await PlaylistLocalDatabase.init();
+
     // Register services as singletons
 
     // External dependencies
-    getIt.registerLazySingleton<AudioPlayer>(() => AudioPlayer());
+    getIt.registerLazySingleton<Dio>(() => Dio());
 
     // Data sources
-    getIt.registerLazySingleton<AudioLocalDataSource>(() => AudioLocalDataSourceImpl(assetBundle: rootBundle));
+    getIt.registerLazySingleton<PlaylistLocalDataSource>(() => PlaylistLocalDataSourceImpl(dio: getIt<Dio>()));
+    getIt.registerLazySingleton<PlaylistRemoteDataSource>(() => PlaylistRemoteDataSourceImpl());
+    getIt.registerLazySingleton<PlaylistLocalDatabase>(() => PlaylistLocalDatabase());
 
     // Repositories
-    getIt.registerLazySingleton<AudioRepository>(
-      () => AudioRepositoryImpl(dataSource: getIt<AudioLocalDataSource>()),
+    getIt.registerLazySingleton<PlaylistRepository>(
+      () => PlaylistRepositoryImpl(
+        remoteDataSource: getIt<PlaylistRemoteDataSource>(),
+        localDataSource: getIt<PlaylistLocalDataSource>(),
+        localDatabase: getIt<PlaylistLocalDatabase>(),
+      ),
     );
 
     // State management
-    getIt.registerSingletonAsync<AudioPlayerCubit>(() async {
-      final cubit = AudioPlayerCubit(
-        audioRepository: getIt<AudioRepository>(),
-      );
-      await cubit.loadTracks();
-      return cubit;
-    });
+    getIt.registerLazySingleton<AudioPlayerCubit>(() => AudioPlayerCubit());
+    getIt.registerLazySingleton<PlaylistCubit>(() => PlaylistCubit(
+          playlistRepository: getIt<PlaylistRepository>(),
+        ));
 
-    _initialized = true;
+    print("Dependency Injection setup complete.");
   }
 
   /// Ensure all async dependencies are ready
   Future<void> ensureInitialized() async {
     if (!_initialized) {
-      await init();
+      if (!getIt.isRegistered<Dio>()) {
+        await init();
+      }
     }
-    // Wait for async singletons to be ready
     await getIt.allReady();
+    _initialized = true;
+    print("Dependency Injection Initialized and Ready.");
   }
 
   /// Get an instance of AudioPlayerCubit
-  AudioPlayerCubit getAudioPlayerCubit() {
-    return getIt<AudioPlayerCubit>();
-  }
+  AudioPlayerCubit get audioPlayerCubit => getIt<AudioPlayerCubit>();
+
+  /// Get an instance of PlaylistCubit
+  PlaylistCubit get playlistCubit => getIt<PlaylistCubit>();
 
   /// Dispose all resources
   Future<void> dispose() async {
@@ -70,11 +82,8 @@ class DependencyInjection {
       await getIt<AudioPlayerCubit>().close();
     }
 
-    if (getIt.isRegistered<AudioPlayer>()) {
-      await getIt<AudioPlayer>().dispose();
-    }
-
     await getIt.reset();
     _initialized = false;
+    print("Dependency Injection Disposed.");
   }
 }
