@@ -1,4 +1,3 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -13,24 +12,17 @@ class AudioPlayerPage extends StatefulWidget {
 }
 
 class AudioPlayerPageState extends State<AudioPlayerPage> {
-  late AudioPlayer _audioPlayer;
-
   @override
   void initState() {
     super.initState();
-    // We'll use the audio player from the AudioPlayerCubit in didChangeDependencies
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Get the audio player from AudioPlayerCubit
-    _audioPlayer = context.read<AudioPlayerCubit>().audioPlayer;
-  }
-
-  @override
-  void dispose() {
-    // Don't dispose the audio player here as it's managed by the AudioPlayerCubit
+  Future<void> dispose() async {
+    if (mounted) {
+      print("AudioPlayerPage dispose: Stopping player.");
+      await context.read<AudioPlayerCubit>().stop();
+    }
     super.dispose();
   }
 

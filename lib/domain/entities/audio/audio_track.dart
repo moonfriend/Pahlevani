@@ -35,6 +35,7 @@ class AudioTrack extends Equatable {
 
     return displayName;
   }
+
   @override
   List<Object?> get props => [id, title, filePath, imagePath, duration];
 }

@@ -4,8 +4,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/domain/entities/audio/audio_track.dart';
 
-import '../../../domain/repositories/audio_repository.dart';
-
 /// State for the AudioPlayerCubit
 class AudioPlayerState {
   final bool isPlaying;
@@ -69,7 +67,6 @@ class AudioPlayerState {
 
 /// Cubit for managing audio player state and operations
 class AudioPlayerCubit extends Cubit<AudioPlayerState> {
-  final AudioRepository _audioRepository;
   late AudioPlayer _audioPlayer;
 
   // Subscriptions to audio streams
@@ -79,9 +76,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   /// Expose the AudioPlayer instance
   AudioPlayer get audioPlayer => _audioPlayer;
 
-  AudioPlayerCubit({required AudioRepository audioRepository})
-      : _audioRepository = audioRepository,
-        super(const AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
+  AudioPlayerCubit() : super(const AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _audioPlayer = AudioPlayer();
     _initAudioPlayerListeners();
   }
@@ -99,34 +94,33 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   /// Factory constructor to create and initialize the AudioPlayerCubit
-  static Future<AudioPlayerCubit> create({required AudioRepository audioRepository}) async {
-    final cubit = AudioPlayerCubit(audioRepository: audioRepository);
-    await cubit.loadTracks();
+  static Future<AudioPlayerCubit> create() async {
+    final cubit = AudioPlayerCubit();
     return cubit;
   }
 
-  /// Load tracks from the repository
-  Future<void> loadTracks() async {
+  /// Loads a specific list of tracks, replacing existing ones.
+  Future<void> loadSpecificTracks(List<AudioTrack> tracksToLoad) async {
+    emit(state.copyWith(isLoading: true, errorMessage: null));
+    await _audioPlayer.stop(); // Stop current playback
     try {
-      emit(state.copyWith(isLoading: true));
-      final tracks = await _audioRepository.getAudioTracks();
-
-      if (tracks.isEmpty) {
-        emit(state.withError('No audio tracks found'));
+      if (tracksToLoad.isEmpty) {
+        emit(state.copyWith(isLoading: false, tracks: [], playingIndex: -1, errorMessage: 'Selected playlist is empty'));
       } else {
         emit(state.copyWith(
-          tracks: tracks,
+          tracks: tracksToLoad,
+          playingIndex: 0,
+          position: Duration.zero,
+          duration: Duration.zero,
           isLoading: false,
+          errorMessage: null,
         ));
-
-        // Preload the first track without playing it
-        if (tracks.isNotEmpty) {
-          final track = tracks[0];
-          await _audioPlayer.setSource(AssetSource(track.filePath));
-        }
+        await _loadSourceAtIndex(0);
+        await play();
       }
     } catch (e) {
-      emit(state.withError('Failed to load tracks: $e'));
+      print("Error in loadSpecificTracks: $e");
+      emit(state.copyWith(isLoading: false, errorMessage: 'Failed to load selected tracks: $e'));
     }
   }
 
@@ -135,13 +129,14 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
       final wasPlaying = state.isPlaying;
-
+      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: nextIndex,
-        isPlaying: wasPlaying,
+        position: Duration.zero, // Reset position
+        duration: Duration.zero, // Reset duration
       ));
-
-      _handleTrackChange(wasPlaying);
+      // Now load the source for the new index
+      _loadSourceAtIndex(nextIndex, shouldPlay: wasPlaying);
     }
   }
 
@@ -150,24 +145,29 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     if (state.playingIndex > 0) {
       final prevIndex = state.playingIndex - 1;
       final wasPlaying = state.isPlaying;
-
+      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: prevIndex,
-        isPlaying: wasPlaying,
+        position: Duration.zero, // Reset position
+        duration: Duration.zero, // Reset duration
       ));
-
-      _handleTrackChange(wasPlaying);
+      // Now load the source for the new index
+      _loadSourceAtIndex(prevIndex, shouldPlay: wasPlaying);
     }
   }
 
   /// Set the current track index
   void setIndex(int index) {
     if (index >= 0 && index < state.tracks.length && index != state.playingIndex) {
+      final wasPlaying = state.isPlaying;
+      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: index,
-        isPlaying: false,
+        position: Duration.zero, // Reset position
+        duration: Duration.zero, // Reset duration
       ));
-      _handleTrackChange(false);
+      // Load source, playing only if it was already playing
+      _loadSourceAtIndex(index, shouldPlay: wasPlaying);
     }
   }
 
@@ -179,26 +179,68 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
         isPlaying: true,
       ));
 
-      _handleTrackChange(true);
+      _loadSourceAtIndex(index, shouldPlay: true);
     }
   }
 
   /// Helper to handle track changes
-  Future<void> _handleTrackChange(bool shouldPlay) async {
-    final currentTrack = state.currentTrack;
-    if (currentTrack != null) {
-      await _audioPlayer.stop();
-      await _audioPlayer.setSource(AssetSource(currentTrack.filePath));
+  Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
+    if (index < 0 || index >= state.tracks.length) return; // Index out of bounds
 
+    final track = state.tracks[index];
+    final sourcePath = track.filePath; // Get the path/URL from the track
+
+    // Add loading state indication if needed
+    // emit(state.copyWith(isLoading: true));
+
+    try {
+      Source? audioSource;
+      print("Attempting to load source: $sourcePath"); // Debugging print
+
+      // Determine the source type based on the path format
+      if (sourcePath.startsWith('http://') || sourcePath.startsWith('https://')) {
+        print("Detected URL source");
+        audioSource = UrlSource(sourcePath);
+      } else if (sourcePath.startsWith('/')) {
+        // Absolute local path
+        print("Detected Device File source");
+        audioSource = DeviceFileSource(sourcePath);
+      } else if (sourcePath.startsWith('assets/')) {
+        // Bundled asset
+        print("Detected Asset source");
+        // AssetSource often needs path relative to pubspec definition
+        final assetPath = sourcePath.replaceFirst('assets/', '');
+        audioSource = AssetSource(assetPath);
+      } else if (sourcePath.isNotEmpty) {
+        // Assume it *might* be a relative asset path if not empty or absolute/URL
+        // This might need adjustment based on your structure
+        print("Assuming Asset source for relative path: $sourcePath");
+        audioSource = AssetSource(sourcePath);
+      } else {
+        throw Exception("Audio source path is empty");
+      }
+
+      // Stop player before setting new source
+      await _audioPlayer.stop();
+      await _audioPlayer.setSource(audioSource);
+      print("Source set successfully for: ${track.displayName}");
+      // emit(state.copyWith(isLoading: false)); // Remove loading state
+
+      // Resume playback if requested and source was set successfully
       if (shouldPlay) {
         await _audioPlayer.resume();
       }
+    } catch (e) {
+      print("Error setting source for $sourcePath: $e");
+      emit(state.copyWith(errorMessage: "Error loading track: ${track.displayName}"));
+      // emit(state.copyWith(isLoading: false)); // Ensure loading is removed on error
+      await _audioPlayer.stop(); // Stop playback on error
     }
   }
 
   /// Stop playback
-  void stop() {
-    _audioPlayer.stop();
+  Future<void> stop() async {
+    await _audioPlayer.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
   }
 
