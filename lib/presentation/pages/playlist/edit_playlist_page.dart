@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:pahlevani/domain/entities/playlist/playlist.dart';
-import 'package:pahlevani/domain/entities/playlist/audio.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/data/datasources/playlist/playlist_local_database.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
+import 'package:pahlevani/domain/entities/playlist/audio.dart';
+import 'package:pahlevani/domain/entities/playlist/playlist.dart';
 
 class EditPlaylistPage extends StatefulWidget {
   final Playlist playlist;
@@ -22,6 +22,7 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
   bool _hasChanges = false;
+
   // Map from songId to repetitions
   late Map<int, int> _repetitionsMap;
 
@@ -31,7 +32,7 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
     _songs = List.from(widget.playlist.songs);
     _titleController = TextEditingController(text: widget.playlist.title);
     _descriptionController = TextEditingController(text: widget.playlist.description);
-    _repetitionsMap = { for (final song in _songs) song.id: 1 };
+    _repetitionsMap = {for (final song in _songs) song.id: 1};
     _loadRepetitionsFromLocal();
   }
 
@@ -117,36 +118,53 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.colorScheme.background.withOpacity(0.98),
       appBar: AppBar(
-        title: Text('Edit ${widget.playlist.title}'),
+        title: Text('Edit ${widget.playlist.title}', style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
+        backgroundColor: theme.colorScheme.primary,
         actions: [
           IconButton(
-            icon: const Icon(Icons.save),
+            icon: const Icon(Icons.save_rounded, size: 28),
+            tooltip: 'Save',
             onPressed: _saveChanges,
           ),
         ],
+        elevation: 2,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+        ),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
+                  style: theme.textTheme.titleMedium,
+                  decoration: InputDecoration(
                     labelText: 'Playlist Title',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: theme.cardColor,
+                    prefixIcon: const Icon(Icons.title_rounded),
                   ),
                   onChanged: (value) => setState(() => _hasChanges = true),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _descriptionController,
-                  decoration: const InputDecoration(
+                  style: theme.textTheme.bodyMedium,
+                  decoration: InputDecoration(
                     labelText: 'Description',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: theme.cardColor,
+                    prefixIcon: const Icon(Icons.description_rounded),
                   ),
                   maxLines: 2,
                   onChanged: (value) => setState(() => _hasChanges = true),
@@ -155,59 +173,99 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
             ),
           ),
           Expanded(
-            child: ReorderableListView.builder(
-              itemCount: _songs.length,
-              onReorder: _reorderSongs,
-              itemBuilder: (context, index) {
-                final song = _songs[index];
-                return ListTile(
-                  key: ValueKey(song.id),
-                  leading: const Icon(Icons.drag_handle),
-                  title: Text(song.name),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(song.author),
-                      Row(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ReorderableListView.builder(
+                itemCount: _songs.length,
+                onReorder: _reorderSongs,
+                buildDefaultDragHandles: false,
+                itemBuilder: (context, index) {
+                  final song = _songs[index];
+                  return Card(
+                    key: ValueKey(song.id),
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Repetitions: '),
-                          IconButton(
-                            icon: const Icon(Icons.remove),
-                            onPressed: () {
-                              setState(() {
-                                final current = _repetitionsMap[song.id] ?? 1;
-                                if (current > 1) {
-                                  _repetitionsMap[song.id] = current - 1;
-                                  _hasChanges = true;
-                                }
-                              });
-                            },
+                          ReorderableDragStartListener(
+                            index: index,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 8.0, right: 8),
+                              child: Icon(Icons.drag_indicator_rounded, color: theme.colorScheme.primary, size: 28),
+                            ),
                           ),
-                          Text('${_repetitionsMap[song.id] ?? 1}'),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(song.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 2),
+                                Text(song.author, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Text('Repetitions:', style: TextStyle(fontWeight: FontWeight.w500)),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline, size: 22),
+                                            splashRadius: 18,
+                                            onPressed: () {
+                                              setState(() {
+                                                final current = _repetitionsMap[song.id] ?? 1;
+                                                if (current > 1) {
+                                                  _repetitionsMap[song.id] = current - 1;
+                                                  _hasChanges = true;
+                                                }
+                                              });
+                                            },
+                                          ),
+                                          Text('${_repetitionsMap[song.id] ?? 1}', style: theme.textTheme.titleMedium),
+                                          IconButton(
+                                            icon: const Icon(Icons.add_circle_outline, size: 22),
+                                            splashRadius: 18,
+                                            onPressed: () {
+                                              setState(() {
+                                                final current = _repetitionsMap[song.id] ?? 1;
+                                                _repetitionsMap[song.id] = current + 1;
+                                                _hasChanges = true;
+                                              });
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                           IconButton(
-                            icon: const Icon(Icons.add),
-                            onPressed: () {
-                              setState(() {
-                                final current = _repetitionsMap[song.id] ?? 1;
-                                _repetitionsMap[song.id] = current + 1;
-                                _hasChanges = true;
-                              });
-                            },
+                            icon: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent, size: 28),
+                            tooltip: 'Remove song',
+                            onPressed: () => _removeSong(index),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _removeSong(index),
-                  ),
-                );
-              },
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
       ),
     );
   }
-} 
+}
