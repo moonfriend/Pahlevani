@@ -9,9 +9,8 @@ import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/playlist/playlist_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
 import 'package:pahlevani/presentation/pages/playlist/download_status.dart'; // Import enum
-import 'package:pahlevani/presentation/widgets/playlist_card.dart';
-import 'package:path_provider/path_provider.dart'; // For finding paths
 import 'package:pahlevani/presentation/pages/playlist/edit_playlist_page.dart';
+import 'package:path_provider/path_provider.dart'; // For finding paths
 
 class PlaylistPage extends StatefulWidget {
   const PlaylistPage({super.key});
@@ -21,7 +20,6 @@ class PlaylistPage extends StatefulWidget {
 }
 
 class _PlaylistPageState extends State<PlaylistPage> {
-
   Future<List<AudioTrack>> _convertSongsToAudioTracks(Playlist playlist, Map<int, DownloadStatus> downloadStatus) async {
     final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
     final isDownloaded = status == DownloadStatus.downloaded;
@@ -147,22 +145,26 @@ class _PlaylistPageState extends State<PlaylistPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.colorScheme.background.withOpacity(0.98),
       appBar: AppBar(
-        title: const Text('Select a Playlist'),
+        title: const Text('Select a Playlist', style: TextStyle(color: Colors.white)),
+        backgroundColor: theme.colorScheme.primary,
+        elevation: 2,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+        ),
       ),
-      // Use BlocBuilder to react to PlaylistCubit states
       body: BlocBuilder<PlaylistCubit, PlaylistState>(
         builder: (context, state) {
           Widget bodyContent;
 
-          // Determine content based on the current state
           if (state is PlaylistInitial || (state is PlaylistLoading && state.playlists.isEmpty)) {
             bodyContent = const Center(child: CircularProgressIndicator());
           } else if (state is PlaylistError) {
             bodyContent = _buildErrorWidget(context, state.message);
           } else {
-            // States that have playlists: Loading, Loaded, Downloading
             List<Playlist> playlists = [];
             Map<int, DownloadStatus> downloadStatus = {};
             Map<int, double> downloadProgress = {};
@@ -182,11 +184,19 @@ class _PlaylistPageState extends State<PlaylistPage> {
             if (playlists.isEmpty && state is! PlaylistLoading) {
               bodyContent = _buildEmptyListWidget(context);
             } else {
-              bodyContent = _buildPlaylistListView(context, playlists, downloadStatus, downloadProgress);
+              bodyContent = Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                child: _buildPlaylistListView(
+                  context,
+                  playlists,
+                  downloadStatus,
+                  downloadProgress,
+                  theme,
+                ),
+              );
             }
           }
 
-          // Wrap content in RefreshIndicator
           return RefreshIndicator(
             onRefresh: () => context.read<PlaylistCubit>().fetchPlaylists(forceRefresh: true),
             child: bodyContent,
@@ -203,6 +213,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
     List<Playlist> playlists,
     Map<int, DownloadStatus> downloadStatus,
     Map<int, double> downloadProgress,
+    ThemeData theme,
   ) {
     return ListView.builder(
       itemCount: playlists.length,
@@ -211,14 +222,120 @@ class _PlaylistPageState extends State<PlaylistPage> {
         final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
         final progress = downloadProgress[playlist.id];
 
-        return PlaylistCard(
-          playlist: playlist,
-          downloadStatus: status,
-          downloadProgress: progress,
-          onTap: () => _navigateToPlayer(context, playlist, downloadStatus),
-          onDownloadTap: () => context.read<PlaylistCubit>().downloadPlaylist(playlist.id),
-          onEditTap: () => _navigateToEditPlaylist(context, playlist),
-          onDeleteTap: () => _deletePlaylist(context, playlist),
+        return Card(
+          color: theme.colorScheme.surface.withOpacity(0.97),
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            leading: Stack(
+              alignment: Alignment.topRight,
+              children: [
+                CircleAvatar(
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                  child: Icon(Icons.queue_music_rounded, color: theme.colorScheme.primary, size: 28),
+                ),
+                if (playlist.isUserCreated)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Icon(Icons.person, color: Colors.green, size: 16),
+                  ),
+              ],
+            ),
+            title: Text(
+              playlist.title,
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (playlist.description.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.0, bottom: 4),
+                    child: Text(
+                      playlist.description,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                Row(
+                  children: [
+                    Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 4),
+                    Text('${playlist.songs.length} tracks', style: theme.textTheme.bodySmall),
+                    const SizedBox(width: 16),
+                    Icon(Icons.bolt_rounded, size: 16, color: theme.colorScheme.secondary),
+                    const SizedBox(width: 4),
+                    Text('Difficulty: ${playlist.difficulty}', style: theme.textTheme.bodySmall),
+                    const SizedBox(width: 8),
+                    if (playlist.isUserCreated)
+                      Icon(Icons.person, color: Colors.green, size: 18)
+                    else
+                      Icon(Icons.cloud, color: Colors.grey, size: 18),
+                  ],
+                ),
+                if (status == DownloadStatus.downloading)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: LinearProgressIndicator(
+                      value: progress ?? 0,
+                      minHeight: 5,
+                      backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+              ],
+            ),
+            trailing: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'edit') {
+                  _navigateToEditPlaylist(context, playlist);
+                } else if (value == 'delete') {
+                  _deletePlaylist(context, playlist);
+                } else if (value == 'download') {
+                  context.read<PlaylistCubit>().downloadPlaylist(playlist.id);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit),
+                      SizedBox(width: 8),
+                      Text('Edit Playlist'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'download',
+                  child: Row(
+                    children: [
+                      Icon(Icons.download_rounded, color: Colors.deepPurple),
+                      SizedBox(width: 8),
+                      Text('Download'),
+                    ],
+                  ),
+                ),
+                if (playlist.isUserCreated)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            onTap: () => _navigateToPlayer(context, playlist, downloadStatus),
+          ),
         );
       },
     );

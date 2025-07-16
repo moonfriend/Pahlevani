@@ -28,14 +28,19 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.grey[200],
-        elevation: 0,
+        backgroundColor: theme.colorScheme.primary,
+        elevation: 2,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+        ),
         title: const Text(
           'Play along',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: BlocBuilder<AudioPlayerCubit, AudioPlayerState>(
         builder: (context, state) {
@@ -98,11 +103,11 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.sports_martial_arts, size: 120, color: Colors.black54),
-                      SizedBox(height: 16),
+                      const Icon(Icons.sports_martial_arts, size: 120, color: Colors.black54),
+                      const SizedBox(height: 16),
                       Text(
                         currentTrack?.displayName ?? 'No movement selected',
-                        style: TextStyle(fontSize: 18),
+                        style: const TextStyle(fontSize: 18),
                       ),
                     ],
                   ),
@@ -127,7 +132,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                     color: Colors.black.withOpacity(0.5),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.play_arrow,
                     color: Colors.white,
                     size: 50,
@@ -147,12 +152,12 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                 context.read<AudioPlayerCubit>().togglePlay();
               },
               child: Container(
-                padding: EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.pause, color: Colors.white, size: 24),
@@ -177,7 +182,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
     final duration = state.duration;
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.grey[200],
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -187,7 +192,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
             padding: const EdgeInsets.only(bottom: 8.0),
             child: Text(
               currentTrack?.displayName ?? 'No track selected',
-              style: TextStyle(
+              style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
@@ -201,7 +206,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
               // Current position
               Text(
                 _formatDuration(position),
-                style: TextStyle(fontSize: 12),
+                style: const TextStyle(fontSize: 12),
               ),
               // Slider for progress control
               Expanded(
@@ -223,7 +228,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
               // Total duration
               Text(
                 _formatDuration(duration),
-                style: TextStyle(fontSize: 12),
+                style: const TextStyle(fontSize: 12),
               ),
             ],
           ),
@@ -256,7 +261,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
 
           return Container(
             height: 70,
-            margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(4),
@@ -267,7 +272,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                 Container(
                   width: 50,
                   height: 50,
-                  margin: EdgeInsets.all(10),
+                  margin: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.green,
                     borderRadius: BorderRadius.circular(4),
@@ -275,7 +280,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                   child: Center(
                     child: Text(
                       (index + 1).toString(),
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -296,8 +301,8 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                     padding: const EdgeInsets.only(right: 16.0),
                     child: IconButton(
                       icon: isPlaying
-                          ? Icon(Icons.pause, color: Colors.green, size: 30)
-                          : Icon(Icons.play_arrow, color: Colors.green, size: 30),
+                          ? const Icon(Icons.pause, color: Colors.green, size: 30)
+                          : const Icon(Icons.play_arrow, color: Colors.green, size: 30),
                       onPressed: () {
                         context.read<AudioPlayerCubit>().togglePlay();
                       },
@@ -321,7 +326,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
 
   Widget _buildNavigationButtons(BuildContext context, AudioPlayerState state) {
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
       decoration: BoxDecoration(
         color: Colors.grey[200],
       ),
@@ -329,12 +334,12 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           ElevatedButton.icon(
-            icon: Icon(Icons.arrow_upward),
-            label: Text('Previous'),
+            icon: const Icon(Icons.arrow_upward),
+            label: const Text('Previous'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
-              minimumSize: Size(140, 45),
+              minimumSize: const Size(140, 45),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
@@ -355,12 +360,12 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
             },
           ),
           ElevatedButton.icon(
-            icon: Icon(Icons.arrow_downward),
-            label: Text('Next'),
+            icon: const Icon(Icons.arrow_downward),
+            label: const Text('Next'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
-              minimumSize: Size(140, 45),
+              minimumSize: const Size(140, 45),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
