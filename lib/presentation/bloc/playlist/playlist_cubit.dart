@@ -148,14 +148,32 @@ class PlaylistCubit extends Cubit<PlaylistState> {
     }
   }
 
-  void updatePlaylist(Playlist updatedPlaylist) {
+  void updatePlaylist(Playlist updatedPlaylist, {Map<int, int>? repetitionsMap}) {
     if (state is PlaylistLoaded) {
       final currentState = state as PlaylistLoaded;
       final updatedPlaylists = List<Playlist>.from(currentState.playlists);
-      
-      if (updatedPlaylist.id == 0) {
-        // This is a new playlist
-        _playlistRepository.savePlaylist(updatedPlaylist).then((savedPlaylist) {
+
+      if (updatedPlaylist.isUserCreated) {
+        // Update in place
+        final index = updatedPlaylists.indexWhere((p) => p.id == updatedPlaylist.id && p.isUserCreated);
+        _playlistRepository.updatePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap).then((_) {
+          if (index != -1) {
+            updatedPlaylists[index] = updatedPlaylist;
+          }
+          emit(PlaylistLoaded(
+            playlists: updatedPlaylists,
+            downloadStatus: currentState.downloadStatus,
+          ));
+        }).catchError((error) {
+          emit(PlaylistError(
+            message: "Failed to update playlist: $error",
+            playlists: currentState.playlists,
+            downloadStatus: currentState.downloadStatus,
+          ));
+        });
+      } else {
+        // Always treat server playlist edits as new items
+        _playlistRepository.savePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap).then((savedPlaylist) {
           updatedPlaylists.add(savedPlaylist);
           emit(PlaylistLoaded(
             playlists: updatedPlaylists,
@@ -163,29 +181,11 @@ class PlaylistCubit extends Cubit<PlaylistState> {
           ));
         }).catchError((error) {
           emit(PlaylistError(
-            message: "Failed to save new playlist: $error",
+            message: "Failed to save playlist: $error",
             playlists: currentState.playlists,
             downloadStatus: currentState.downloadStatus,
           ));
         });
-      } else {
-        // This is an update to an existing playlist
-        final index = updatedPlaylists.indexWhere((p) => p.id == updatedPlaylist.id);
-        if (index != -1) {
-          _playlistRepository.updatePlaylist(updatedPlaylist).then((_) {
-            updatedPlaylists[index] = updatedPlaylist;
-            emit(PlaylistLoaded(
-              playlists: updatedPlaylists,
-              downloadStatus: currentState.downloadStatus,
-            ));
-          }).catchError((error) {
-            emit(PlaylistError(
-              message: "Failed to update playlist: $error",
-              playlists: currentState.playlists,
-              downloadStatus: currentState.downloadStatus,
-            ));
-          });
-        }
       }
     }
   }

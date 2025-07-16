@@ -225,7 +225,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
   }
 
   Future<void> _navigateToEditPlaylist(BuildContext context, Playlist playlist) async {
-    final result = await Navigator.push<Playlist>(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditPlaylistPage(playlist: playlist),
@@ -233,7 +233,13 @@ class _PlaylistPageState extends State<PlaylistPage> {
     );
 
     if (result != null && mounted) {
-      context.read<PlaylistCubit>().updatePlaylist(result);
+      if (result is Map && result['playlist'] != null) {
+        final updatedPlaylist = result['playlist'] as Playlist;
+        final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
+        context.read<PlaylistCubit>().updatePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap);
+      } else if (result is Playlist) {
+        context.read<PlaylistCubit>().updatePlaylist(result);
+      }
     }
   }
 
