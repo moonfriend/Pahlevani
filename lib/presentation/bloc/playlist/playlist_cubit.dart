@@ -148,6 +148,71 @@ class PlaylistCubit extends Cubit<PlaylistState> {
     }
   }
 
+  void updatePlaylist(Playlist updatedPlaylist) {
+    if (state is PlaylistLoaded) {
+      final currentState = state as PlaylistLoaded;
+      final updatedPlaylists = List<Playlist>.from(currentState.playlists);
+      
+      if (updatedPlaylist.id == 0) {
+        // This is a new playlist
+        _playlistRepository.savePlaylist(updatedPlaylist).then((savedPlaylist) {
+          updatedPlaylists.add(savedPlaylist);
+          emit(PlaylistLoaded(
+            playlists: updatedPlaylists,
+            downloadStatus: currentState.downloadStatus,
+          ));
+        }).catchError((error) {
+          emit(PlaylistError(
+            message: "Failed to save new playlist: $error",
+            playlists: currentState.playlists,
+            downloadStatus: currentState.downloadStatus,
+          ));
+        });
+      } else {
+        // This is an update to an existing playlist
+        final index = updatedPlaylists.indexWhere((p) => p.id == updatedPlaylist.id);
+        if (index != -1) {
+          _playlistRepository.updatePlaylist(updatedPlaylist).then((_) {
+            updatedPlaylists[index] = updatedPlaylist;
+            emit(PlaylistLoaded(
+              playlists: updatedPlaylists,
+              downloadStatus: currentState.downloadStatus,
+            ));
+          }).catchError((error) {
+            emit(PlaylistError(
+              message: "Failed to update playlist: $error",
+              playlists: currentState.playlists,
+              downloadStatus: currentState.downloadStatus,
+            ));
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> deletePlaylist(int playlistId) async {
+    try {
+      await _playlistRepository.deletePlaylist(playlistId);
+      
+      if (state is PlaylistLoaded) {
+        final currentState = state as PlaylistLoaded;
+        final updatedPlaylists = List<Playlist>.from(currentState.playlists)
+          ..removeWhere((p) => p.id == playlistId);
+        
+        emit(PlaylistLoaded(
+          playlists: updatedPlaylists,
+          downloadStatus: currentState.downloadStatus,
+        ));
+      }
+    } catch (e) {
+      emit(PlaylistError(
+        message: 'Failed to delete playlist: $e',
+        playlists: state is PlaylistLoaded ? (state as PlaylistLoaded).playlists : [],
+        downloadStatus: state is PlaylistLoaded ? (state as PlaylistLoaded).downloadStatus : {},
+      ));
+    }
+  }
+
   @override
   Future<void> close() {
     _downloadSubscription?.cancel();

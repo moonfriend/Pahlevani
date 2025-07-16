@@ -24,14 +24,21 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<List<Playlist>> getPlaylists() async {
     try {
+      // Get existing playlists from local database
+      final localPlaylists = await localDatabase.getPlaylists();
+      final userCreatedPlaylists = localPlaylists.where((p) => p.isUserCreated).toList();
+
       // Try to get data from remote source
       final remoteData = await remoteDataSource.fetchPlaylists();
-      final playlists = remoteData.map((data) => Playlist.fromJson(data)).toList();
+      final serverPlaylists = remoteData.map((data) => Playlist.fromJson(data)).toList();
+
+      // Combine server playlists with user-created ones
+      final combinedPlaylists = [...serverPlaylists, ...userCreatedPlaylists];
 
       // Save to local database
-      await localDatabase.savePlaylists(playlists);
+      await localDatabase.savePlaylists(combinedPlaylists);
 
-      return playlists;
+      return combinedPlaylists;
     } catch (e) {
       print("Error fetching from remote: $e");
 
@@ -236,5 +243,81 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       /* Keep default */
     }
     return '${song.id}_${safeName}$extension';
+  }
+
+  @override
+  Future<Playlist> savePlaylist(Playlist playlist) async {
+    try {
+      // Generate a new ID for the playlist
+      final newId = DateTime.now().millisecondsSinceEpoch;
+      final newPlaylist = Playlist(
+        id: newId,
+        title: playlist.title,
+        description: playlist.description,
+        difficulty: playlist.difficulty,
+        createdAt: DateTime.now(),
+        songs: playlist.songs,
+        isUserCreated: true, // Always mark as user-created
+      );
+
+      // Save to local database
+      await localDatabase.savePlaylists([newPlaylist]);
+      
+      return newPlaylist;
+    } catch (e) {
+      throw Exception('Failed to save playlist: $e');
+    }
+  }
+
+  @override
+  Future<void> updatePlaylist(Playlist playlist) async {
+    try {
+      // Get existing playlists
+      final playlists = await localDatabase.getPlaylists();
+      
+      // Create a new playlist with user-created flag
+      final newPlaylist = Playlist(
+        id: DateTime.now().millisecondsSinceEpoch,
+        title: playlist.title,
+        description: playlist.description,
+        difficulty: playlist.difficulty,
+        createdAt: DateTime.now(),
+        songs: playlist.songs,
+        isUserCreated: true,
+      );
+      
+      // Add the new playlist to the list
+      playlists.add(newPlaylist);
+      // Save the updated list
+      await localDatabase.savePlaylists(playlists);
+    } catch (e) {
+      throw Exception('Failed to update playlist: $e');
+    }
+  }
+
+  @override
+  Future<void> deletePlaylist(int playlistId) async {
+    try {
+      // Get existing playlists
+      final playlists = await localDatabase.getPlaylists();
+      final index = playlists.indexWhere((p) => p.id == playlistId);
+      
+      if (index != -1) {
+        // Remove the playlist from the list
+        playlists.removeAt(index);
+        // Save the updated list
+        await localDatabase.savePlaylists(playlists);
+        
+        // Delete downloaded files if any
+        if (await isPlaylistDownloaded(playlistId)) {
+          await localDataSource.deletePlaylistDirectory(playlistId);
+          await _saveDownloadStatus(playlistId, DownloadStatus.notDownloaded);
+        }
+      } else {
+        throw Exception('Playlist not found');
+      }
+    } catch (e) {
+      throw Exception('Failed to delete playlist: $e');
+    }
   }
 }

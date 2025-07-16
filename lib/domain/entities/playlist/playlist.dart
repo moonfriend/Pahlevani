@@ -8,6 +8,7 @@ class Playlist {
   final int difficulty;
   final DateTime? createdAt;
   final List<Audio> songs;
+  final bool isUserCreated;
 
   Playlist({
     required this.id,
@@ -16,6 +17,7 @@ class Playlist {
     required this.difficulty,
     this.createdAt,
     required this.songs,
+    this.isUserCreated = false,
   });
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
@@ -37,6 +39,7 @@ class Playlist {
       difficulty: json['difficulty'] as int? ?? 1,
       createdAt: parsedDate,
       songs: songsList,
+      isUserCreated: json['is_user_created'] as bool? ?? false,
     );
   }
 }

@@ -20,6 +20,12 @@ abstract class PlaylistRepository {
   /// Gets the local file path for a song if downloaded, otherwise null.
   Future<String?> getLocalSongPath(int playlistId, Audio song);
 
-// Maybe add delete functionality later
-// Future<void> deleteDownloadedPlaylist(int playlistId);
+  /// Saves a playlist to the repository.
+  Future<Playlist> savePlaylist(Playlist playlist);
+
+  /// Updates a playlist in the repository.
+  Future<void> updatePlaylist(Playlist playlist);
+
+  /// Deletes a playlist and its downloaded files.
+  Future<void> deletePlaylist(int playlistId);
 }

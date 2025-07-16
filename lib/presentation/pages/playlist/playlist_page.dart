@@ -11,8 +11,8 @@ import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
 import 'package:pahlevani/presentation/pages/playlist/download_status.dart'; // Import enum
 import 'package:pahlevani/presentation/widgets/playlist_card.dart';
 import 'package:path_provider/path_provider.dart'; // For finding paths
+import 'package:pahlevani/presentation/pages/playlist/edit_playlist_page.dart';
 
-/// Page to display a list of available playlists, managed by PlaylistCubit.
 class PlaylistPage extends StatefulWidget {
   const PlaylistPage({super.key});
 
@@ -21,24 +21,6 @@ class PlaylistPage extends StatefulWidget {
 }
 
 class _PlaylistPageState extends State<PlaylistPage> {
-  // No local state variables needed for playlists, loading, errors, or downloads.
-  // Everything will come from the PlaylistCubit's state.
-
-  @override
-  void initState() {
-    super.initState();
-    // Initial data fetch triggered by the Cubit, usually when it's created
-    // or via an explicit initialization method called after creation.
-    // If PlaylistCubit is provided higher up, it might initialize itself.
-    // If provided here, call initialize:
-    // context.read<PlaylistCubit>().initialize();
-    // Assuming initialization happens when the cubit is created/provided.
-  }
-
-  // --- Conversion and Navigation Logic ---
-  // This logic remains here for now as it prepares data specifically
-  // for the AudioPlayerPage based on the current PlaylistState.
-  // Ideally, AudioPlayerCubit would handle fetching/determining track source.
 
   Future<List<AudioTrack>> _convertSongsToAudioTracks(Playlist playlist, Map<int, DownloadStatus> downloadStatus) async {
     final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
@@ -227,19 +209,49 @@ class _PlaylistPageState extends State<PlaylistPage> {
       itemBuilder: (context, index) {
         final playlist = playlists[index];
         final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
-        final progress = downloadProgress[playlist.id]; // Will be null if not downloading
+        final progress = downloadProgress[playlist.id];
 
         return PlaylistCard(
           playlist: playlist,
           downloadStatus: status,
           downloadProgress: progress,
-          // Navigate using the helper function
           onTap: () => _navigateToPlayer(context, playlist, downloadStatus),
-          // Trigger download via the cubit
           onDownloadTap: () => context.read<PlaylistCubit>().downloadPlaylist(playlist.id),
+          onEditTap: () => _navigateToEditPlaylist(context, playlist),
+          onDeleteTap: () => _deletePlaylist(context, playlist),
         );
       },
     );
+  }
+
+  Future<void> _navigateToEditPlaylist(BuildContext context, Playlist playlist) async {
+    final result = await Navigator.push<Playlist>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditPlaylistPage(playlist: playlist),
+      ),
+    );
+
+    if (result != null && mounted) {
+      context.read<PlaylistCubit>().updatePlaylist(result);
+    }
+  }
+
+  Future<void> _deletePlaylist(BuildContext context, Playlist playlist) async {
+    try {
+      await context.read<PlaylistCubit>().deletePlaylist(playlist.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${playlist.title} deleted successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete playlist: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildErrorWidget(BuildContext context, String message) {
