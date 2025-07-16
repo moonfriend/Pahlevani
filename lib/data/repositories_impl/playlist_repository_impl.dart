@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:pahlevani/data/datasources/playlist/playlist_local_database.dart';
 import 'package:pahlevani/data/datasources/playlist/playlist_local_datasource.dart';
 import 'package:pahlevani/data/datasources/playlist/playlist_remote_datasource.dart';
+import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/playlist/audio.dart';
 import 'package:pahlevani/domain/entities/playlist/playlist.dart';
 import 'package:pahlevani/domain/repositories/playlist_repository.dart';
@@ -24,31 +25,171 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<List<Playlist>> getPlaylists() async {
     try {
-      // Get existing playlists from local database
-      final localPlaylists = await localDatabase.getPlaylists();
-      final userCreatedPlaylists = localPlaylists.where((p) => p.isUserCreated).toList();
+      // Load all local data
+      final playlistSongs = await localDatabase.getPlaylistSongs();
+      final playlistsMetaBox = await localDatabase.getPlaylistBox();
+      final tracks = await localDatabase.getTracks();
 
-      // Try to get data from remote source
-      final remoteData = await remoteDataSource.fetchPlaylists();
-      final serverPlaylists = remoteData.map((data) => Playlist.fromJson(data)).toList();
+      // Group playlistSongs by playlistId
+      final Map<int, List<HivePlaylistSong>> grouped = {};
+      for (final ps in playlistSongs) {
+        grouped.putIfAbsent(ps.playlistId, () => []).add(ps);
+      }
+
+      // Build playlists from grouped playlistSongs
+      final localPlaylists = <Playlist>[];
+      for (final entry in grouped.entries) {
+        final playlistId = entry.key;
+        final songLinks = entry.value..sort((a, b) => (a.position).compareTo(b.position));
+        HivePlaylist? meta;
+        try {
+          meta = playlistsMetaBox.values.firstWhere((p) => p.id == playlistId);
+        } catch (_) {
+          meta = null;
+        }
+        if (meta == null) continue;
+        final songs = songLinks.map((ps) {
+          final track = tracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
+            id: 0,
+            name: '',
+            author: '',
+            type: '',
+            url: '',
+            position: 0,
+            repetitions: null,
+          ));
+          return Audio(
+            id: track.id,
+            name: track.name,
+            author: track.author,
+            type: track.type,
+            url: track.url,
+            position: ps.position,
+          );
+        }).toList();
+        localPlaylists.add(Playlist(
+          id: playlistId,
+          title: meta.title,
+          description: meta.description,
+          difficulty: meta.difficulty,
+          createdAt: meta.createdAt,
+          songs: songs,
+          isUserCreated: meta is HivePlaylist ? (meta as dynamic).isUserCreated ?? false : false,
+        ));
+      }
+
+      // Fetch all tables from remote
+      final playlistsRaw = await remoteDataSource.fetchPlaylistsTable();
+      final tracksRaw = await remoteDataSource.fetchTracksTable();
+      final playlistSongsRaw = await remoteDataSource.fetchPlaylistSongsTable();
+
+      // Convert to Hive models
+      final remoteTracks = tracksRaw.map((e) => HiveAudio.fromJson(e)).toList();
+      final remotePlaylistSongs = playlistSongsRaw.map((e) => HivePlaylistSong.fromJson(e)).toList();
+
+      // Save tracks and playlist_songs locally
+      await localDatabase.saveTracks(remoteTracks);
+      await localDatabase.savePlaylistSongs(remotePlaylistSongs);
+
+      // Build playlists by joining tables (remote)
+      final serverPlaylists = playlistsRaw.map((playlistJson) {
+        final playlistId = playlistJson['id'] as int?;
+        if (playlistId == null) return null;
+        final playlistSongLinks = remotePlaylistSongs.where((ps) => ps.playlistId == playlistId).toList();
+        playlistSongLinks.sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
+        final playlistTracks = playlistSongLinks.map((ps) {
+          final track = remoteTracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
+            id: 0,
+            name: '',
+            author: '',
+            type: '',
+            url: '',
+            position: 0,
+            repetitions: null,
+          ));
+          return Audio(
+            id: track.id,
+            name: track.name,
+            author: track.author,
+            type: track.type,
+            url: track.url,
+            position: ps.position ?? 0,
+          );
+        }).toList();
+        return Playlist(
+          id: playlistId,
+          title: playlistJson['title'] as String? ?? 'Unknown Playlist',
+          description: playlistJson['description'] as String? ?? '',
+          difficulty: playlistJson['difficulty'] as int? ?? 1,
+          createdAt: playlistJson['created_at'] is String ? DateTime.tryParse(playlistJson['created_at']) : null,
+          songs: playlistTracks,
+          isUserCreated: false,
+        );
+      }).whereType<Playlist>().toList();
 
       // Combine server playlists with user-created ones
-      final combinedPlaylists = [...serverPlaylists, ...userCreatedPlaylists];
+      final combinedPlaylists = [...serverPlaylists, ...localPlaylists.where((p) => p.isUserCreated)];
 
-      // Save to local database
-      await localDatabase.savePlaylists(combinedPlaylists);
+      // Save to local database (metadata only)
+      await localDatabase.savePlaylists([
+        ...serverPlaylists.map((p) => p.copyWith(isUserCreated: false)),
+        ...localPlaylists.where((p) => p.isUserCreated)
+      ]);
 
       return combinedPlaylists;
     } catch (e) {
       print("Error fetching from remote: $e");
 
-      // If remote fetch fails, try to get from local database
+      // If remote fetch fails, try to get from local database (rebuild from playlistSongs)
       try {
-        final localPlaylists = await localDatabase.getPlaylists();
-        if (localPlaylists.isNotEmpty) {
-          print("Using cached playlists from local database");
-          return localPlaylists;
+        final playlistSongs = await localDatabase.getPlaylistSongs();
+        final playlistsMetaBox = await localDatabase.getPlaylistBox();
+        final tracks = await localDatabase.getTracks();
+        final Map<int, List<HivePlaylistSong>> grouped = {};
+        for (final ps in playlistSongs) {
+          grouped.putIfAbsent(ps.playlistId, () => []).add(ps);
         }
+        final localPlaylists = <Playlist>[];
+        for (final entry in grouped.entries) {
+          final playlistId = entry.key;
+          final songLinks = entry.value..sort((a, b) => (a.position).compareTo(b.position));
+          HivePlaylist? meta;
+          try {
+            meta = playlistsMetaBox.values.firstWhere((p) => p.id == playlistId);
+          } catch (_) {
+            meta = null;
+          }
+          if (meta == null) continue;
+          final songs = songLinks.map((ps) {
+            final track = tracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
+              id: 0,
+              name: '',
+              author: '',
+              type: '',
+              url: '',
+              position: 0,
+              repetitions: null,
+            ));
+            return Audio(
+              id: track.id,
+              name: track.name,
+              author: track.author,
+              type: track.type,
+              url: track.url,
+              position: ps.position,
+            );
+          }).toList();
+          localPlaylists.add(Playlist(
+            id: playlistId,
+            title: meta.title,
+            description: meta.description,
+            difficulty: meta.difficulty,
+            createdAt: meta.createdAt,
+            songs: songs,
+            isUserCreated: meta is HivePlaylist ? (meta as dynamic).isUserCreated ?? false : false,
+          ));
+        }
+        return localPlaylists;
       } catch (localError) {
         print("Error reading from local database: $localError");
       }
@@ -246,7 +387,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
-  Future<Playlist> savePlaylist(Playlist playlist) async {
+  Future<Playlist> savePlaylist(Playlist playlist, {Map<int, int>? repetitionsMap}) async {
     try {
       // Generate a new ID for the playlist
       final newId = DateTime.now().millisecondsSinceEpoch;
@@ -262,7 +403,22 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
 
       // Save to local database
       await localDatabase.savePlaylists([newPlaylist]);
-      
+
+      // Save playlist_songs with repsToDo
+      if (repetitionsMap != null) {
+        final playlistSongs = playlist.songs.asMap().entries.map((entry) {
+          final index = entry.key;
+          final song = entry.value;
+          return HivePlaylistSong(
+            playlistId: newId,
+            songId: song.id,
+            position: index,
+            repsToDo: repetitionsMap[song.id] ?? 1,
+          );
+        }).toList();
+        await localDatabase.savePlaylistSongs(playlistSongs);
+      }
+
       return newPlaylist;
     } catch (e) {
       throw Exception('Failed to save playlist: $e');
@@ -270,26 +426,49 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
-  Future<void> updatePlaylist(Playlist playlist) async {
+  Future<void> updatePlaylist(Playlist playlist, {Map<int, int>? repetitionsMap}) async {
     try {
-      // Get existing playlists
-      final playlists = await localDatabase.getPlaylists();
-      
-      // Create a new playlist with user-created flag
-      final newPlaylist = Playlist(
-        id: DateTime.now().millisecondsSinceEpoch,
+      // Update HivePlaylist (metadata)
+      final playlistsMetaBox = await localDatabase.getPlaylistBox();
+      final existingMetaIndex = playlistsMetaBox.values.toList().indexWhere((p) => p.id == playlist.id);
+      final newHivePlaylist = HivePlaylist(
+        id: playlist.id,
         title: playlist.title,
         description: playlist.description,
         difficulty: playlist.difficulty,
-        createdAt: DateTime.now(),
-        songs: playlist.songs,
+        createdAt: playlist.createdAt,
+        songs: playlist.songs.map((s) => HiveAudio.fromDomain(s)).toList(),
         isUserCreated: true,
       );
-      
-      // Add the new playlist to the list
-      playlists.add(newPlaylist);
-      // Save the updated list
-      await localDatabase.savePlaylists(playlists);
+      if (existingMetaIndex != -1) {
+        final key = playlistsMetaBox.keyAt(existingMetaIndex);
+        await playlistsMetaBox.put(key, newHivePlaylist);
+      } else {
+        await playlistsMetaBox.add(newHivePlaylist);
+      }
+
+      // Update HivePlaylistSong (song links and repsToDo)
+      final playlistSongBox = await localDatabase.getPlaylistSongBox();
+      // Remove old song links for this playlist
+      final oldKeys = playlistSongBox.keys.where((k) {
+        final ps = playlistSongBox.get(k);
+        return ps != null && ps.playlistId == playlist.id;
+      }).toList();
+      for (final k in oldKeys) {
+        await playlistSongBox.delete(k);
+      }
+      // Add new song links
+      final playlistSongs = playlist.songs.asMap().entries.map((entry) {
+        final index = entry.key;
+        final song = entry.value;
+        return HivePlaylistSong(
+          playlistId: playlist.id,
+          songId: song.id,
+          position: index,
+          repsToDo: repetitionsMap?[song.id] ?? 1,
+        );
+      }).toList();
+      await playlistSongBox.addAll(playlistSongs);
     } catch (e) {
       throw Exception('Failed to update playlist: $e');
     }
@@ -301,13 +480,13 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       // Get existing playlists
       final playlists = await localDatabase.getPlaylists();
       final index = playlists.indexWhere((p) => p.id == playlistId);
-      
+
       if (index != -1) {
         // Remove the playlist from the list
         playlists.removeAt(index);
         // Save the updated list
         await localDatabase.savePlaylists(playlists);
-        
+
         // Delete downloaded files if any
         if (await isPlaylistDownloaded(playlistId)) {
           await localDataSource.deletePlaylistDirectory(playlistId);

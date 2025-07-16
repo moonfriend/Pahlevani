@@ -42,4 +42,24 @@ class Playlist {
       isUserCreated: json['is_user_created'] as bool? ?? false,
     );
   }
+
+  Playlist copyWith({
+    int? id,
+    String? title,
+    String? description,
+    int? difficulty,
+    DateTime? createdAt,
+    List<Audio>? songs,
+    bool? isUserCreated,
+  }) {
+    return Playlist(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      difficulty: difficulty ?? this.difficulty,
+      createdAt: createdAt ?? this.createdAt,
+      songs: songs ?? this.songs,
+      isUserCreated: isUserCreated ?? this.isUserCreated,
+    );
+  }
 }

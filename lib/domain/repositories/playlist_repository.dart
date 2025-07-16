@@ -21,10 +21,10 @@ abstract class PlaylistRepository {
   Future<String?> getLocalSongPath(int playlistId, Audio song);
 
   /// Saves a playlist to the repository.
-  Future<Playlist> savePlaylist(Playlist playlist);
+  Future<Playlist> savePlaylist(Playlist playlist, {Map<int, int>? repetitionsMap});
 
   /// Updates a playlist in the repository.
-  Future<void> updatePlaylist(Playlist playlist);
+  Future<void> updatePlaylist(Playlist playlist, {Map<int, int>? repetitionsMap});
 
   /// Deletes a playlist and its downloaded files.
   Future<void> deletePlaylist(int playlistId);
