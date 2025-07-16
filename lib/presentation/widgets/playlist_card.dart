@@ -9,6 +9,8 @@ class PlaylistCard extends StatelessWidget {
   final double? downloadProgress;
   final VoidCallback onTap;
   final VoidCallback onDownloadTap;
+  final VoidCallback onEditTap;
+  final VoidCallback onDeleteTap;
 
   const PlaylistCard({
     super.key,
@@ -17,6 +19,8 @@ class PlaylistCard extends StatelessWidget {
     this.downloadProgress,
     required this.onTap,
     required this.onDownloadTap,
+    required this.onEditTap,
+    required this.onDeleteTap,
   });
 
   @override
@@ -24,61 +28,124 @@ class PlaylistCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       elevation: 3,
+      color: playlist.isUserCreated 
+          ? Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5)
+          : Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      playlist.title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8.0),
-                    Text(
-                      playlist.description,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 12.0),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${playlist.songs.length} songs',
-                          style: Theme.of(context).textTheme.labelMedium,
+                          playlist.title,
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                         ),
+                        const SizedBox(height: 8.0),
+                        Text(
+                          playlist.description,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 12.0),
                         Row(
-                          children: List.generate(5, (index) {
-                            final clampedDifficulty = playlist.difficulty.clamp(1, 5);
-                            return Icon(
-                              index < clampedDifficulty ? Icons.star : Icons.star_border,
-                              color: Colors.amber,
-                              size: 16,
-                            );
-                          }),
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${playlist.songs.length} songs',
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                            Row(
+                              children: List.generate(5, (index) {
+                                final clampedDifficulty = playlist.difficulty.clamp(1, 5);
+                                return Icon(
+                                  index < clampedDifficulty ? Icons.star : Icons.star_border,
+                                  color: Colors.amber,
+                                  size: 16,
+                                );
+                              }),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        onEditTap();
+                      } else if (value == 'delete') {
+                        _showDeleteConfirmation(context);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit),
+                            SizedBox(width: 8),
+                            Text('Edit Playlist'),
+                          ],
+                        ),
+                      ),
+                      if (playlist.isUserCreated)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.only(left: 16.0),
-                child: _buildDownloadButton(context),
-              ),
+              const SizedBox(height: 8.0),
+              _buildDownloadButton(context),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Playlist'),
+        content: Text('Are you sure you want to delete "${playlist.title}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onDeleteTap();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }
