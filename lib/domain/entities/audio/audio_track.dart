@@ -7,6 +7,8 @@ class AudioTrack extends Equatable {
   final String filePath;
   final String? imagePath;
   final Duration? duration;
+  final int? defaultRepetitions; // Default repetitions from HiveAudio
+  final int? userRepetitions; // User-specific repsToDo from HivePlaylistSong
 
   const AudioTrack({
     required this.id,
@@ -14,7 +16,13 @@ class AudioTrack extends Equatable {
     required this.filePath,
     this.imagePath,
     this.duration,
+    this.defaultRepetitions,
+    this.userRepetitions,
   });
+
+  /// Get the effective number of repetitions for this track
+  /// Priority: userRepetitions > defaultRepetitions > 1 (fallback)
+  int get effectiveRepetitions => userRepetitions ?? defaultRepetitions ?? 1;
 
   /// Returns a formatted display name by cleaning up the raw name
   String get displayName {
@@ -37,5 +45,5 @@ class AudioTrack extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, filePath, imagePath, duration];
+  List<Object?> get props => [id, title, filePath, imagePath, duration, defaultRepetitions, userRepetitions];
 }
