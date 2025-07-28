@@ -109,6 +109,7 @@ class PlaylistCubit extends Cubit<PlaylistState> {
         (progress) {
           // Update progress
           _currentDownloadProgress[playlistId] = progress;
+          // print("Download progress received: ${(progress * 100).toStringAsFixed(1)}% for playlist $playlistId");
           emit(PlaylistDownloading(
               playlists: _currentPlaylists,
               downloadStatus: Map.of(_currentDownloadStatus),
@@ -128,6 +129,7 @@ class PlaylistCubit extends Cubit<PlaylistState> {
           print("Download stream done for playlist $playlistId");
           // Verify final status (repository should have updated it)
           _playlistRepository.isPlaylistDownloaded(playlistId).then((isDownloaded) {
+            print("Download verification for playlist $playlistId: isDownloaded = $isDownloaded");
             _currentDownloadStatus[playlistId] = isDownloaded ? DownloadStatus.downloaded : DownloadStatus.error;
             _currentDownloadProgress.remove(playlistId);
             emit(PlaylistLoaded(

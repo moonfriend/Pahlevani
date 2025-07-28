@@ -49,15 +49,16 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         }
         if (meta == null) continue;
         final songs = songLinks.map((ps) {
-          final track = tracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
-            id: 0,
-            name: '',
-            author: '',
-            type: '',
-            url: '',
-            position: 0,
-            repetitions: null,
-          ));
+          final track = tracks.firstWhere((t) => t.id == ps.songId,
+              orElse: () => HiveAudio(
+                    id: 0,
+                    name: '',
+                    author: '',
+                    type: '',
+                    url: '',
+                    position: 0,
+                    repetitions: null,
+                  ));
           return Audio(
             id: track.id,
             name: track.name,
@@ -89,69 +90,71 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
 
       // Save tracks locally
       await localDatabase.saveTracks(remoteTracks);
-      
+
       // Merge remote and local playlist songs instead of overwriting
       final existingPlaylistSongs = await localDatabase.getPlaylistSongs();
       final mergedPlaylistSongs = <HivePlaylistSong>[];
-      
+
       // Add all existing local playlist songs (preserves user customizations)
       mergedPlaylistSongs.addAll(existingPlaylistSongs);
-      
+
       // Add remote playlist songs only if they don't already exist locally
       for (final remotePs in remotePlaylistSongs) {
-        final existsLocally = existingPlaylistSongs.any((localPs) => 
-          localPs.playlistId == remotePs.playlistId && localPs.songId == remotePs.songId);
+        final existsLocally =
+            existingPlaylistSongs.any((localPs) => localPs.playlistId == remotePs.playlistId && localPs.songId == remotePs.songId);
         if (!existsLocally) {
           mergedPlaylistSongs.add(remotePs);
         }
       }
-      
+
       await localDatabase.savePlaylistSongs(mergedPlaylistSongs);
 
       // Build playlists by joining tables (remote)
-      final serverPlaylists = playlistsRaw.map((playlistJson) {
-        final playlistId = playlistJson['id'] as int?;
-        if (playlistId == null) return null;
-        final playlistSongLinks = remotePlaylistSongs.where((ps) => ps.playlistId == playlistId).toList();
-        playlistSongLinks.sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
-        final playlistTracks = playlistSongLinks.map((ps) {
-          final track = remoteTracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
-            id: 0,
-            name: '',
-            author: '',
-            type: '',
-            url: '',
-            position: 0,
-            repetitions: null,
-          ));
-          return Audio(
-            id: track.id,
-            name: track.name,
-            author: track.author,
-            type: track.type,
-            url: track.url,
-            position: ps.position ?? 0,
-          );
-        }).toList();
-        return Playlist(
-          id: playlistId,
-          title: playlistJson['title'] as String? ?? 'Unknown Playlist',
-          description: playlistJson['description'] as String? ?? '',
-          difficulty: playlistJson['difficulty'] as int? ?? 1,
-          createdAt: playlistJson['created_at'] is String ? DateTime.tryParse(playlistJson['created_at']) : null,
-          songs: playlistTracks,
-          isUserCreated: false,
-        );
-      }).whereType<Playlist>().toList();
+      final serverPlaylists = playlistsRaw
+          .map((playlistJson) {
+            final playlistId = playlistJson['id'] as int?;
+            if (playlistId == null) return null;
+            final playlistSongLinks = remotePlaylistSongs.where((ps) => ps.playlistId == playlistId).toList();
+            playlistSongLinks.sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
+            final playlistTracks = playlistSongLinks.map((ps) {
+              final track = remoteTracks.firstWhere((t) => t.id == ps.songId,
+                  orElse: () => HiveAudio(
+                        id: 0,
+                        name: '',
+                        author: '',
+                        type: '',
+                        url: '',
+                        position: 0,
+                        repetitions: null,
+                      ));
+              return Audio(
+                id: track.id,
+                name: track.name,
+                author: track.author,
+                type: track.type,
+                url: track.url,
+                position: ps.position ?? 0,
+              );
+            }).toList();
+            return Playlist(
+              id: playlistId,
+              title: playlistJson['title'] as String? ?? 'Unknown Playlist',
+              description: playlistJson['description'] as String? ?? '',
+              difficulty: playlistJson['difficulty'] as int? ?? 1,
+              createdAt: playlistJson['created_at'] is String ? DateTime.tryParse(playlistJson['created_at']) : null,
+              songs: playlistTracks,
+              isUserCreated: false,
+            );
+          })
+          .whereType<Playlist>()
+          .toList();
 
       // Combine server playlists with user-created ones
       final combinedPlaylists = [...serverPlaylists, ...localPlaylists.where((p) => p.isUserCreated)];
 
       // Save to local database (metadata only)
-      await localDatabase.savePlaylists([
-        ...serverPlaylists.map((p) => p.copyWith(isUserCreated: false)),
-        ...localPlaylists.where((p) => p.isUserCreated)
-      ]);
+      await localDatabase.savePlaylists(
+          [...serverPlaylists.map((p) => p.copyWith(isUserCreated: false)), ...localPlaylists.where((p) => p.isUserCreated)]);
 
       return combinedPlaylists;
     } catch (e) {
@@ -178,15 +181,16 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           }
           if (meta == null) continue;
           final songs = songLinks.map((ps) {
-            final track = tracks.firstWhere((t) => t.id == ps.songId, orElse: () => HiveAudio(
-              id: 0,
-              name: '',
-              author: '',
-              type: '',
-              url: '',
-              position: 0,
-              repetitions: null,
-            ));
+            final track = tracks.firstWhere((t) => t.id == ps.songId,
+                orElse: () => HiveAudio(
+                      id: 0,
+                      name: '',
+                      author: '',
+                      type: '',
+                      url: '',
+                      position: 0,
+                      repetitions: null,
+                    ));
             return Audio(
               id: track.id,
               name: track.name,
@@ -244,9 +248,17 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
-  Stream<double> downloadPlaylist(Playlist playlist) async* {
-    final playlistId = playlist.id;
+  Stream<double> downloadPlaylist(Playlist playlist) {
     final controller = StreamController<double>();
+
+    // Start the download process asynchronously
+    _downloadPlaylistAsync(playlist, controller);
+
+    return controller.stream;
+  }
+
+  Future<void> _downloadPlaylistAsync(Playlist playlist, StreamController<double> controller) async {
+    final playlistId = playlist.id;
 
     try {
       // Get and create target directory
@@ -269,11 +281,13 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
 
       int downloadedCount = 0;
       controller.add(0.0); // Initial progress
+      print("Starting download for playlist $playlistId with $totalSongs songs");
 
       // Download each song
       for (final song in validSongs) {
         final filename = _getSafeFilename(song);
         final savePath = '$targetDirPath/$filename';
+        print("Downloading song: ${song.name}");
 
         try {
           await localDataSource.downloadFile(
@@ -283,13 +297,17 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
               if (total > 0) {
                 double songProgress = received / total;
                 double overallProgress = (downloadedCount + songProgress) / totalSongs;
-                controller.add(overallProgress.clamp(0.0, 1.0));
+                final progress = overallProgress.clamp(0.0, 1.0);
+                // print("Download progress: ${(progress * 100).toStringAsFixed(1)}%");
+                controller.add(progress);
               }
             },
           );
 
           downloadedCount++;
-          controller.add((downloadedCount / totalSongs).clamp(0.0, 1.0));
+          final progress = (downloadedCount / totalSongs).clamp(0.0, 1.0);
+          print("Song completed: ${song.name}, overall progress: ${(progress * 100).toStringAsFixed(1)}%");
+          controller.add(progress);
 
           // Add a small delay between downloads to prevent overwhelming the server
           await Future.delayed(const Duration(milliseconds: 100));
