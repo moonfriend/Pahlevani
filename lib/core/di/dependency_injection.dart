@@ -6,7 +6,6 @@ import '../../data/datasources/playlist/playlist_local_datasource.dart';
 import '../../data/datasources/playlist/playlist_remote_datasource.dart';
 import '../../data/repositories_impl/playlist_repository_impl.dart';
 import '../../domain/repositories/playlist_repository.dart';
-import '../../presentation/bloc/player/audio_player_cubit.dart';
 import '../../presentation/bloc/playlist/playlist_cubit.dart';
 
 /// GetIt instance for dependency injection
@@ -50,7 +49,6 @@ class DependencyInjection {
     );
 
     // State management
-    getIt.registerLazySingleton<AudioPlayerCubit>(() => AudioPlayerCubit());
     getIt.registerLazySingleton<PlaylistCubit>(() => PlaylistCubit(
           playlistRepository: getIt<PlaylistRepository>(),
         ));
@@ -70,18 +68,11 @@ class DependencyInjection {
     print("Dependency Injection Initialized and Ready.");
   }
 
-  /// Get an instance of AudioPlayerCubit
-  AudioPlayerCubit get audioPlayerCubit => getIt<AudioPlayerCubit>();
-
   /// Get an instance of PlaylistCubit
   PlaylistCubit get playlistCubit => getIt<PlaylistCubit>();
 
   /// Dispose all resources
   Future<void> dispose() async {
-    if (getIt.isRegistered<AudioPlayerCubit>()) {
-      await getIt<AudioPlayerCubit>().close();
-    }
-
     await getIt.reset();
     _initialized = false;
     print("Dependency Injection Disposed.");

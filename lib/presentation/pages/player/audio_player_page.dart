@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/domain/entities/audio/audio_track.dart';
 
 import '../../../presentation/bloc/player/audio_player_cubit.dart';
 
 /// Player page for displaying and controlling audio playback
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key});
+  final List<AudioTrack> initialTracks;
+
+  const AudioPlayerPage({
+    super.key,
+    required this.initialTracks,
+  });
 
   @override
   AudioPlayerPageState createState() => AudioPlayerPageState();
@@ -15,10 +21,16 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
   late AnimationController _repetitionAnimationController;
   late Animation<double> _repetitionAnimation;
   int? _lastRepetitionNumber;
+  late final AudioPlayerCubit _playerCubit;
 
   @override
   void initState() {
     super.initState();
+    // Create a new cubit instance for this page
+    _playerCubit = AudioPlayerCubit();
+    // Load the initial tracks
+    _playerCubit.loadSpecificTracks(widget.initialTracks);
+
     _repetitionAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -33,11 +45,9 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
   }
 
   @override
-  Future<void> dispose() async {
-    if (mounted) {
-      print("AudioPlayerPage dispose: Stopping player.");
-      await context.read<AudioPlayerCubit>().stop();
-    }
+  void dispose() {
+    _playerCubit.stop();
+    _playerCubit.close(); // Dispose the cubit
     _repetitionAnimationController.dispose();
     super.dispose();
   }
@@ -45,70 +55,73 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: theme.colorScheme.primary,
-        elevation: 2,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+    return BlocProvider.value(
+      value: _playerCubit,
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: theme.colorScheme.primary,
+          elevation: 2,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+          ),
+          title: const Text(
+            'Play along',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
         ),
-        title: const Text(
-          'Play along',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        body: BlocBuilder<AudioPlayerCubit, AudioPlayerState>(
+          builder: (context, state) {
+            if (state.isLoading) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+
+            if (state.errorMessage != null) {
+              return Center(
+                child: Text(
+                  state.errorMessage!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                // Current movement image display
+                Expanded(
+                  flex: 4,
+                  child: _buildCurrentMovementImage(context, state),
+                ),
+                // Repetition tracker
+                _buildRepetitionTracker(context, state),
+                // Audio progress bar
+                _buildAudioProgressBar(context, state),
+                // Playlist with movement thumbnails
+                Expanded(
+                  flex: 5,
+                  child: _buildPlaylist(context, state),
+                ),
+                // Navigation buttons
+                _buildNavigationButtons(context, state),
+              ],
+            );
+          },
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: BlocBuilder<AudioPlayerCubit, AudioPlayerState>(
-        builder: (context, state) {
-          if (state.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          if (state.errorMessage != null) {
-            return Center(
-              child: Text(
-                state.errorMessage!,
-                style: const TextStyle(color: Colors.red),
-              ),
-            );
-          }
-
-          return Column(
-            children: [
-              // Current movement image display
-              Expanded(
-                flex: 4,
-                child: _buildCurrentMovementImage(context, state),
-              ),
-              // Repetition tracker
-              _buildRepetitionTracker(context, state),
-              // Audio progress bar
-              _buildAudioProgressBar(context, state),
-              // Playlist with movement thumbnails
-              Expanded(
-                flex: 5,
-                child: _buildPlaylist(context, state),
-              ),
-              // Navigation buttons
-              _buildNavigationButtons(context, state),
-            ],
-          );
-        },
       ),
     );
   }
 
   Widget _buildRepetitionTracker(BuildContext context, AudioPlayerState state) {
     final currentTrack = state.currentTrack;
-    if (currentTrack == null || state.duration.inMilliseconds == 0) {
+    if (currentTrack == null || state.logicalDuration.inMilliseconds == 0) {
       return const SizedBox.shrink();
     }
 
     final totalRepetitions = currentTrack.effectiveRepetitions;
-    final secondsPerRep = state.duration.inMilliseconds / totalRepetitions / 1000;
-    final currentRep = ((state.position.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
+    final secondsPerRep = state.logicalDuration.inMilliseconds / totalRepetitions / 1000;
+    final currentRep = ((state.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
     final clampedCurrentRep = currentRep.clamp(1, totalRepetitions);
 
     // Trigger animation when repetition number changes
@@ -218,7 +231,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
             child: Center(
               child: GestureDetector(
                 onTap: () {
-                  context.read<AudioPlayerCubit>().togglePlay();
+                  _playerCubit.togglePlay();
                 },
                 child: Container(
                   width: 80,
@@ -244,7 +257,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
             bottom: 16,
             child: GestureDetector(
               onTap: () {
-                context.read<AudioPlayerCubit>().togglePlay();
+                _playerCubit.togglePlay();
               },
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -272,9 +285,8 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
 
   Widget _buildAudioProgressBar(BuildContext context, AudioPlayerState state) {
     final currentTrack = state.currentTrack;
-    final isPlaying = state.isPlaying;
-    final position = state.position;
-    final duration = state.duration;
+    final logicalPosition = state.logicalPosition;
+    final logicalDuration = state.logicalDuration;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -315,38 +327,26 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                 ),
               ),
             ),
-          // Progress and time indicators
-          Row(
-            children: [
-              // Current position
-              Text(
-                _formatDuration(position),
-                style: const TextStyle(fontSize: 12),
-              ),
-              // Slider for progress control
-              Expanded(
-                child: Slider(
-                  min: 0.0,
-                  max: duration.inMilliseconds > 0 ? 1.0 : 0.0,
-                  value: duration.inMilliseconds > 0 ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0) : 0.0,
-                  onChanged: (value) {
-                    final seekPosition = Duration(milliseconds: (value * duration.inMilliseconds).round());
-                    context.read<AudioPlayerCubit>().seekTo(seekPosition);
-
-                    // If we're paused and user moves the slider, we should start playing
-                    if (!isPlaying) {
-                      context.read<AudioPlayerCubit>().togglePlay();
-                    }
-                  },
-                ),
-              ),
-              // Total duration
-              Text(
-                _formatDuration(duration),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
+          // Logical progress indicator (not interactive)
+          // if (logicalDuration.inMilliseconds > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: LinearProgressIndicator(
+              value: (logicalPosition.inMilliseconds / logicalDuration.inMilliseconds).clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: Colors.grey[300],
+              color: Colors.green,
+            ),
           ),
+          // Show time as text (optional, not interactive)
+          if (logicalDuration.inMilliseconds > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_formatDuration(logicalPosition), style: const TextStyle(fontSize: 12)),
+                Text(_formatDuration(logicalDuration), style: const TextStyle(fontSize: 12)),
+              ],
+            ),
         ],
       ),
     );
@@ -447,7 +447,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                           ? const Icon(Icons.pause, color: Colors.green, size: 30)
                           : const Icon(Icons.play_arrow, color: Colors.green, size: 30),
                       onPressed: () {
-                        context.read<AudioPlayerCubit>().togglePlay();
+                        _playerCubit.togglePlay();
                       },
                     ),
                   ),
@@ -458,7 +458,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
           ).gestures(
             onTap: () {
               if (currentIndex != index) {
-                context.read<AudioPlayerCubit>().setIndex(index);
+                _playerCubit.setIndex(index);
               }
             },
           );
@@ -488,7 +488,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               ),
             ),
             onPressed: () {
-              context.read<AudioPlayerCubit>().prev();
+              _playerCubit.prev();
             },
           ),
           // Play/Pause button
@@ -499,7 +499,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               color: Colors.white,
             ),
             onPressed: () {
-              context.read<AudioPlayerCubit>().togglePlay();
+              _playerCubit.togglePlay();
             },
           ),
           ElevatedButton.icon(
@@ -514,7 +514,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               ),
             ),
             onPressed: () {
-              context.read<AudioPlayerCubit>().next();
+              _playerCubit.next();
             },
           ),
         ],
