@@ -149,44 +149,112 @@ class PlaylistCubit extends Cubit<PlaylistState> {
   }
 
   void updatePlaylist(Playlist updatedPlaylist, {Map<int, int>? repetitionsMap}) {
+    print("Updating playlist: ${updatedPlaylist.title} (ID: ${updatedPlaylist.id}, isUserCreated: ${updatedPlaylist.isUserCreated})");
+    
+    // Get current playlists and download status from any state
+    List<Playlist> currentPlaylists = [];
+    Map<int, DownloadStatus> currentDownloadStatus = {};
+    
     if (state is PlaylistLoaded) {
       final currentState = state as PlaylistLoaded;
-      final updatedPlaylists = List<Playlist>.from(currentState.playlists);
+      currentPlaylists = List<Playlist>.from(currentState.playlists);
+      currentDownloadStatus = Map.from(currentState.downloadStatus);
+      print("Current state: PlaylistLoaded with ${currentPlaylists.length} playlists");
+    } else if (state is PlaylistLoading) {
+      final currentState = state as PlaylistLoading;
+      currentPlaylists = List<Playlist>.from(currentState.playlists);
+      currentDownloadStatus = Map.from(currentState.downloadStatus);
+      print("Current state: PlaylistLoading with ${currentPlaylists.length} playlists");
+    } else if (state is PlaylistDownloading) {
+      final currentState = state as PlaylistDownloading;
+      currentPlaylists = List<Playlist>.from(currentState.playlists);
+      currentDownloadStatus = Map.from(currentState.downloadStatus);
+      print("Current state: PlaylistDownloading with ${currentPlaylists.length} playlists");
+    } else if (state is PlaylistError) {
+      final currentState = state as PlaylistError;
+      currentPlaylists = List<Playlist>.from(currentState.playlists);
+      currentDownloadStatus = Map.from(currentState.downloadStatus);
+      print("Current state: PlaylistError with ${currentPlaylists.length} playlists");
+    } else {
+      // If no playlists loaded yet, just fetch them
+      print("No playlists loaded yet, fetching playlists...");
+      fetchPlaylists(forceRefresh: true);
+      return;
+    }
 
-      if (updatedPlaylist.isUserCreated) {
-        // Update in place
-        final index = updatedPlaylists.indexWhere((p) => p.id == updatedPlaylist.id && p.isUserCreated);
+    // Update the playlists list
+    final updatedPlaylists = List<Playlist>.from(currentPlaylists);
+    
+    if (updatedPlaylist.isUserCreated) {
+      // For user-created playlists, update in place if it exists
+      final index = updatedPlaylists.indexWhere((p) => p.id == updatedPlaylist.id && p.isUserCreated);
+      if (index != -1) {
+        // Update existing playlist
+        print("Updating existing playlist at index $index");
         _playlistRepository.updatePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap).then((_) {
-          if (index != -1) {
-            updatedPlaylists[index] = updatedPlaylist;
-          }
+          print("Playlist updated successfully in repository");
+          updatedPlaylists[index] = updatedPlaylist;
+          // Update internal state variables
+          _currentPlaylists = updatedPlaylists;
+          _currentDownloadStatus = currentDownloadStatus;
+          print("Emitting PlaylistLoaded with ${updatedPlaylists.length} playlists");
           emit(PlaylistLoaded(
             playlists: updatedPlaylists,
-            downloadStatus: currentState.downloadStatus,
+            downloadStatus: currentDownloadStatus,
           ));
         }).catchError((error) {
+          print("Error updating playlist: $error");
           emit(PlaylistError(
             message: "Failed to update playlist: $error",
-            playlists: currentState.playlists,
-            downloadStatus: currentState.downloadStatus,
+            playlists: currentPlaylists,
+            downloadStatus: currentDownloadStatus,
           ));
         });
       } else {
-        // Always treat server playlist edits as new items
+        // Add as new playlist if not found
+        print("Adding as new playlist (not found in existing list)");
         _playlistRepository.savePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap).then((savedPlaylist) {
+          print("Playlist saved successfully in repository");
           updatedPlaylists.add(savedPlaylist);
+          // Update internal state variables
+          _currentPlaylists = updatedPlaylists;
+          _currentDownloadStatus = currentDownloadStatus;
+          print("Emitting PlaylistLoaded with ${updatedPlaylists.length} playlists");
           emit(PlaylistLoaded(
             playlists: updatedPlaylists,
-            downloadStatus: currentState.downloadStatus,
+            downloadStatus: currentDownloadStatus,
           ));
         }).catchError((error) {
+          print("Error saving playlist: $error");
           emit(PlaylistError(
             message: "Failed to save playlist: $error",
-            playlists: currentState.playlists,
-            downloadStatus: currentState.downloadStatus,
+            playlists: currentPlaylists,
+            downloadStatus: currentDownloadStatus,
           ));
         });
       }
+    } else {
+      // For server playlists, always treat as new item
+      print("Saving server playlist as new item");
+      _playlistRepository.savePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap).then((savedPlaylist) {
+        print("Server playlist saved successfully in repository");
+        updatedPlaylists.add(savedPlaylist);
+        // Update internal state variables
+        _currentPlaylists = updatedPlaylists;
+        _currentDownloadStatus = currentDownloadStatus;
+        print("Emitting PlaylistLoaded with ${updatedPlaylists.length} playlists");
+        emit(PlaylistLoaded(
+          playlists: updatedPlaylists,
+          downloadStatus: currentDownloadStatus,
+        ));
+      }).catchError((error) {
+        print("Error saving server playlist: $error");
+        emit(PlaylistError(
+          message: "Failed to save playlist: $error",
+          playlists: currentPlaylists,
+          downloadStatus: currentDownloadStatus,
+        ));
+      });
     }
   }
 
