@@ -416,25 +416,26 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                         overflow: TextOverflow.ellipsis,
                       ),
                       // Show repetition info if different from default
-                      if (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2.0),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${track.effectiveRepetitions} reps',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.orange,
-                                fontWeight: FontWeight.w500,
-                              ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2.0),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
+                                ? Colors.orange.withOpacity(0.2)
+                                : Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${track.effectiveRepetitions} reps',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: (track.effectiveRepetitions != (track.defaultRepetitions ?? 1)) ? Colors.orange : Colors.green,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
