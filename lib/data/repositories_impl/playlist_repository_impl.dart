@@ -87,9 +87,26 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       final remoteTracks = tracksRaw.map((e) => HiveAudio.fromJson(e)).toList();
       final remotePlaylistSongs = playlistSongsRaw.map((e) => HivePlaylistSong.fromJson(e)).toList();
 
-      // Save tracks and playlist_songs locally
+      // Save tracks locally
       await localDatabase.saveTracks(remoteTracks);
-      await localDatabase.savePlaylistSongs(remotePlaylistSongs);
+      
+      // Merge remote and local playlist songs instead of overwriting
+      final existingPlaylistSongs = await localDatabase.getPlaylistSongs();
+      final mergedPlaylistSongs = <HivePlaylistSong>[];
+      
+      // Add all existing local playlist songs (preserves user customizations)
+      mergedPlaylistSongs.addAll(existingPlaylistSongs);
+      
+      // Add remote playlist songs only if they don't already exist locally
+      for (final remotePs in remotePlaylistSongs) {
+        final existsLocally = existingPlaylistSongs.any((localPs) => 
+          localPs.playlistId == remotePs.playlistId && localPs.songId == remotePs.songId);
+        if (!existsLocally) {
+          mergedPlaylistSongs.add(remotePs);
+        }
+      }
+      
+      await localDatabase.savePlaylistSongs(mergedPlaylistSongs);
 
       // Build playlists by joining tables (remote)
       final serverPlaylists = playlistsRaw.map((playlistJson) {
@@ -461,11 +478,12 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       final playlistSongs = playlist.songs.asMap().entries.map((entry) {
         final index = entry.key;
         final song = entry.value;
+        final repsToDo = repetitionsMap?[song.id] ?? 1;
         return HivePlaylistSong(
           playlistId: playlist.id,
           songId: song.id,
           position: index,
-          repsToDo: repetitionsMap?[song.id] ?? 1,
+          repsToDo: repsToDo,
         );
       }).toList();
       await playlistSongBox.addAll(playlistSongs);
