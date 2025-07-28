@@ -13,6 +13,8 @@ class AudioPlayerState {
   final Duration duration;
   final bool isLoading;
   final String? errorMessage;
+  final Duration logicalPosition; // Logical timer-based position
+  final Duration logicalDuration; // Logical total duration
 
   /// Current track being played or selected
   AudioTrack? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
@@ -31,6 +33,8 @@ class AudioPlayerState {
     this.duration = Duration.zero,
     this.isLoading = false,
     this.errorMessage,
+    this.logicalPosition = Duration.zero,
+    this.logicalDuration = Duration.zero,
   });
 
   /// Create a copy of the state with updated values
@@ -42,6 +46,8 @@ class AudioPlayerState {
     Duration? duration,
     bool? isLoading,
     String? errorMessage,
+    Duration? logicalPosition,
+    Duration? logicalDuration,
   }) {
     return AudioPlayerState(
       playingIndex: playingIndex ?? this.playingIndex,
@@ -51,6 +57,8 @@ class AudioPlayerState {
       duration: duration ?? this.duration,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage ?? this.errorMessage,
+      logicalPosition: logicalPosition ?? this.logicalPosition,
+      logicalDuration: logicalDuration ?? this.logicalDuration,
     );
   }
 
@@ -79,6 +87,10 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   Duration? _targetDuration; // Target duration based on repetitions
   Timer? _dynamicDurationTimer;
   bool _isLooping = false;
+
+  Timer? _logicalTimer;
+  Duration _logicalElapsed = Duration.zero;
+  Duration? _logicalTargetDuration;
 
   /// Expose the AudioPlayer instance
   AudioPlayer get audioPlayer => _audioPlayer;
@@ -216,6 +228,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     _targetDuration = null;
     _isLooping = false;
     _dynamicDurationTimer?.cancel();
+    _stopLogicalTimer();
+    _logicalElapsed = Duration.zero; // <-- Reset here for new track
 
     // Add loading state indication if needed
     // emit(state.copyWith(isLoading: true));
@@ -257,6 +271,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       // Resume playback if requested and source was set successfully
       if (shouldPlay) {
         await _audioPlayer.resume();
+        _startLogicalTimer();
       }
     } catch (e) {
       print("Error setting source for $sourcePath: $e");
@@ -270,6 +285,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> stop() async {
     await _audioPlayer.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
+    _stopLogicalTimer();
   }
 
   /// Start or resume playback
@@ -278,6 +294,9 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     if (currentTrack != null) {
       await _audioPlayer.resume();
       emit(state.copyWith(isPlaying: true));
+      if (_logicalTimer == null || !_logicalTimer!.isActive) {
+        _startLogicalTimer();
+      }
     }
   }
 
@@ -293,19 +312,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Seek to a specific position in the current track
   Future<void> seekTo(Duration position) async {
-    if (position <= Duration.zero) {
-      position = Duration.zero;
-    }
-    
-    // If we have a target duration, clamp the seek position
-    if (_targetDuration != null) {
-      if (position > _targetDuration!) {
-        position = _targetDuration!;
-      }
-    }
-    
-    await _audioPlayer.seek(position);
-    emit(state.copyWith(position: position));
+    // Disabled
   }
 
   /// Calculate target duration based on repetitions
@@ -350,19 +357,45 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Handle track completion
   void _handleTrackCompletion() {
-    if (_isLooping && _targetDuration != null) {
-      // If we're looping and haven't reached target duration, restart
-      final currentPosition = state.position;
-      if (currentPosition < _targetDuration!) {
-        _audioPlayer.seek(Duration.zero);
-      } else {
-        // We've reached the target duration, move to next track
-        next();
-      }
+    if (_logicalTargetDuration != null && _logicalElapsed < _logicalTargetDuration!) {
+      // Loop audio
+      _audioPlayer.seek(Duration.zero);
+      _audioPlayer.resume();
     } else {
-      // Normal completion, move to next track
       next();
     }
+  }
+
+  void _startLogicalTimer() {
+    _logicalTimer?.cancel();
+    // Only start timer if isPlaying is true
+    if (!state.isPlaying) return;
+    final currentTrack = state.currentTrack;
+    if (currentTrack == null || _originalDuration == null) return;
+    final defaultReps = currentTrack.defaultRepetitions ?? 1;
+    final effectiveReps = currentTrack.effectiveRepetitions;
+    final originalDurationMs = _originalDuration!.inMilliseconds;
+    final targetDurationMs = (originalDurationMs / defaultReps * effectiveReps).round();
+    _logicalTargetDuration = Duration(milliseconds: targetDurationMs);
+    emit(state.copyWith(logicalPosition: _logicalElapsed, logicalDuration: _logicalTargetDuration));
+    _logicalTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+      // Only increment if isPlaying is true
+      if (!state.isPlaying) return;
+      _logicalElapsed += const Duration(milliseconds: 200);
+      if (_logicalElapsed >= _logicalTargetDuration!) {
+        _logicalTimer?.cancel();
+        await _audioPlayer.stop();
+        emit(state.copyWith(isPlaying: false, logicalPosition: _logicalTargetDuration));
+        next();
+        return;
+      }
+      emit(state.copyWith(logicalPosition: _logicalElapsed));
+    });
+  }
+
+  void _stopLogicalTimer() {
+    _logicalTimer?.cancel();
+    emit(state.copyWith(logicalPosition: _logicalElapsed, logicalDuration: _logicalTargetDuration ?? Duration.zero));
   }
 
   @override
@@ -374,6 +407,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
     // Cancel timer
     _dynamicDurationTimer?.cancel();
+    _logicalTimer?.cancel();
 
     // Dispose the audio player
     await _audioPlayer.dispose();

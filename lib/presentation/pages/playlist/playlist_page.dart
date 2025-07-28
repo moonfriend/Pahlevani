@@ -142,9 +142,6 @@ class _PlaylistPageState extends State<PlaylistPage> {
   }
 
   void _navigateToPlayer(BuildContext context, Playlist playlist, Map<int, DownloadStatus> downloadStatus) async {
-    // Get the AudioPlayerCubit instance
-    final audioPlayerCubit = context.read<AudioPlayerCubit>();
-
     // Convert songs using the current download status from the state
     final audioTracks = await _convertSongsToAudioTracks(playlist, downloadStatus);
 
@@ -157,15 +154,12 @@ class _PlaylistPageState extends State<PlaylistPage> {
       return;
     }
 
-    // Tell the AudioPlayerCubit to load these tracks
-    audioPlayerCubit.loadSpecificTracks(audioTracks);
-
-    // Navigate to the player page
+    // Navigate to the player page with the tracks
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const AudioPlayerPage(),
+          builder: (context) => AudioPlayerPage(initialTracks: audioTracks),
         ),
       );
     }
