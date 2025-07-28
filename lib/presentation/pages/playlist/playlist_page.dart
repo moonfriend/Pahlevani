@@ -2,6 +2,7 @@ import 'dart:io'; // For File and Directory
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/data/datasources/playlist/playlist_local_database.dart';
 import 'package:pahlevani/domain/entities/audio/audio_track.dart'; // Import existing AudioTrack
 import 'package:pahlevani/domain/entities/playlist/audio.dart';
 import 'package:pahlevani/domain/entities/playlist/playlist.dart';
@@ -37,6 +38,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
           return [];
         }
       }
+
+      // Get repetition information from local database
+      final localDatabase = PlaylistLocalDatabase();
+      final tracks = await localDatabase.getTracks();
+      final playlistSongs = await localDatabase.getPlaylistSongs();
 
       List<AudioTrack> audioTracks = [];
       for (final song in playlist.songs) {
@@ -76,11 +82,33 @@ class _PlaylistPageState extends State<PlaylistPage> {
           sourcePath = song.url.trim();
         }
 
+        // Get repetition information
+        int? defaultRepetitions;
+        int? userRepetitions;
+
+        // Find default repetitions from HiveAudio
+        try {
+          final hiveTrack = tracks.firstWhere((t) => t.id == song.id);
+          defaultRepetitions = hiveTrack.repetitions;
+        } catch (_) {
+          // Track not found in local database
+        }
+
+        // Find user-specific repetitions from HivePlaylistSong
+        try {
+          final playlistSong = playlistSongs.firstWhere((ps) => ps.playlistId == playlist.id && ps.songId == song.id);
+          userRepetitions = playlistSong.repsToDo;
+        } catch (_) {
+          // PlaylistSong not found in local database
+        }
+
         audioTracks.add(AudioTrack(
           id: song.id.toString(),
           title: song.name,
           filePath: sourcePath,
           imagePath: imagePath,
+          defaultRepetitions: defaultRepetitions,
+          userRepetitions: userRepetitions,
         ));
       }
 
@@ -342,6 +370,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
   }
 
   Future<void> _navigateToEditPlaylist(BuildContext context, Playlist playlist) async {
+    print("Navigating to edit playlist: ${playlist.title} (ID: ${playlist.id})");
+    
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -349,14 +379,41 @@ class _PlaylistPageState extends State<PlaylistPage> {
       ),
     );
 
+    print("Edit playlist result: $result");
+    print("Result type: ${result.runtimeType}");
+    
     if (result != null && mounted) {
       if (result is Map && result['playlist'] != null) {
         final updatedPlaylist = result['playlist'] as Playlist;
         final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
+        print("Updating playlist via cubit: ${updatedPlaylist.title} (ID: ${updatedPlaylist.id})");
         context.read<PlaylistCubit>().updatePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap);
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${updatedPlaylist.title} updated successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       } else if (result is Playlist) {
+        print("Updating playlist via cubit: ${result.title} (ID: ${result.id})");
         context.read<PlaylistCubit>().updatePlaylist(result);
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${result.title} updated successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        print("Unexpected result type: ${result.runtimeType}");
       }
+    } else {
+      print("No result returned or widget not mounted");
     }
   }
 

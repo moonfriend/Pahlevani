@@ -11,10 +11,25 @@ class AudioPlayerPage extends StatefulWidget {
   AudioPlayerPageState createState() => AudioPlayerPageState();
 }
 
-class AudioPlayerPageState extends State<AudioPlayerPage> {
+class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderStateMixin {
+  late AnimationController _repetitionAnimationController;
+  late Animation<double> _repetitionAnimation;
+  int? _lastRepetitionNumber;
+
   @override
   void initState() {
     super.initState();
+    _repetitionAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _repetitionAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(CurvedAnimation(
+      parent: _repetitionAnimationController,
+      curve: Curves.easeInOut,
+    ));
   }
 
   @override
@@ -23,6 +38,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
       print("AudioPlayerPage dispose: Stopping player.");
       await context.read<AudioPlayerCubit>().stop();
     }
+    _repetitionAnimationController.dispose();
     super.dispose();
   }
 
@@ -66,6 +82,8 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                 flex: 4,
                 child: _buildCurrentMovementImage(context, state),
               ),
+              // Repetition tracker
+              _buildRepetitionTracker(context, state),
               // Audio progress bar
               _buildAudioProgressBar(context, state),
               // Playlist with movement thumbnails
@@ -78,6 +96,83 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildRepetitionTracker(BuildContext context, AudioPlayerState state) {
+    final currentTrack = state.currentTrack;
+    if (currentTrack == null || state.duration.inMilliseconds == 0) {
+      return const SizedBox.shrink();
+    }
+
+    final totalRepetitions = currentTrack.effectiveRepetitions;
+    final secondsPerRep = state.duration.inMilliseconds / totalRepetitions / 1000;
+    final currentRep = ((state.position.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
+    final clampedCurrentRep = currentRep.clamp(1, totalRepetitions);
+
+    // Trigger animation when repetition number changes
+    if (_lastRepetitionNumber != null && _lastRepetitionNumber != clampedCurrentRep) {
+      _repetitionAnimationController.forward().then((_) {
+        _repetitionAnimationController.reverse();
+      });
+    }
+    _lastRepetitionNumber = clampedCurrentRep;
+
+    // Check if this is a custom duration
+    final isCustomDuration = currentTrack.effectiveRepetitions != (currentTrack.defaultRepetitions ?? 1);
+    final backgroundColor = isCustomDuration ? Colors.orange : Colors.green;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.grey[200],
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _repetitionAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _repetitionAnimation.value,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: backgroundColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Rep $clampedCurrentRep of $totalRepetitions',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Show custom duration indicator
+          if (isCustomDuration)
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Custom',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -200,6 +295,26 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // Repetition info display
+          if (currentTrack != null && currentTrack.effectiveRepetitions != (currentTrack.defaultRepetitions ?? 1))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Custom duration: ${currentTrack.effectiveRepetitions} reps (default: ${currentTrack.defaultRepetitions ?? 1})',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
           // Progress and time indicators
           Row(
             children: [
@@ -284,15 +399,43 @@ class AudioPlayerPageState extends State<AudioPlayerPage> {
                     ),
                   ),
                 ),
-                // Text content
+                // Text content with repetition info
                 Expanded(
-                  child: Text(
-                    track.displayName,
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: isSelected ? Colors.black : Colors.grey[600],
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        track.displayName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: isSelected ? Colors.black : Colors.grey[600],
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      // Show repetition info if different from default
+                      if (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${track.effectiveRepetitions} reps',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 // Play/Pause button - only for selected item

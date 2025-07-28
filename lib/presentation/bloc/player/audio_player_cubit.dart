@@ -72,6 +72,13 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   // Subscriptions to audio streams
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+
+  // Dynamic duration management
+  Duration? _originalDuration; // Original track duration
+  Duration? _targetDuration; // Target duration based on repetitions
+  Timer? _dynamicDurationTimer;
+  bool _isLooping = false;
 
   /// Expose the AudioPlayer instance
   AudioPlayer get audioPlayer => _audioPlayer;
@@ -84,12 +91,26 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   /// Set up the audio player listeners
   void _initAudioPlayerListeners() {
     // Listen for position changes
-    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) => emit(state.copyWith(position: position)));
+    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
+      emit(state.copyWith(position: position));
+      _handleDynamicDuration(position);
+    });
 
     // Listen for duration changes
-    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) => emit(state.copyWith(duration: duration)));
+    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
+      _originalDuration = duration;
+      _calculateTargetDuration();
+      emit(state.copyWith(duration: _targetDuration ?? duration));
+    });
 
-    // Set loop mode
+    // Listen for player state changes
+    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((playerState) {
+      if (playerState == PlayerState.completed) {
+        _handleTrackCompletion();
+      }
+    });
+
+    // Set loop mode for dynamic duration handling
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
   }
 
@@ -190,6 +211,12 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     final track = state.tracks[index];
     final sourcePath = track.filePath; // Get the path/URL from the track
 
+    // Reset dynamic duration state for new track
+    _originalDuration = null;
+    _targetDuration = null;
+    _isLooping = false;
+    _dynamicDurationTimer?.cancel();
+
     // Add loading state indication if needed
     // emit(state.copyWith(isLoading: true));
 
@@ -224,6 +251,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       await _audioPlayer.stop();
       await _audioPlayer.setSource(audioSource);
       print("Source set successfully for: ${track.displayName}");
+      print("Track repetitions - Default: ${track.defaultRepetitions}, User: ${track.userRepetitions}, Effective: ${track.effectiveRepetitions}");
       // emit(state.copyWith(isLoading: false)); // Remove loading state
 
       // Resume playback if requested and source was set successfully
@@ -268,8 +296,73 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     if (position <= Duration.zero) {
       position = Duration.zero;
     }
+    
+    // If we have a target duration, clamp the seek position
+    if (_targetDuration != null) {
+      if (position > _targetDuration!) {
+        position = _targetDuration!;
+      }
+    }
+    
     await _audioPlayer.seek(position);
     emit(state.copyWith(position: position));
+  }
+
+  /// Calculate target duration based on repetitions
+  void _calculateTargetDuration() {
+    final currentTrack = state.currentTrack;
+    if (currentTrack == null || _originalDuration == null) return;
+
+    final defaultReps = currentTrack.defaultRepetitions ?? 1;
+    final effectiveReps = currentTrack.effectiveRepetitions;
+    
+    if (defaultReps == effectiveReps) {
+      // No change needed, use original duration
+      _targetDuration = _originalDuration;
+      _isLooping = false;
+    } else {
+      // Calculate target duration
+      final originalDurationMs = _originalDuration!.inMilliseconds;
+      final targetDurationMs = (originalDurationMs / defaultReps * effectiveReps).round();
+      _targetDuration = Duration(milliseconds: targetDurationMs);
+      _isLooping = effectiveReps > defaultReps;
+      
+      print("Dynamic duration: Original=${_originalDuration}, Target=${_targetDuration}, DefaultReps=$defaultReps, EffectiveReps=$effectiveReps");
+    }
+  }
+
+  /// Handle dynamic duration during playback
+  void _handleDynamicDuration(Duration position) {
+    if (_targetDuration == null || !state.isPlaying) return;
+
+    // If we've reached the target duration, stop or loop
+    if (position >= _targetDuration!) {
+      if (_isLooping) {
+        // For longer durations, restart the track
+        _audioPlayer.seek(Duration.zero);
+      } else {
+        // For shorter durations, stop the track
+        _audioPlayer.stop();
+        emit(state.copyWith(isPlaying: false));
+      }
+    }
+  }
+
+  /// Handle track completion
+  void _handleTrackCompletion() {
+    if (_isLooping && _targetDuration != null) {
+      // If we're looping and haven't reached target duration, restart
+      final currentPosition = state.position;
+      if (currentPosition < _targetDuration!) {
+        _audioPlayer.seek(Duration.zero);
+      } else {
+        // We've reached the target duration, move to next track
+        next();
+      }
+    } else {
+      // Normal completion, move to next track
+      next();
+    }
   }
 
   @override
@@ -277,6 +370,10 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     // Cancel subscriptions
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
+    await _playerStateSubscription?.cancel();
+
+    // Cancel timer
+    _dynamicDurationTimer?.cancel();
 
     // Dispose the audio player
     await _audioPlayer.dispose();

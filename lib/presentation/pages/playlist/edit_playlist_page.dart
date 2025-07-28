@@ -83,7 +83,13 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
   }
 
   void _saveChanges() {
+    print("Saving changes - hasChanges: $_hasChanges");
+    print("Original title: ${widget.playlist.title}, New title: ${_titleController.text}");
+    print("Original description: ${widget.playlist.description}, New description: ${_descriptionController.text}");
+    print("Original songs count: ${widget.playlist.songs.length}, New songs count: ${_songs.length}");
+    
     if (!_hasChanges) {
+      print("No changes detected, just popping");
       Navigator.pop(context);
       return;
     }
@@ -108,6 +114,9 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
       }).toList(),
       isUserCreated: true, // Always mark as user-created for edits
     );
+
+    print("Returning updated playlist with ID: ${updatedPlaylist.id}, isUserCreated: ${updatedPlaylist.isUserCreated}");
+    print("Repetitions map: $_repetitionsMap");
 
     // Pass repetitions map as a second argument
     Navigator.pop(context, {
