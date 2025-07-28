@@ -259,7 +259,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                   child: Icon(Icons.queue_music_rounded, color: theme.colorScheme.primary, size: 28),
                 ),
                 if (playlist.isUserCreated)
-                  Positioned(
+                  const Positioned(
                     right: 0,
                     top: 0,
                     child: Icon(Icons.person, color: Colors.green, size: 16),
@@ -285,6 +285,9 @@ class _PlaylistPageState extends State<PlaylistPage> {
                   ),
                 Row(
                   children: [
+                    if (status == DownloadStatus.downloaded)
+                      const Icon(Icons.done, color: Colors.green, size: 20),
+                    const SizedBox(width: 4),
                     Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
                     const SizedBox(width: 4),
                     Text('${playlist.songs.length} tracks', style: theme.textTheme.bodySmall),
@@ -294,9 +297,9 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     Text('Difficulty: ${playlist.difficulty}', style: theme.textTheme.bodySmall),
                     const SizedBox(width: 8),
                     if (playlist.isUserCreated)
-                      Icon(Icons.person, color: Colors.green, size: 18)
+                      const Icon(Icons.person, color: Colors.green, size: 18)
                     else
-                      Icon(Icons.cloud, color: Colors.grey, size: 18),
+                      const Icon(Icons.cloud, color: Colors.grey, size: 18),
                   ],
                 ),
                 if (status == DownloadStatus.downloading)
@@ -333,6 +336,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     ],
                   ),
                 ),
+                if (status != DownloadStatus.downloaded)
                 const PopupMenuItem(
                   value: 'download',
                   child: Row(
