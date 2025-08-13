@@ -384,8 +384,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       _logicalElapsed += const Duration(milliseconds: 200);
       if (_logicalElapsed >= _logicalTargetDuration!) {
         _logicalTimer?.cancel();
-        await _audioPlayer.stop();
-        emit(state.copyWith(isPlaying: false, logicalPosition: _logicalTargetDuration));
+        // await _audioPlayer.stop();
+        // emit(state.copyWith(isPlaying: false, logicalPosition: _logicalTargetDuration));
         next();
         return;
       }
