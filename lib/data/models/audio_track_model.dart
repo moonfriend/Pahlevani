@@ -1,11 +1,11 @@
 import '../../domain/entities/audio/audio_track.dart';
 
 /// Data model implementation of AudioTrack entity
-class AudioTrackModel extends AudioTrack {
+class AudioTrackModel extends TrainingItemWithAudio {
   const AudioTrackModel({
     required super.id,
     required super.title,
-    required super.filePath,
+    required super.audioFilePath,
     super.imagePath,
     super.duration,
   });
@@ -15,7 +15,7 @@ class AudioTrackModel extends AudioTrack {
     return AudioTrackModel(
       id: json['id'] ?? '',
       title: json['name'] ?? '',
-      filePath: 'audio/${json['sort'].toString().padLeft(2, '0')} ${json['name']}.mp3',
+      audioFilePath: 'audio/${json['sort'].toString().padLeft(2, '0')} ${json['name']}.mp3',
       imagePath: json['image'] ?? '${json['sort'].toString().padLeft(2, '0')}_${json['name'].toString().replaceAll(' ', '_')}.png',
       duration: json['duration'] != null ? Duration(milliseconds: json['duration']) : null,
     );

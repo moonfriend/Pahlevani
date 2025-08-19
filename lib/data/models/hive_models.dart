@@ -1,12 +1,12 @@
 import 'package:hive/hive.dart';
-import 'package:pahlevani/domain/entities/playlist/audio.dart';
-import 'package:pahlevani/domain/entities/playlist/playlist.dart';
+import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 part 'hive_models.g.dart';
 
 ///
 @HiveType(typeId: 0)
-class HivePlaylist extends HiveObject {
+class HiveTrainingSession extends HiveObject {
   @HiveField(0)
   final int id;
 
@@ -23,49 +23,49 @@ class HivePlaylist extends HiveObject {
   final DateTime? createdAt;
 
   @HiveField(5)
-  final List<HiveAudio> songs;
+  final List<HiveExercise> items;
 
   @HiveField(6)
   final bool isUserCreated;
 
 
-  HivePlaylist({
+  HiveTrainingSession({
     required this.id,
     required this.title,
     required this.description,
     required this.difficulty,
     this.createdAt,
-    required this.songs,
+    required this.items,
     this.isUserCreated = false,
   });
 
-  factory HivePlaylist.fromDomain(Playlist playlist) {
-    return HivePlaylist(
-      id: playlist.id,
-      title: playlist.title,
-      description: playlist.description,
-      difficulty: playlist.difficulty,
-      createdAt: playlist.createdAt,
-      songs: playlist.songs.map((s) => HiveAudio.fromDomain(s)).toList(),
-      isUserCreated: playlist.isUserCreated,
+  factory HiveTrainingSession.fromDomain(TrainingSession training_session) {
+    return HiveTrainingSession(
+      id: training_session.id,
+      title: training_session.title,
+      description: training_session.description,
+      difficulty: training_session.difficulty,
+      createdAt: training_session.createdAt,
+      items: training_session.items.map((s) => HiveExercise.fromDomain(s)).toList(),
+      isUserCreated: training_session.isUserCreated,
     );
   }
 
-  Playlist toDomain() {
-    return Playlist(
+  TrainingSession toDomain() {
+    return TrainingSession(
       id: id,
       title: title,
       description: description,
       difficulty: difficulty,
       createdAt: createdAt,
-      songs: songs.map((s) => s.toDomain()).toList(),
+      items: items.map((s) => s.toDomain()).toList(),
       isUserCreated: isUserCreated,
     );
   }
 }
 
 @HiveType(typeId: 1)
-class HiveAudio extends HiveObject {
+class HiveExercise extends HiveObject {
   @HiveField(0)
   final int id;
 
@@ -87,7 +87,7 @@ class HiveAudio extends HiveObject {
   @HiveField(6)
   final int? repetitions;
 
-  HiveAudio({
+  HiveExercise({
     required this.id,
     required this.name,
     required this.author,
@@ -97,19 +97,19 @@ class HiveAudio extends HiveObject {
     this.repetitions,
   });
 
-  factory HiveAudio.fromDomain(Audio song) {
-    return HiveAudio(
+  factory HiveExercise.fromDomain(Audio song) {
+    return HiveExercise(
       id: song.id,
       name: song.name,
       author: song.author,
       type: song.type,
-      url: song.url,
+      url: song.audioFileUrl,
       position: song.position,
-      repetitions: null, // Domain Audio does not have repetitions
+      repetitions: null, // XXX? why?: Domain Audio does not have repetitions
     );
   }
 
-  factory HiveAudio.fromJson(Map<String, dynamic> json) => HiveAudio(
+  factory HiveExercise.fromJson(Map<String, dynamic> json) => HiveExercise(
     id: json['id'] as int,
     name: json['name'] as String,
     author: json['author'] as String,
@@ -135,40 +135,40 @@ class HiveAudio extends HiveObject {
       name: name,
       author: author,
       type: type,
-      url: url,
+      audioFileUrl: url,
       position: position,
     );
   }
 }
 
 @HiveType(typeId: 2)
-class HivePlaylistSong extends HiveObject {
+class HiveTrainingSessionItem extends HiveObject {
   @HiveField(0)
-  final int playlistId;
+  final int training_sessionId;
   @HiveField(1)
-  final int songId;
+  final int itemId;
   @HiveField(2)
   final int position;
   @HiveField(3)
   final int? repsToDo;
 
-  HivePlaylistSong({
-    required this.playlistId,
-    required this.songId,
+  HiveTrainingSessionItem({
+    required this.training_sessionId,
+    required this.itemId,
     required this.position,
     this.repsToDo,
   });
 
-  factory HivePlaylistSong.fromJson(Map<String, dynamic> json) => HivePlaylistSong(
-    playlistId: json['playlist_id'] as int,
-    songId: json['song_id'] as int,
+  factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) => HiveTrainingSessionItem(
+    training_sessionId: json['training_session_id'] as int,
+    itemId: json['exercise_id'] as int,
     position: json['position'] as int,
     repsToDo: json['reps_to_do'] as int?,
   );
 
   Map<String, dynamic> toJson() => {
-    'playlist_id': playlistId,
-    'song_id': songId,
+    'training_session_id': training_sessionId,
+    'item_id': itemId,
     'position': position,
     'reps_to_do': repsToDo,
   };

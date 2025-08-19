@@ -3,8 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
-import 'package:pahlevani/presentation/bloc/playlist/playlist_cubit.dart';
-import 'package:pahlevani/presentation/pages/playlist/playlist_page.dart';
+import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/training_session/training_session_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Application entry point
@@ -30,8 +30,8 @@ class MyApp extends StatelessWidget {
         BlocProvider<AudioPlayerCubit>(
           create: (context) => getIt<AudioPlayerCubit>(),
         ),
-        BlocProvider<PlaylistCubit>(
-          create: (context) => getIt<PlaylistCubit>()..initialize(),
+        BlocProvider<TrainingSessionCubit>(
+          create: (context) => getIt<TrainingSessionCubit>()..initialize(),
           lazy: false,
         ),
       ],
@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
             foregroundColor: Colors.white,
           ),
         ),
-        home: const PlaylistPage(),
+        home: const TrainingSessionPage(),
       ),
     );
   }
