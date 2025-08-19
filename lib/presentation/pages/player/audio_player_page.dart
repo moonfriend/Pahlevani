@@ -6,7 +6,7 @@ import '../../../presentation/bloc/player/audio_player_cubit.dart';
 
 /// Player page for displaying and controlling audio playback
 class AudioPlayerPage extends StatefulWidget {
-  final List<AudioTrack> initialTracks;
+  final List<TrainingItemWithAudio> initialTracks;
 
   const AudioPlayerPage({
     super.key,
@@ -98,10 +98,10 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                 _buildRepetitionTracker(context, state),
                 // Audio progress bar
                 _buildAudioProgressBar(context, state),
-                // Playlist with movement thumbnails
+                // TrainingSession with movement thumbnails
                 Expanded(
                   flex: 5,
-                  child: _buildPlaylist(context, state),
+                  child: _buildTrainingSession(context, state),
                 ),
                 // Navigation buttons
                 _buildNavigationButtons(context, state),
@@ -360,7 +360,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
     return '$minutes:$seconds';
   }
 
-  Widget _buildPlaylist(BuildContext context, AudioPlayerState state) {
+  Widget _buildTrainingSession(BuildContext context, AudioPlayerState state) {
     final currentIndex = state.playingIndex;
     final isPlaying = state.isPlaying;
     final tracks = state.tracks;

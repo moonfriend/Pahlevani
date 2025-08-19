@@ -1,19 +1,19 @@
 import 'package:equatable/equatable.dart';
 
 /// Represents an audio track with its basic properties
-class AudioTrack extends Equatable {
+class TrainingItemWithAudio extends Equatable {
   final String id;
   final String title;
-  final String filePath;
+  final String audioFilePath;
   final String? imagePath;
   final Duration? duration;
   final int? defaultRepetitions; // Default repetitions from HiveAudio
-  final int? userRepetitions; // User-specific repsToDo from HivePlaylistSong
+  final int? userRepetitions; // User-specific repsToDo from HiveTrainingSessionSong
 
-  const AudioTrack({
+  const TrainingItemWithAudio({
     required this.id,
     required this.title,
-    required this.filePath,
+    required this.audioFilePath,
     this.imagePath,
     this.duration,
     this.defaultRepetitions,
@@ -45,5 +45,5 @@ class AudioTrack extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, filePath, imagePath, duration, defaultRepetitions, userRepetitions];
+  List<Object?> get props => [id, title, audioFilePath, imagePath, duration, defaultRepetitions, userRepetitions];
 }

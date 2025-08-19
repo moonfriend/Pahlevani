@@ -15,8 +15,8 @@ A Flutter application for training in Pahlevani, the art of Persian warriors' fi
 
 The app now displays images of each movement:
 - The current movement is shown prominently at the top of the screen
-- Each movement in the playlist has a thumbnail image
-- The playlist UI has been updated to match the Figma design
+- Each movement in the training_session has a thumbnail image
+- The training_session UI has been updated to match the Figma design
 
 ## Development Guide
 

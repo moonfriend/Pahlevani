@@ -5,36 +5,36 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Abstract interface for local playlist data operations (status, files).
-abstract class PlaylistLocalDataSource {
-  static const String _downloadedPlaylistsKey = 'downloaded_playlists';
+/// Abstract interface for local training_session data operations (status, files).
+abstract class TrainingSessionLocalDataSource {
+  static const String _downloadedTrainingSessionsKey = 'downloaded_training_sessions';
 
-  /// Retrieves the list of IDs for playlists marked as downloaded.
-  Future<List<String>> getDownloadedPlaylistIds();
+  /// Retrieves the list of IDs for training_sessions marked as downloaded.
+  Future<List<String>> getDownloadedTrainingSessionIds();
 
-  /// Saves the list of IDs for downloaded playlists.
-  Future<void> saveDownloadedPlaylistIds(List<String> ids);
+  /// Saves the list of IDs for downloaded training_sessions.
+  Future<void> saveDownloadedTrainingSessionIds(List<String> ids);
 
-  /// Gets the expected local directory path for a given playlist ID.
-  Future<String> getPlaylistDirectoryPath(int playlistId);
+  /// Gets the expected local directory path for a given training_session ID.
+  Future<String> getTrainingSessionDirectoryPath(int training_sessionId);
 
-  /// Checks if the directory for a given playlist ID exists.
-  Future<bool> playlistDirectoryExists(int playlistId);
+  /// Checks if the directory for a given training_session ID exists.
+  Future<bool> training_sessionDirectoryExists(int training_sessionId);
 
-  /// Deletes the local directory and files for a given playlist ID.
-  Future<void> deletePlaylistDirectory(int playlistId);
+  /// Deletes the local directory and files for a given training_session ID.
+  Future<void> deleteTrainingSessionDirectory(int training_sessionId);
 
   /// Downloads a file from a URL to a specific local path, reporting progress.
   Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress);
 }
 
-/// Implementation of [PlaylistLocalDataSource] using SharedPreferences, path_provider, and Dio.
-class PlaylistLocalDataSourceImpl implements PlaylistLocalDataSource {
+/// Implementation of [TrainingSessionLocalDataSource] using SharedPreferences, path_provider, and Dio.
+class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSource {
   final Dio dio;
   SharedPreferences? _prefs;
   String? _localDirectoryPath;
 
-  PlaylistLocalDataSourceImpl({required this.dio});
+  TrainingSessionLocalDataSourceImpl({required this.dio});
 
   Future<SharedPreferences> _getPrefs() async {
     return _prefs ??= await SharedPreferences.getInstance();
@@ -45,32 +45,32 @@ class PlaylistLocalDataSourceImpl implements PlaylistLocalDataSource {
   }
 
   @override
-  Future<List<String>> getDownloadedPlaylistIds() async {
+  Future<List<String>> getDownloadedTrainingSessionIds() async {
     final prefs = await _getPrefs();
-    return prefs.getStringList(PlaylistLocalDataSource._downloadedPlaylistsKey) ?? [];
+    return prefs.getStringList(TrainingSessionLocalDataSource._downloadedTrainingSessionsKey) ?? [];
   }
 
   @override
-  Future<void> saveDownloadedPlaylistIds(List<String> ids) async {
+  Future<void> saveDownloadedTrainingSessionIds(List<String> ids) async {
     final prefs = await _getPrefs();
-    await prefs.setStringList(PlaylistLocalDataSource._downloadedPlaylistsKey, ids);
+    await prefs.setStringList(TrainingSessionLocalDataSource._downloadedTrainingSessionsKey, ids);
   }
 
   @override
-  Future<String> getPlaylistDirectoryPath(int playlistId) async {
+  Future<String> getTrainingSessionDirectoryPath(int training_sessionId) async {
     final baseDir = await _getBaseDirectory();
-    return '$baseDir/playlist_$playlistId';
+    return '$baseDir/training_session_$training_sessionId';
   }
 
   @override
-  Future<bool> playlistDirectoryExists(int playlistId) async {
-    final dirPath = await getPlaylistDirectoryPath(playlistId);
+  Future<bool> training_sessionDirectoryExists(int training_sessionId) async {
+    final dirPath = await getTrainingSessionDirectoryPath(training_sessionId);
     return await Directory(dirPath).exists();
   }
 
   @override
-  Future<void> deletePlaylistDirectory(int playlistId) async {
-    final dirPath = await getPlaylistDirectoryPath(playlistId);
+  Future<void> deleteTrainingSessionDirectory(int training_sessionId) async {
+    final dirPath = await getTrainingSessionDirectoryPath(training_sessionId);
     final directory = Directory(dirPath);
     if (await directory.exists()) {
       await directory.delete(recursive: true);

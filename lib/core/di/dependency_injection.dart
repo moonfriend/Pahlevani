@@ -1,12 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
-import '../../data/datasources/playlist/playlist_local_database.dart';
-import '../../data/datasources/playlist/playlist_local_datasource.dart';
-import '../../data/datasources/playlist/playlist_remote_datasource.dart';
-import '../../data/repositories_impl/playlist_repository_impl.dart';
-import '../../domain/repositories/playlist_repository.dart';
-import '../../presentation/bloc/playlist/playlist_cubit.dart';
+import '../../data/datasources/training_session/training_session_local_database.dart';
+import '../../data/datasources/training_session/training_session_local_datasource.dart';
+import '../../data/datasources/training_session/training_session_remote_datasource.dart';
+import '../../data/repositories_impl/training_session_repository_impl.dart';
+import '../../domain/repositories/training_session_repository.dart';
+import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
 /// GetIt instance for dependency injection
 final getIt = GetIt.instance;
@@ -27,7 +27,7 @@ class DependencyInjection {
     if (_initialized) return;
 
     // Initialize Hive
-    await PlaylistLocalDatabase.init();
+    await TrainingSessionLocalDatabase.init();
 
     // Register services as singletons
 
@@ -35,22 +35,22 @@ class DependencyInjection {
     getIt.registerLazySingleton<Dio>(() => Dio());
 
     // Data sources
-    getIt.registerLazySingleton<PlaylistLocalDataSource>(() => PlaylistLocalDataSourceImpl(dio: getIt<Dio>()));
-    getIt.registerLazySingleton<PlaylistRemoteDataSource>(() => PlaylistRemoteDataSourceImpl());
-    getIt.registerLazySingleton<PlaylistLocalDatabase>(() => PlaylistLocalDatabase());
+    getIt.registerLazySingleton<TrainingSessionLocalDataSource>(() => TrainingSessionLocalDataSourceImpl(dio: getIt<Dio>()));
+    getIt.registerLazySingleton<TrainingSessionRemoteDataSource>(() => TrainingSessionRemoteDataSourceImpl());
+    getIt.registerLazySingleton<TrainingSessionLocalDatabase>(() => TrainingSessionLocalDatabase());
 
     // Repositories
-    getIt.registerLazySingleton<PlaylistRepository>(
-      () => PlaylistRepositoryImpl(
-        remoteDataSource: getIt<PlaylistRemoteDataSource>(),
-        localDataSource: getIt<PlaylistLocalDataSource>(),
-        localDatabase: getIt<PlaylistLocalDatabase>(),
+    getIt.registerLazySingleton<TrainingSessionRepository>(
+      () => TrainingSessionRepositoryImpl(
+        remoteDataSource: getIt<TrainingSessionRemoteDataSource>(),
+        localDataSource: getIt<TrainingSessionLocalDataSource>(),
+        localDatabase: getIt<TrainingSessionLocalDatabase>(),
       ),
     );
 
     // State management
-    getIt.registerLazySingleton<PlaylistCubit>(() => PlaylistCubit(
-          playlistRepository: getIt<PlaylistRepository>(),
+    getIt.registerLazySingleton<TrainingSessionCubit>(() => TrainingSessionCubit(
+          training_sessionRepository: getIt<TrainingSessionRepository>(),
         ));
 
     print("Dependency Injection setup complete.");
@@ -68,8 +68,8 @@ class DependencyInjection {
     print("Dependency Injection Initialized and Ready.");
   }
 
-  /// Get an instance of PlaylistCubit
-  PlaylistCubit get playlistCubit => getIt<PlaylistCubit>();
+  /// Get an instance of TrainingSessionCubit
+  TrainingSessionCubit get training_sessionCubit => getIt<TrainingSessionCubit>();
 
   /// Dispose all resources
   Future<void> dispose() async {

@@ -8,7 +8,7 @@ import 'package:pahlevani/domain/entities/audio/audio_track.dart';
 class AudioPlayerState {
   final bool isPlaying;
   final int playingIndex;
-  final List<AudioTrack> tracks;
+  final List<TrainingItemWithAudio> tracks;
   final Duration position;
   final Duration duration;
   final bool isLoading;
@@ -17,13 +17,13 @@ class AudioPlayerState {
   final Duration logicalDuration; // Logical total duration
 
   /// Current track being played or selected
-  AudioTrack? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
+  TrainingItemWithAudio? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
 
-  /// Next track in the playlist
-  AudioTrack? get nextTrack => tracks.isNotEmpty && playingIndex < tracks.length - 1 ? tracks[playingIndex + 1] : null;
+  /// Next track in the training_session
+  TrainingItemWithAudio? get nextTrack => tracks.isNotEmpty && playingIndex < tracks.length - 1 ? tracks[playingIndex + 1] : null;
 
-  /// Previous track in the playlist
-  AudioTrack? get previousTrack => tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
+  /// Previous track in the training_session
+  TrainingItemWithAudio? get previousTrack => tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
 
   const AudioPlayerState({
     required this.playingIndex,
@@ -41,7 +41,7 @@ class AudioPlayerState {
   AudioPlayerState copyWith({
     int? playingIndex,
     bool? isPlaying,
-    List<AudioTrack>? tracks,
+    List<TrainingItemWithAudio>? tracks,
     Duration? position,
     Duration? duration,
     bool? isLoading,
@@ -133,12 +133,12 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   /// Loads a specific list of tracks, replacing existing ones.
-  Future<void> loadSpecificTracks(List<AudioTrack> tracksToLoad) async {
+  Future<void> loadSpecificTracks(List<TrainingItemWithAudio> tracksToLoad) async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
     await _audioPlayer.stop(); // Stop current playback
     try {
       if (tracksToLoad.isEmpty) {
-        emit(state.copyWith(isLoading: false, tracks: [], playingIndex: -1, errorMessage: 'Selected playlist is empty'));
+        emit(state.copyWith(isLoading: false, tracks: [], playingIndex: -1, errorMessage: 'Selected training_session is empty'));
       } else {
         emit(state.copyWith(
           tracks: tracksToLoad,
@@ -221,7 +221,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return; // Index out of bounds
 
     final track = state.tracks[index];
-    final sourcePath = track.filePath; // Get the path/URL from the track
+    final sourcePath = track.audioFilePath; // Get the path/URL from the track
 
     // Reset dynamic duration state for new track
     _originalDuration = null;

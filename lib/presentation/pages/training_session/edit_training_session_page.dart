@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
-import 'package:pahlevani/data/datasources/playlist/playlist_local_database.dart';
+import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
-import 'package:pahlevani/domain/entities/playlist/audio.dart';
-import 'package:pahlevani/domain/entities/playlist/playlist.dart';
+import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
-class EditPlaylistPage extends StatefulWidget {
-  final Playlist playlist;
+class EditTrainingSessionPage extends StatefulWidget {
+  final TrainingSession training_session;
 
-  const EditPlaylistPage({
+  const EditTrainingSessionPage({
     super.key,
-    required this.playlist,
+    required this.training_session,
   });
 
   @override
-  State<EditPlaylistPage> createState() => _EditPlaylistPageState();
+  State<EditTrainingSessionPage> createState() => _EditTrainingSessionPageState();
 }
 
-class _EditPlaylistPageState extends State<EditPlaylistPage> {
+class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
   late List<Audio> _songs;
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
@@ -29,22 +29,22 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
   @override
   void initState() {
     super.initState();
-    _songs = List.from(widget.playlist.songs);
-    _titleController = TextEditingController(text: widget.playlist.title);
-    _descriptionController = TextEditingController(text: widget.playlist.description);
+    _songs = List.from(widget.training_session.items);
+    _titleController = TextEditingController(text: widget.training_session.title);
+    _descriptionController = TextEditingController(text: widget.training_session.description);
     _repetitionsMap = {for (final song in _songs) song.id: 1};
     _loadRepetitionsFromLocal();
   }
 
   Future<void> _loadRepetitionsFromLocal() async {
-    final db = getIt<PlaylistLocalDatabase>();
-    final playlistSongs = await db.getPlaylistSongs();
-    final currentPlaylistSongs = playlistSongs.where((ps) => ps.playlistId == widget.playlist.id).toList();
+    final db = getIt<TrainingSessionLocalDatabase>();
+    final training_sessionSongs = await db.getTrainingSessionSongs();
+    final currentTrainingSessionSongs = training_sessionSongs.where((ps) => ps.training_sessionId == widget.training_session.id).toList();
     final map = <int, int>{};
     for (final song in _songs) {
-      HivePlaylistSong? ps;
+      HiveTrainingSessionItem? ps;
       try {
-        ps = currentPlaylistSongs.firstWhere((p) => p.songId == song.id);
+        ps = currentTrainingSessionSongs.firstWhere((p) => p.itemId == song.id);
       } catch (_) {
         ps = null;
       }
@@ -84,9 +84,9 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
 
   void _saveChanges() {
     print("Saving changes - hasChanges: $_hasChanges");
-    print("Original title: ${widget.playlist.title}, New title: ${_titleController.text}");
-    print("Original description: ${widget.playlist.description}, New description: ${_descriptionController.text}");
-    print("Original songs count: ${widget.playlist.songs.length}, New songs count: ${_songs.length}");
+    print("Original title: ${widget.training_session.title}, New title: ${_titleController.text}");
+    print("Original description: ${widget.training_session.description}, New description: ${_descriptionController.text}");
+    print("Original songs count: ${widget.training_session.items.length}, New songs count: ${_songs.length}");
     
     if (!_hasChanges) {
       print("No changes detected, just popping");
@@ -94,33 +94,33 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
       return;
     }
 
-    final isEditingUserPlaylist = widget.playlist.isUserCreated;
-    final newId = isEditingUserPlaylist ? widget.playlist.id : DateTime.now().millisecondsSinceEpoch;
-    final updatedPlaylist = Playlist(
+    final isEditingUserTrainingSession = widget.training_session.isUserCreated;
+    final newId = isEditingUserTrainingSession ? widget.training_session.id : DateTime.now().millisecondsSinceEpoch;
+    final updatedTrainingSession = TrainingSession(
       id: newId,
       title: _titleController.text,
       description: _descriptionController.text,
-      difficulty: widget.playlist.difficulty,
+      difficulty: widget.training_session.difficulty,
       createdAt: DateTime.now(),
-      songs: _songs.map((song) {
+      items: _songs.map((song) {
         return Audio(
           id: song.id,
           name: song.name,
           author: song.author,
           type: song.type,
-          url: song.url,
+          audioFileUrl: song.audioFileUrl,
           position: song.position,
         );
       }).toList(),
       isUserCreated: true, // Always mark as user-created for edits
     );
 
-    print("Returning updated playlist with ID: ${updatedPlaylist.id}, isUserCreated: ${updatedPlaylist.isUserCreated}");
+    print("Returning updated training_session with ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated}");
     print("Repetitions map: $_repetitionsMap");
 
     // Pass repetitions map as a second argument
     Navigator.pop(context, {
-      'playlist': updatedPlaylist,
+      'training_session': updatedTrainingSession,
       'repetitionsMap': _repetitionsMap,
     });
   }
@@ -131,7 +131,7 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
     return Scaffold(
       backgroundColor: theme.colorScheme.background.withOpacity(0.98),
       appBar: AppBar(
-        title: Text('Edit ${widget.playlist.title}', style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
+        title: Text('Edit ${widget.training_session.title}', style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
         backgroundColor: theme.colorScheme.primary,
         actions: [
           IconButton(
@@ -156,7 +156,7 @@ class _EditPlaylistPageState extends State<EditPlaylistPage> {
                   controller: _titleController,
                   style: theme.textTheme.titleMedium,
                   decoration: InputDecoration(
-                    labelText: 'Playlist Title',
+                    labelText: 'TrainingSession Title',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: theme.cardColor,

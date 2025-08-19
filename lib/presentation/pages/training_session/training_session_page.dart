@@ -2,51 +2,51 @@ import 'dart:io'; // For File and Directory
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/data/datasources/playlist/playlist_local_database.dart';
+import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/domain/entities/audio/audio_track.dart'; // Import existing AudioTrack
-import 'package:pahlevani/domain/entities/playlist/audio.dart';
-import 'package:pahlevani/domain/entities/playlist/playlist.dart';
+import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
-import 'package:pahlevani/presentation/bloc/playlist/playlist_cubit.dart';
+import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
-import 'package:pahlevani/presentation/pages/playlist/download_status.dart'; // Import enum
-import 'package:pahlevani/presentation/pages/playlist/edit_playlist_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/download_status.dart'; // Import enum
+import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:path_provider/path_provider.dart'; // For finding paths
 
-class PlaylistPage extends StatefulWidget {
-  const PlaylistPage({super.key});
+class TrainingSessionPage extends StatefulWidget {
+  const TrainingSessionPage({super.key});
 
   @override
-  State<PlaylistPage> createState() => _PlaylistPageState();
+  State<TrainingSessionPage> createState() => _TrainingSessionPageState();
 }
 
-class _PlaylistPageState extends State<PlaylistPage> {
-  Future<List<AudioTrack>> _convertSongsToAudioTracks(Playlist playlist, Map<int, DownloadStatus> downloadStatus) async {
-    final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
+class _TrainingSessionPageState extends State<TrainingSessionPage> {
+  Future<List<TrainingItemWithAudio>> _convertSongsToAudioTracks(TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
+    final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
     final isDownloaded = status == DownloadStatus.downloaded;
-    String playlistDirPath = '';
+    String training_sessionDirPath = '';
 
     try {
       if (isDownloaded) {
         final localDirectoryPath = (await getApplicationDocumentsDirectory()).path;
-        playlistDirPath = '$localDirectoryPath/playlist_${playlist.id}';
+        training_sessionDirPath = '$localDirectoryPath/training_session_${training_session.id}';
 
-        // Verify playlist directory exists
-        final playlistDir = Directory(playlistDirPath);
-        if (!await playlistDir.exists()) {
-          print("Warning: Playlist directory not found: $playlistDirPath");
+        // Verify training_session directory exists
+        final training_sessionDir = Directory(training_sessionDirPath);
+        if (!await training_sessionDir.exists()) {
+          print("Warning: TrainingSession directory not found: $training_sessionDirPath");
           return [];
         }
       }
 
       // Get repetition information from local database
-      final localDatabase = PlaylistLocalDatabase();
+      final localDatabase = TrainingSessionLocalDatabase();
       final tracks = await localDatabase.getTracks();
-      final playlistSongs = await localDatabase.getPlaylistSongs();
+      final training_sessionSongs = await localDatabase.getTrainingSessionSongs();
 
-      List<AudioTrack> audioTracks = [];
-      for (final song in playlist.songs) {
-        if (song.url.trim().isEmpty) continue;
+      List<TrainingItemWithAudio> audioTracks = [];
+      for (final song in training_session.items) {
+        if (song.audioFileUrl.trim().isEmpty) continue;
 
         String sourcePath;
         String imagePath;
@@ -63,7 +63,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
         // Get source path
         if (isDownloaded) {
           final filename = _getSafeFilename(song);
-          final localPath = '$playlistDirPath/$filename';
+          final localPath = '$training_sessionDirPath/$filename';
           final file = File(localPath);
 
           if (await file.exists()) {
@@ -79,7 +79,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
             continue;
           }
         } else {
-          sourcePath = song.url.trim();
+          sourcePath = song.audioFileUrl.trim();
         }
 
         // Get repetition information
@@ -94,18 +94,18 @@ class _PlaylistPageState extends State<PlaylistPage> {
           // Track not found in local database
         }
 
-        // Find user-specific repetitions from HivePlaylistSong
+        // Find user-specific repetitions from HiveTrainingSessionSong
         try {
-          final playlistSong = playlistSongs.firstWhere((ps) => ps.playlistId == playlist.id && ps.songId == song.id);
-          userRepetitions = playlistSong.repsToDo;
+          final training_sessionSong = training_sessionSongs.firstWhere((ps) => ps.training_sessionId == training_session.id && ps.itemId == song.id);
+          userRepetitions = training_sessionSong.repsToDo;
         } catch (_) {
-          // PlaylistSong not found in local database
+          // TrainingSessionSong not found in local database
         }
 
-        audioTracks.add(AudioTrack(
+        audioTracks.add(TrainingItemWithAudio(
           id: song.id.toString(),
           title: song.name,
-          filePath: sourcePath,
+          audioFilePath: sourcePath,
           imagePath: imagePath,
           defaultRepetitions: defaultRepetitions,
           userRepetitions: userRepetitions,
@@ -113,7 +113,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
       }
 
       if (audioTracks.isEmpty) {
-        print("Warning: No valid tracks found for playlist ${playlist.id}");
+        print("Warning: No valid tracks found for training_session ${training_session.id}");
       }
 
       return audioTracks;
@@ -128,7 +128,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
     final safeName = song.name.replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_').replaceAll(' ', '_');
     String extension = '.mp3';
     try {
-      final uri = Uri.parse(song.url);
+      final uri = Uri.parse(song.audioFileUrl);
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
         extension = uri.pathSegments.last.substring(uri.pathSegments.last.lastIndexOf('.'));
         if (!['.mp3', '.m4a', '.wav', '.ogg'].contains(extension.toLowerCase())) {
@@ -141,14 +141,14 @@ class _PlaylistPageState extends State<PlaylistPage> {
     return '${song.id}_${safeName}$extension';
   }
 
-  void _navigateToPlayer(BuildContext context, Playlist playlist, Map<int, DownloadStatus> downloadStatus) async {
+  void _navigateToPlayer(BuildContext context, TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
     // Convert songs using the current download status from the state
-    final audioTracks = await _convertSongsToAudioTracks(playlist, downloadStatus);
+    final audioTracks = await _convertSongsToAudioTracks(training_session, downloadStatus);
 
     if (audioTracks.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not prepare any tracks for this playlist.')),
+          const SnackBar(content: Text('Could not prepare any tracks for this training_session.')),
         );
       }
       return;
@@ -171,46 +171,46 @@ class _PlaylistPageState extends State<PlaylistPage> {
     return Scaffold(
       backgroundColor: theme.colorScheme.background.withOpacity(0.98),
       appBar: AppBar(
-        title: const Text('Select a Playlist', style: TextStyle(color: Colors.white)),
+        title: const Text('Select a TrainingSession', style: TextStyle(color: Colors.white)),
         backgroundColor: theme.colorScheme.primary,
         elevation: 2,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
         ),
       ),
-      body: BlocBuilder<PlaylistCubit, PlaylistState>(
+      body: BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
         builder: (context, state) {
           Widget bodyContent;
 
-          if (state is PlaylistInitial || (state is PlaylistLoading && state.playlists.isEmpty)) {
+          if (state is TrainingSessionInitial || (state is TrainingSessionLoading && state.training_sessions.isEmpty)) {
             bodyContent = const Center(child: CircularProgressIndicator());
-          } else if (state is PlaylistError) {
+          } else if (state is TrainingSessionError) {
             bodyContent = _buildErrorWidget(context, state.message);
           } else {
-            List<Playlist> playlists = [];
+            List<TrainingSession> training_sessions = [];
             Map<int, DownloadStatus> downloadStatus = {};
             Map<int, double> downloadProgress = {};
 
-            if (state is PlaylistLoading) {
-              playlists = state.playlists;
+            if (state is TrainingSessionLoading) {
+              training_sessions = state.training_sessions;
               downloadStatus = state.downloadStatus;
-            } else if (state is PlaylistLoaded) {
-              playlists = state.playlists;
+            } else if (state is TrainingSessionLoaded) {
+              training_sessions = state.training_sessions;
               downloadStatus = state.downloadStatus;
-            } else if (state is PlaylistDownloading) {
-              playlists = state.playlists;
+            } else if (state is TrainingSessionDownloading) {
+              training_sessions = state.training_sessions;
               downloadStatus = state.downloadStatus;
               downloadProgress = state.downloadProgress;
             }
 
-            if (playlists.isEmpty && state is! PlaylistLoading) {
+            if (training_sessions.isEmpty && state is! TrainingSessionLoading) {
               bodyContent = _buildEmptyListWidget(context);
             } else {
               bodyContent = Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                child: _buildPlaylistListView(
+                child: _buildTrainingSessionListView(
                   context,
-                  playlists,
+                  training_sessions,
                   downloadStatus,
                   downloadProgress,
                   theme,
@@ -220,7 +220,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
           }
 
           return RefreshIndicator(
-            onRefresh: () => context.read<PlaylistCubit>().fetchPlaylists(forceRefresh: true),
+            onRefresh: () => context.read<TrainingSessionCubit>().fetchTrainingSessions(forceRefresh: true),
             child: bodyContent,
           );
         },
@@ -230,19 +230,19 @@ class _PlaylistPageState extends State<PlaylistPage> {
 
   // --- UI Building Helper Widgets ---
 
-  Widget _buildPlaylistListView(
+  Widget _buildTrainingSessionListView(
     BuildContext context,
-    List<Playlist> playlists,
+    List<TrainingSession> training_sessions,
     Map<int, DownloadStatus> downloadStatus,
     Map<int, double> downloadProgress,
     ThemeData theme,
   ) {
     return ListView.builder(
-      itemCount: playlists.length,
+      itemCount: training_sessions.length,
       itemBuilder: (context, index) {
-        final playlist = playlists[index];
-        final status = downloadStatus[playlist.id] ?? DownloadStatus.notDownloaded;
-        final progress = downloadProgress[playlist.id];
+        final training_session = training_sessions[index];
+        final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
+        final progress = downloadProgress[training_session.id];
 
         return Card(
           color: theme.colorScheme.surface.withOpacity(0.97),
@@ -258,7 +258,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                   backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
                   child: Icon(Icons.queue_music_rounded, color: theme.colorScheme.primary, size: 28),
                 ),
-                if (playlist.isUserCreated)
+                if (training_session.isUserCreated)
                   const Positioned(
                     right: 0,
                     top: 0,
@@ -267,40 +267,44 @@ class _PlaylistPageState extends State<PlaylistPage> {
               ],
             ),
             title: Text(
-              playlist.title,
+              training_session.title,
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (playlist.description.isNotEmpty)
+                if (training_session.description.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2.0, bottom: 4),
                     child: Text(
-                      playlist.description,
+                      training_session.description,
                       style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                Row(
-                  children: [
-                    if (status == DownloadStatus.downloaded)
-                      const Icon(Icons.done, color: Colors.green, size: 20),
-                    const SizedBox(width: 4),
-                    Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
-                    const SizedBox(width: 4),
-                    Text('${playlist.songs.length} tracks', style: theme.textTheme.bodySmall),
-                    const SizedBox(width: 16),
-                    Icon(Icons.bolt_rounded, size: 16, color: theme.colorScheme.secondary),
-                    const SizedBox(width: 4),
-                    Text('Difficulty: ${playlist.difficulty}', style: theme.textTheme.bodySmall),
-                    const SizedBox(width: 8),
-                    if (playlist.isUserCreated)
-                      const Icon(Icons.person, color: Colors.green, size: 18)
-                    else
-                      const Icon(Icons.cloud, color: Colors.grey, size: 18),
-                  ],
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  // child: Row(
+                    children: [
+                      if (status == DownloadStatus.downloaded)
+                        const Icon(Icons.done, color: Colors.green, size: 20),
+                      // const SizedBox(width: 4),
+                      Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
+                      // const SizedBox(width: 4),
+                      Text('${training_session.items.length} tracks', style: theme.textTheme.bodySmall),
+                      // const SizedBox(width: 16),
+                      Icon(Icons.bolt_rounded, size: 16, color: theme.colorScheme.secondary),
+                      // const SizedBox(width: 4),
+                      Text('Difficulty: ${training_session.difficulty}', style: theme.textTheme.bodySmall),
+                      // const SizedBox(width: 8),
+                      if (training_session.isUserCreated)
+                        const Icon(Icons.person, color: Colors.green, size: 18)
+                      else
+                        const Icon(Icons.cloud, color: Colors.grey, size: 18),
+                    ],
+                  // ),
                 ),
                 if (status == DownloadStatus.downloading)
                   Padding(
@@ -318,11 +322,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
               icon: const Icon(Icons.more_vert),
               onSelected: (value) {
                 if (value == 'edit') {
-                  _navigateToEditPlaylist(context, playlist);
+                  _navigateToEditTrainingSession(context, training_session);
                 } else if (value == 'delete') {
-                  _deletePlaylist(context, playlist);
+                  _deleteTrainingSession(context, training_session);
                 } else if (value == 'download') {
-                  context.read<PlaylistCubit>().downloadPlaylist(playlist.id);
+                  context.read<TrainingSessionCubit>().downloadTrainingSession(training_session.id);
                 }
               },
               itemBuilder: (context) => [
@@ -332,7 +336,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     children: [
                       Icon(Icons.edit),
                       SizedBox(width: 8),
-                      Text('Edit Playlist'),
+                      Text('Edit TrainingSession'),
                     ],
                   ),
                 ),
@@ -347,57 +351,57 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     ],
                   ),
                 ),
-                if (playlist.isUserCreated)
+                if (training_session.isUserCreated)
                   const PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
                         Icon(Icons.delete, color: Colors.red),
                         SizedBox(width: 8),
-                        Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                        Text('Delete TrainingSession', style: TextStyle(color: Colors.red)),
                       ],
                     ),
                   ),
               ],
             ),
-            onTap: () => _navigateToPlayer(context, playlist, downloadStatus),
+            onTap: () => _navigateToPlayer(context, training_session, downloadStatus),
           ),
         );
       },
     );
   }
 
-  Future<void> _navigateToEditPlaylist(BuildContext context, Playlist playlist) async {
-    print("Navigating to edit playlist: ${playlist.title} (ID: ${playlist.id})");
+  Future<void> _navigateToEditTrainingSession(BuildContext context, TrainingSession training_session) async {
+    print("Navigating to edit training_session: ${training_session.title} (ID: ${training_session.id})");
     
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditPlaylistPage(playlist: playlist),
+        builder: (context) => EditTrainingSessionPage(training_session: training_session),
       ),
     );
 
-    print("Edit playlist result: $result");
+    print("Edit training_session result: $result");
     print("Result type: ${result.runtimeType}");
     
     if (result != null && mounted) {
-      if (result is Map && result['playlist'] != null) {
-        final updatedPlaylist = result['playlist'] as Playlist;
+      if (result is Map && result['training_session'] != null) {
+        final updatedTrainingSession = result['training_session'] as TrainingSession;
         final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
-        print("Updating playlist via cubit: ${updatedPlaylist.title} (ID: ${updatedPlaylist.id})");
-        context.read<PlaylistCubit>().updatePlaylist(updatedPlaylist, repetitionsMap: repetitionsMap);
+        print("Updating training_session via cubit: ${updatedTrainingSession.title} (ID: ${updatedTrainingSession.id})");
+        context.read<TrainingSessionCubit>().updateTrainingSession(updatedTrainingSession, repetitionsMap: repetitionsMap);
         
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${updatedPlaylist.title} updated successfully'),
+            content: Text('${updatedTrainingSession.title} updated successfully'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
         );
-      } else if (result is Playlist) {
-        print("Updating playlist via cubit: ${result.title} (ID: ${result.id})");
-        context.read<PlaylistCubit>().updatePlaylist(result);
+      } else if (result is TrainingSession) {
+        print("Updating training_session via cubit: ${result.title} (ID: ${result.id})");
+        context.read<TrainingSessionCubit>().updateTrainingSession(result);
         
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -415,18 +419,18 @@ class _PlaylistPageState extends State<PlaylistPage> {
     }
   }
 
-  Future<void> _deletePlaylist(BuildContext context, Playlist playlist) async {
+  Future<void> _deleteTrainingSession(BuildContext context, TrainingSession training_session) async {
     try {
-      await context.read<PlaylistCubit>().deletePlaylist(playlist.id);
+      await context.read<TrainingSessionCubit>().deleteTrainingSession(training_session.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${playlist.title} deleted successfully')),
+          SnackBar(content: Text('${training_session.title} deleted successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete playlist: $e')),
+          SnackBar(content: Text('Failed to delete training_session: $e')),
         );
       }
     }
@@ -441,7 +445,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
         const SizedBox(height: 16),
         ElevatedButton.icon(
             // Refresh triggers cubit fetch
-            onPressed: () => context.read<PlaylistCubit>().fetchPlaylists(forceRefresh: true),
+            onPressed: () => context.read<TrainingSessionCubit>().fetchTrainingSessions(forceRefresh: true),
             icon: const Icon(Icons.refresh),
             label: const Text('Retry'))
       ]),
@@ -451,11 +455,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
   Widget _buildEmptyListWidget(BuildContext context) {
     return Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Text('No playlists found.'),
+      const Text('No training_sessions found.'),
       const SizedBox(height: 16),
       ElevatedButton.icon(
           // Refresh triggers cubit fetch
-          onPressed: () => context.read<PlaylistCubit>().fetchPlaylists(forceRefresh: true),
+          onPressed: () => context.read<TrainingSessionCubit>().fetchTrainingSessions(forceRefresh: true),
           icon: const Icon(Icons.refresh),
           label: const Text('Refresh'))
     ]));

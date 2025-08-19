@@ -1,7 +1,8 @@
-import 'package:pahlevani/domain/entities/playlist/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/audio.dart';
 
-/// Represents a playlist containing multiple songs, based on the provided JSON structure.
-class Playlist {
+/// Represents a training_session containing multiple songs, based on the provided JSON structure.
+
+class TrainingSession {
   final int id;
   final String title;
   final String description;
@@ -10,7 +11,7 @@ class Playlist {
   final List<Audio> songs;
   final bool isUserCreated;
 
-  Playlist({
+  TrainingSession({
     required this.id,
     required this.title,
     required this.description,
@@ -20,7 +21,7 @@ class Playlist {
     this.isUserCreated = false,
   });
 
-  factory Playlist.fromJson(Map<String, dynamic> json) {
+  factory TrainingSession.fromJson(Map<String, dynamic> json) {
     var songsList = <Audio>[];
     if (json['songs'] != null && json['songs'] is List) {
       songsList = (json['songs'] as List).map((songJson) => Audio.fromJson(songJson as Map<String, dynamic>)).toList();
@@ -32,9 +33,9 @@ class Playlist {
       parsedDate = DateTime.tryParse(json['created_at'] as String);
     }
 
-    return Playlist(
+    return TrainingSession(
       id: json['id'] as int? ?? 0,
-      title: json['title'] as String? ?? 'Unknown Playlist',
+      title: json['title'] as String? ?? 'Unknown TrainingSession',
       description: json['description'] as String? ?? '',
       difficulty: json['difficulty'] as int? ?? 1,
       createdAt: parsedDate,
@@ -43,7 +44,7 @@ class Playlist {
     );
   }
 
-  Playlist copyWith({
+  TrainingSession copyWith({
     int? id,
     String? title,
     String? description,
@@ -52,7 +53,7 @@ class Playlist {
     List<Audio>? songs,
     bool? isUserCreated,
   }) {
-    return Playlist(
+    return TrainingSession(
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
@@ -63,3 +64,6 @@ class Playlist {
     );
   }
 }
+
+
+
