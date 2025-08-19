@@ -4,7 +4,7 @@ import '../../../domain/entities/audio/audio_track.dart';
 
 /// A widget to display the current track's image with play/pause controls
 class TrackImageWidget extends StatelessWidget {
-  final AudioTrack? track;
+  final TrainingItemWithAudio? track;
   final bool isPlaying;
   final VoidCallback onPlayPausePressed;
 
