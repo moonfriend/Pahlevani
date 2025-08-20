@@ -97,7 +97,7 @@ class HiveExercise extends HiveObject {
     this.repetitions,
   });
 
-  factory HiveExercise.fromDomain(Audio song) {
+  factory HiveExercise.fromDomain(TrainingSessionItem song) {
     return HiveExercise(
       id: song.id,
       name: song.name,
@@ -129,8 +129,8 @@ class HiveExercise extends HiveObject {
     if (repetitions != null) 'repetitions': repetitions,
   };
 
-  Audio toDomain() {
-    return Audio(
+  TrainingSessionItem toDomain() {
+    return TrainingSessionItem(
       id: id,
       name: name,
       author: author,

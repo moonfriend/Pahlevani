@@ -8,7 +8,7 @@ class TrainingSession {
   final String description;
   final int difficulty;
   final DateTime? createdAt;
-  final List<Audio> songs;
+  final List<TrainingSessionItem> songs;
   final bool isUserCreated;
 
   TrainingSession({
@@ -22,9 +22,9 @@ class TrainingSession {
   });
 
   factory TrainingSession.fromJson(Map<String, dynamic> json) {
-    var songsList = <Audio>[];
+    var songsList = <TrainingSessionItem>[];
     if (json['songs'] != null && json['songs'] is List) {
-      songsList = (json['songs'] as List).map((songJson) => Audio.fromJson(songJson as Map<String, dynamic>)).toList();
+      songsList = (json['songs'] as List).map((songJson) => TrainingSessionItem.fromJson(songJson as Map<String, dynamic>)).toList();
       songsList.sort((a, b) => a.position.compareTo(b.position));
     }
 
@@ -50,7 +50,7 @@ class TrainingSession {
     String? description,
     int? difficulty,
     DateTime? createdAt,
-    List<Audio>? songs,
+    List<TrainingSessionItem>? songs,
     bool? isUserCreated,
   }) {
     return TrainingSession(
