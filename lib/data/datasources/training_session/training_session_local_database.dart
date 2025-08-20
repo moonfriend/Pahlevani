@@ -32,7 +32,7 @@ class TrainingSessionLocalDatabase {
     return await Hive.openBox<HiveExercise>(_trackBoxName);
   }
 
-  Future<Box<HiveTrainingSessionItem>> getTrainingSessionSongBox() async {
+  Future<Box<HiveTrainingSessionItem>> getTrainingSessionItemBox() async {
     return await Hive.openBox<HiveTrainingSessionItem>(_training_sessionSongBoxName);
   }
 
@@ -59,11 +59,11 @@ class TrainingSessionLocalDatabase {
   }
 
   /// Save tracks to local database
-  /// [tracks] is a list of HiveAudio objects representing the tracks table.
-  Future<void> saveTracks(List<HiveExercise> tracks) async {
-    final box = await _getTrackBox();
+  /// [Exercise] is a list of HiveAudio objects representing the tracks table.
+  Future<void> saveExercises(List<HiveExercise> Exercise) async {
+    final box = await _getTrackBox();//todo: rename to exercise
     await box.clear();
-    await box.addAll(tracks);
+    await box.addAll(Exercise);
   }
 
   /// Get all tracks from local database
@@ -76,15 +76,15 @@ class TrainingSessionLocalDatabase {
   /// Save training_session_items to local database
   /// [training_sessionSongs] is a list of HiveTrainingSessionSong objects representing the training_session_items table.
   Future<void> saveTrainingSessionSongs(List<HiveTrainingSessionItem> training_sessionSongs) async {
-    final box = await getTrainingSessionSongBox();
+    final box = await getTrainingSessionItemBox();
     await box.clear();
     await box.addAll(training_sessionSongs);
   }
 
   /// Get all training_session_items from local database
   /// Returns a list of HiveTrainingSessionSong objects.
-  Future<List<HiveTrainingSessionItem>> getTrainingSessionSongs() async {
-    final box = await getTrainingSessionSongBox();
+  Future<List<HiveTrainingSessionItem>> getTrainingSessionItems() async {
+    final box = await getTrainingSessionItemBox();
     return box.values.toList();
   }
 
@@ -111,7 +111,7 @@ class TrainingSessionLocalDatabase {
     final box = await getTrainingSessionBox();
     final settingsBox = await _getSettingsBox();
     final trackBox = await _getTrackBox();
-    final training_sessionSongBox = await getTrainingSessionSongBox();
+    final training_sessionSongBox = await getTrainingSessionItemBox();
     await box.clear();
     await settingsBox.clear();
     await trackBox.clear();

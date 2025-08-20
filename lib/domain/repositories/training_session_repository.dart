@@ -18,7 +18,7 @@ abstract class TrainingSessionRepository {
   Future<bool> isTrainingSessionDownloaded(int training_sessionId);
 
   /// Gets the local file path for a song if downloaded, otherwise null.
-  Future<String?> getLocalSongPath(int training_sessionId, Audio song);
+  Future<String?> getLocalSongPath(int training_sessionId, TrainingSessionItem song);
 
   /// Saves a training_session to the repository.
   Future<TrainingSession> saveTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap});

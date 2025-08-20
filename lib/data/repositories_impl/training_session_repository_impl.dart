@@ -27,31 +27,31 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     print("getTrainingSessions invoked");
     try {
       // Load all local data
-      final training_sessionSongs = await localDatabase.getTrainingSessionSongs();
-      final training_sessionsMetaBox = await localDatabase.getTrainingSessionBox();
-      final tracks = await localDatabase.getTracks();
+      final localTrainingSessionItems = await localDatabase.getTrainingSessionItems();
+      final localTrainingSessionsMetaBox = await localDatabase.getTrainingSessionBox();
+      final localTracks = await localDatabase.getTracks();
 
-      // Group training_sessionSongs by training_sessionId
+      // Group training_sessionItems by training_sessionId
       final Map<int, List<HiveTrainingSessionItem>> grouped = {};
-      for (final ps in training_sessionSongs) {
+      for (final ps in localTrainingSessionItems) {
         grouped.putIfAbsent(ps.training_sessionId, () => []).add(ps);
       }
 
-      // Build training_sessions from grouped training_sessionSongs
+      // Build training_sessions from grouped training_sessionItems
       final localTrainingSessions = <TrainingSession>[];
       for (final entry in grouped.entries) {
         final training_sessionId = entry.key;
-        final songLinks = entry.value
+        final trainingItems = entry.value
           ..sort((a, b) => (a.position).compareTo(b.position));
         HiveTrainingSession? meta;
         try {
-          meta = training_sessionsMetaBox.values.firstWhere((p) => p.id == training_sessionId);
+          meta = localTrainingSessionsMetaBox.values.firstWhere((p) => p.id == training_sessionId);
         } catch (_) {
           meta = null;
         }
         if (meta == null) continue;
-        final songs = songLinks.map((ps) {
-          final track = tracks.firstWhere((t) => t.id == ps.itemId,
+        final songs = trainingItems.map((ps) {
+          final track = localTracks.firstWhere((t) => t.id == ps.itemId,
               orElse: () => HiveExercise(
                     id: 0,
                     name: '',
@@ -61,13 +61,14 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                     position: 0,
                     repetitions: null,
                   ));
-          return Audio(
+          return TrainingSessionItem(
             id: track.id,
             name: track.name,
             author: track.author,
             type: track.type,
             audioFileUrl: track.url,
             position: ps.position,
+            // repsToDo: ps.repsToDo,
           );
         }).toList();
         localTrainingSessions.add(TrainingSession(
@@ -89,45 +90,45 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final trainingSessionItemRaw = await remoteDataSource.fetchTrainingSessionItemTable();
 
       // Convert to Hive models
-      final remoteTracks = ExercisesRaw.map((e) => HiveExercise.fromJson(e)).toList();
-      final remoteTrainingSessionSongs =
+      final remoteExercises = ExercisesRaw.map((e) => HiveExercise.fromJson(e)).toList();
+      final remoteTrainingSessionItems =
           trainingSessionItemRaw.map((e) => HiveTrainingSessionItem.fromJson(e)).toList();
 
       // Save tracks locally
-      await localDatabase.saveTracks(remoteTracks);
+      await localDatabase.saveExercises(remoteExercises);
 
       // Merge remote and local training_session songs instead of overwriting
-      final existingTrainingSessionSongs = await localDatabase.getTrainingSessionSongs();
-      final mergedTrainingSessionSongs = <HiveTrainingSessionItem>[];
+      final existingTrainingSessionItems = await localDatabase.getTrainingSessionItems();
+      final mergedTrainingSessionItems = <HiveTrainingSessionItem>[];
 
       // Add all existing local training_session songs (preserves user customizations)
-      mergedTrainingSessionSongs.addAll(existingTrainingSessionSongs);
+      mergedTrainingSessionItems.addAll(existingTrainingSessionItems);
 
       // Add remote training_session songs only if they don't already exist locally
-      for (final remotePs in remoteTrainingSessionSongs) {
-        final existsLocally = existingTrainingSessionSongs.any((localPs) =>
+      for (final remotePs in remoteTrainingSessionItems) {
+        final existsLocally = existingTrainingSessionItems.any((localPs) =>
             localPs.training_sessionId == remotePs.training_sessionId &&
             localPs.itemId == remotePs.itemId &&
             localPs.position == remotePs.position);
         if (!existsLocally) {
-          mergedTrainingSessionSongs.add(remotePs);
+          mergedTrainingSessionItems.add(remotePs);
         }
       }
 
-      await localDatabase.saveTrainingSessionSongs(mergedTrainingSessionSongs);
+      await localDatabase.saveTrainingSessionSongs(mergedTrainingSessionItems);
 
       // Build training_sessions by joining tables (remote)
       final serverTrainingSessions = training_sessionsRaw
           .map((training_sessionJson) {
             final training_sessionId = training_sessionJson['id'] as int?;
             if (training_sessionId == null) return null;
-            final training_sessionSongLinks = remoteTrainingSessionSongs
+            final training_sessionSongLinks = remoteTrainingSessionItems
                 .where((ps) => ps.training_sessionId == training_sessionId)
                 .toList();
             training_sessionSongLinks
                 .sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
             final training_sessionTracks = training_sessionSongLinks.map((ps) {
-              final track = remoteTracks.firstWhere((t) => t.id == ps.itemId,
+              final track = remoteExercises.firstWhere((t) => t.id == ps.itemId,
                   orElse: () => HiveExercise(
                         id: 0,
                         name: '',
@@ -137,7 +138,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                         position: 0,
                         repetitions: null,
                       ));
-              return Audio(
+              return TrainingSessionItem(
                 id: track.id,
                 name: track.name,
                 author: track.author,
@@ -177,9 +178,9 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     } catch (e) {
       print("Error fetching from remote: $e");
 
-      // If remote fetch fails, try to get from local database (rebuild from training_sessionSongs)
+      // If remote fetch fails, try to get from local database (rebuild from training_sessionItems)
       try {
-        final training_sessionSongs = await localDatabase.getTrainingSessionSongs();
+        final training_sessionSongs = await localDatabase.getTrainingSessionItems();
         final training_sessionsMetaBox = await localDatabase.getTrainingSessionBox();
         final tracks = await localDatabase.getTracks();
         final Map<int, List<HiveTrainingSessionItem>> grouped = {};
@@ -210,7 +211,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                       position: 0,
                       repetitions: null,
                     ));
-            return Audio(
+            return TrainingSessionItem(
               id: track.id,
               name: track.name,
               author: track.author,
@@ -422,7 +423,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   @override
-  Future<String?> getLocalSongPath(int training_sessionId, Audio song) async {
+  Future<String?> getLocalSongPath(int training_sessionId, TrainingSessionItem song) async {
     if (await isTrainingSessionDownloaded(training_sessionId)) {
       final training_sessionDirPath =
           await localDataSource.getTrainingSessionDirectoryPath(training_sessionId);
@@ -436,7 +437,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   /// Helper to create a safe filename (duplicate from page, should be centralized)
-  String _getSafeFilename(Audio song) {
+  String _getSafeFilename(TrainingSessionItem song) {
     final safeName = song.name
         .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
         .replaceAll(' ', '_');
@@ -523,7 +524,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       }
 
       // Update HiveTrainingSessionSong (song links and repsToDo)
-      final training_sessionSongBox = await localDatabase.getTrainingSessionSongBox();
+      final training_sessionSongBox = await localDatabase.getTrainingSessionItemBox();
       // Remove old song links for this training_session
       final oldKeys = training_sessionSongBox.keys.where((k) {
         final ps = training_sessionSongBox.get(k);

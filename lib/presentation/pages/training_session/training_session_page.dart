@@ -42,7 +42,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
       // Get repetition information from local database
       final localDatabase = TrainingSessionLocalDatabase();
       final tracks = await localDatabase.getTracks();
-      final training_sessionSongs = await localDatabase.getTrainingSessionSongs();
+      final training_sessionSongs = await localDatabase.getTrainingSessionItems();
 
       List<TrainingItemWithAudio> audioTracks = [];
       for (final song in training_session.items) {
@@ -124,7 +124,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   }
 
   // Helper to get safe filename (could be moved to a utility class)
-  String _getSafeFilename(Audio song) {
+  String _getSafeFilename(TrainingSessionItem song) {
     final safeName = song.name.replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_').replaceAll(' ', '_');
     String extension = '.mp3';
     try {

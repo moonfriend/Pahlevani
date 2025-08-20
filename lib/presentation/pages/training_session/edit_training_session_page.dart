@@ -18,7 +18,7 @@ class EditTrainingSessionPage extends StatefulWidget {
 }
 
 class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
-  late List<Audio> _songs;
+  late List<TrainingSessionItem> _songs;
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
   bool _hasChanges = false;
@@ -38,7 +38,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
 
   Future<void> _loadRepetitionsFromLocal() async {
     final db = getIt<TrainingSessionLocalDatabase>();
-    final training_sessionSongs = await db.getTrainingSessionSongs();
+    final training_sessionSongs = await db.getTrainingSessionItems();
     final currentTrainingSessionSongs = training_sessionSongs.where((ps) => ps.training_sessionId == widget.training_session.id).toList();
     final map = <int, int>{};
     for (final song in _songs) {
@@ -103,13 +103,14 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
       difficulty: widget.training_session.difficulty,
       createdAt: DateTime.now(),
       items: _songs.map((song) {
-        return Audio(
+        return TrainingSessionItem(
           id: song.id,
           name: song.name,
           author: song.author,
           type: song.type,
           audioFileUrl: song.audioFileUrl,
           position: song.position,
+          // repsToDo: song.repsToDo,//TODO: this was added to skip error, double check
         );
       }).toList(),
       isUserCreated: true, // Always mark as user-created for edits
