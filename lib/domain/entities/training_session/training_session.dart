@@ -1,4 +1,4 @@
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 
 /// Represents a training_session containing multiple songs, based on the provided JSON structure.
 class TrainingSession {

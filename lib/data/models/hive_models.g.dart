@@ -125,7 +125,7 @@ class HiveTrainingSessionItemAdapter extends TypeAdapter<HiveTrainingSessionItem
       training_sessionId: fields[0] as int,
       itemId: fields[1] as int,
       position: fields[2] as int,
-      repsToDo: fields[3] as int?,
+      repsToDo: fields[3] as int,
     );
   }
 
