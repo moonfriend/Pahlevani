@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/domain/entities/audio/audio_track.dart'; // Import existing AudioTrack
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';

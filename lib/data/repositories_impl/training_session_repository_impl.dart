@@ -5,7 +5,7 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -68,7 +68,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
             type: track.type,
             audioFileUrl: track.url,
             position: ps.position,
-            // repsToDo: ps.repsToDo,
+            repsToDo: ps.repsToDo,
           );
         }).toList();
         localTrainingSessions.add(TrainingSession(
@@ -86,11 +86,11 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
 
       // Fetch all tables from remote
       final training_sessionsRaw = await remoteDataSource.fetchTrainingSessionsTable();
-      final ExercisesRaw = await remoteDataSource.fetchExerciseTable();
+      final exercisesRaw = await remoteDataSource.fetchExerciseTable();
       final trainingSessionItemRaw = await remoteDataSource.fetchTrainingSessionItemTable();
 
       // Convert to Hive models
-      final remoteExercises = ExercisesRaw.map((e) => HiveExercise.fromJson(e)).toList();
+      final remoteExercises = exercisesRaw.map((e) => HiveExercise.fromJson(e)).toList();
       final remoteTrainingSessionItems =
           trainingSessionItemRaw.map((e) => HiveTrainingSessionItem.fromJson(e)).toList();
 
@@ -122,12 +122,12 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           .map((training_sessionJson) {
             final training_sessionId = training_sessionJson['id'] as int?;
             if (training_sessionId == null) return null;
-            final training_sessionSongLinks = remoteTrainingSessionItems
+            final thisTrainingSessionItems = remoteTrainingSessionItems
                 .where((ps) => ps.training_sessionId == training_sessionId)
                 .toList();
-            training_sessionSongLinks
+            thisTrainingSessionItems
                 .sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
-            final training_sessionTracks = training_sessionSongLinks.map((ps) {
+            final training_sessionTracks = thisTrainingSessionItems.map((ps) {
               final track = remoteExercises.firstWhere((t) => t.id == ps.itemId,
                   orElse: () => HiveExercise(
                         id: 0,
@@ -145,6 +145,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 type: track.type,
                 audioFileUrl: track.url,
                 position: ps.position ?? 0,
+                repsToDo: ps.repsToDo,
               );
             }).toList();
             return TrainingSession(
@@ -218,6 +219,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
               type: track.type,
               audioFileUrl: track.url,
               position: ps.position,
+              repsToDo: ps.repsToDo,
             );
           }).toList();
           localTrainingSessions.add(TrainingSession(

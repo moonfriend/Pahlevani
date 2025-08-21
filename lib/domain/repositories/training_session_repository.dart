@@ -1,4 +1,4 @@
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -29,3 +29,8 @@ abstract class TrainingSessionRepository {
   /// Deletes a training_session and its downloaded files.
   Future<void> deleteTrainingSession(int training_sessionId);
 }
+
+
+// todo: what we can do:
+// separate repository into two or more sets: exercise repo and training session repo, and later: training program
+// build on the current style: separating concerns of the audio(t_item) and audiotrack
