@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 part 'hive_models.g.dart';
@@ -105,7 +105,7 @@ class HiveExercise extends HiveObject {
       type: song.type,
       url: song.audioFileUrl,
       position: song.position,
-      repetitions: null, // XXX? why?: Domain Audio does not have repetitions
+      repetitions: null, // Domain Audio does not have repetitions (XXX? why?: )
     );
   }
 
@@ -137,6 +137,7 @@ class HiveExercise extends HiveObject {
       type: type,
       audioFileUrl: url,
       position: position,
+      repsToDo: 0,
     );
   }
 }
@@ -150,20 +151,20 @@ class HiveTrainingSessionItem extends HiveObject {
   @HiveField(2)
   final int position;
   @HiveField(3)
-  final int? repsToDo;
+  final int repsToDo;
 
   HiveTrainingSessionItem({
     required this.training_sessionId,
     required this.itemId,
     required this.position,
-    this.repsToDo,
+    required this.repsToDo,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) => HiveTrainingSessionItem(
     training_sessionId: json['training_session_id'] as int,
     itemId: json['exercise_id'] as int,
     position: json['position'] as int,
-    repsToDo: json['reps_to_do'] as int?,
+    repsToDo: json['reps_to_do'] as int,
   );
 
   Map<String, dynamic> toJson() => {

@@ -6,7 +6,7 @@ class TrainingSessionItem {//todo: this needs to have the repetition!
   final String type;
   final String audioFileUrl; // Assuming this is the audio source URL
   final int position;
-  // final int repsToDo;
+  final int repsToDo;
 
   TrainingSessionItem({
     required this.id,
@@ -15,7 +15,7 @@ class TrainingSessionItem {//todo: this needs to have the repetition!
     required this.type,
     required this.audioFileUrl,
     required this.position,
-    // required this.repsToDo,
+    required this.repsToDo,
   });
 
   // Factory constructor to create a Song from a map (like the JSON data)
@@ -27,7 +27,7 @@ class TrainingSessionItem {//todo: this needs to have the repetition!
       type: json['type'] as String? ?? 'Unknown Type',
       audioFileUrl: json['url'] as String? ?? '',
       position: json['position'] as int? ?? 0,
-      // repsToDo: json['repsToDo'] as int? ?? 0,
+      repsToDo: json['repsToDo'] as int? ?? 0,
     );
   }
 }

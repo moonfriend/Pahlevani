@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
-import 'package:pahlevani/domain/entities/training_session/audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 class EditTrainingSessionPage extends StatefulWidget {
@@ -110,7 +110,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
           type: song.type,
           audioFileUrl: song.audioFileUrl,
           position: song.position,
-          // repsToDo: song.repsToDo,//TODO: this was added to skip error, double check
+          repsToDo: song.repsToDo,//TODO: this was added to skip error, double check
         );
       }).toList(),
       isUserCreated: true, // Always mark as user-created for edits
