@@ -1,3 +1,11 @@
+// Focus: Primarily concerned with storing and retrieving structured metadata and content definitions of training sessions, exercises (tracks), and their relationships.
+// Responsibilities:
+// Storing detailed information about each TrainingSession (e.g., its ID, name, author, type, and potentially a list of its constituent items/exercises).
+// Storing information about individual HiveExercise (tracks/audio files) like their name, author, URL (which TrainingSessionLocalDataSource might use to download the actual file).
+// Storing HiveTrainingSessionItem which likely links TrainingSessions to their HiveExercises, defining the content and order within a session.
+// Managing synchronization status (e.g., lastSyncTime, isDataStale).
+// Providing methods to save, retrieve, and clear this structured data.
+
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
