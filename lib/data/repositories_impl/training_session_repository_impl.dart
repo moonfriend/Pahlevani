@@ -118,7 +118,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         }
       }
 
-      await localDatabase.saveTrainingSessionSongs(mergedTrainingSessionItems);
+      await localDatabase.saveTrainingSessionItems(mergedTrainingSessionItems);
 
       // Build training_sessions by joining tables (remote)
       final serverTrainingSessions = training_sessionsRaw
@@ -494,7 +494,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
             repsToDo: repetitionsMap[song.id] ?? 1,
           );
         }).toList();
-        await localDatabase.saveTrainingSessionSongs(training_sessionSongs);
+        await localDatabase.saveTrainingSessionItems(training_sessionSongs);
       }
 
       return newTrainingSession;
