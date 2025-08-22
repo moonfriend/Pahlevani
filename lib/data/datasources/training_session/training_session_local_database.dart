@@ -83,7 +83,7 @@ class TrainingSessionLocalDatabase {
 
   /// Save training_session_items to local database
   /// [training_sessionSongs] is a list of HiveTrainingSessionSong objects representing the training_session_items table.
-  Future<void> saveTrainingSessionSongs(List<HiveTrainingSessionItem> training_sessionSongs) async {
+  Future<void> saveTrainingSessionItems(List<HiveTrainingSessionItem> training_sessionSongs) async {
     final box = await getTrainingSessionItemBox();
     await box.clear();
     await box.addAll(training_sessionSongs);
