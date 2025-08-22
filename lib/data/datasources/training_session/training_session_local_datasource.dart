@@ -1,3 +1,11 @@
+// Focus: Primarily concerned with managing the files and download status of training sessions.
+// Responsibilities:
+// Knowing which training sessions have been downloaded (using SharedPreferences to store a list of IDs).
+// Determining the file system paths for storing downloaded training session content (e.g., audio files, videos, PDFs associated with a session).
+// Handling the actual download process of these files (using Dio).
+// Checking if session directories exist.
+// Deleting session directories and their contents.
+
 import 'dart:async';
 import 'dart:io';
 
