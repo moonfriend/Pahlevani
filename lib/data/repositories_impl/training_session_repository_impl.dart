@@ -94,7 +94,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final remoteExercises = exercisesRaw.map((e) => HiveExercise.fromJson(e)).toList();
       final remoteTrainingSessionItems =
           trainingSessionItemRaw.map((e) => HiveTrainingSessionItem.fromJson(e)).toList();
-      final remoteTrainingSessions = training_sessionsRaw.map((e) => HiveTrainingSession.fromJson(e)).toList();
+      //final remoteTrainingSessions = training_sessionsRaw.map((e) => HiveTrainingSession.fromJson(e)).toList();
 
       // Save tracks locally
       await localDatabase.saveExercises(remoteExercises);
