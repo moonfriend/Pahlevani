@@ -123,7 +123,7 @@ class HiveExercise extends HiveObject {
     this.repetitions,
   });
 
-  factory HiveExercise.fromDomain(TrainingSessionItem song) {
+  factory HiveExercise.fromDomain(TrainingSessionItem song) {//serious mistake here!
     return HiveExercise(
       id: song.id,
       name: song.name,

@@ -84,6 +84,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         ));
       }
 
+      ///remote:
       // Fetch all tables from remote
       final training_sessionsRaw = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesRaw = await remoteDataSource.fetchExerciseTable();
@@ -106,13 +107,14 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       mergedTrainingSessionItems.addAll(existingTrainingSessionItems);
 
       // Add remote training_session songs only if they don't already exist locally
-      for (final remotePs in remoteTrainingSessionItems) {
-        final existsLocally = existingTrainingSessionItems.any((localPs) =>
-            localPs.training_sessionId == remotePs.training_sessionId &&
-            localPs.itemId == remotePs.itemId &&
-            localPs.position == remotePs.position);
+      //todo: replace this with cursor updates
+      for (final remoteItem in remoteTrainingSessionItems) {
+        final existsLocally = existingTrainingSessionItems.any((localItem) =>
+            localItem.training_sessionId == remoteItem.training_sessionId &&
+            localItem.itemId == remoteItem.itemId &&
+            localItem.position == remoteItem.position);
         if (!existsLocally) {
-          mergedTrainingSessionItems.add(remotePs);
+          mergedTrainingSessionItems.add(remoteItem);
         }
       }
 
