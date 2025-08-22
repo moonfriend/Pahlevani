@@ -39,6 +39,32 @@ class HiveTrainingSession extends HiveObject {
     this.isUserCreated = false,
   });
 
+  factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
+    return HiveTrainingSession(
+      id: json['id'] as int,
+      title: json['title'] as String,
+      description: json['description'] as String,
+      difficulty: json['difficulty'] as int,
+      createdAt: json['created_at'] == null ? null : DateTime.parse(
+          json['created_at'] as String),
+      items: (json['items'] as List<dynamic>)
+          .map((e) => HiveExercise.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      isUserCreated: json['is_user_created'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'difficulty': difficulty,
+        if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
+        'items': items.map((e) => e.toJson()).toList(),
+        'is_user_created': isUserCreated,
+      };
+
+
   factory HiveTrainingSession.fromDomain(TrainingSession training_session) {
     return HiveTrainingSession(
       id: training_session.id,
