@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:hive/hive.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
@@ -24,6 +25,10 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
 
   @override
   Future<List<TrainingSession>> getTrainingSessions() async {
+    // what I expect here:
+    // getTS(s)  from remote, store them?
+    // add the locally saved ones to the list
+    // if offline return the local ones
     print("getTrainingSessions invoked");
     try {
       // Load all local data
@@ -31,58 +36,11 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final localTrainingSessionsMetaBox = await localDatabase.getTrainingSessionBox();
       final localTracks = await localDatabase.getTracks();
 
-      // Group training_sessionItems by training_sessionId
-      final Map<int, List<HiveTrainingSessionItem>> grouped = {};
-      for (final ps in localTrainingSessionItems) {
-        grouped.putIfAbsent(ps.training_sessionId, () => []).add(ps);
-      }
+      // Group training_sessionItems by training_sessionId  XXX why?
+      Map<int, List<HiveTrainingSessionItem>> grouped = groupTSItems(localTrainingSessionItems);
 
       // Build training_sessions from grouped training_sessionItems
-      final localTrainingSessions = <TrainingSession>[];
-      for (final entry in grouped.entries) {
-        final training_sessionId = entry.key;
-        final trainingItems = entry.value
-          ..sort((a, b) => (a.position).compareTo(b.position));
-        HiveTrainingSession? meta;
-        try {
-          meta = localTrainingSessionsMetaBox.values.firstWhere((p) => p.id == training_sessionId);
-        } catch (_) {
-          meta = null;
-        }
-        if (meta == null) continue;
-        final songs = trainingItems.map((ps) {
-          final track = localTracks.firstWhere((t) => t.id == ps.itemId,
-              orElse: () => HiveExercise(
-                    id: 0,
-                    name: '',
-                    author: '',
-                    type: '',
-                    url: '',
-                    position: 0,
-                    repetitions: null,
-                  ));
-          return TrainingSessionItem(
-            id: track.id,
-            name: track.name,
-            author: track.author,
-            type: track.type,
-            audioFileUrl: track.url,
-            position: ps.position,
-            repsToDo: ps.repsToDo,
-          );
-        }).toList();
-        localTrainingSessions.add(TrainingSession(
-          id: training_sessionId,
-          title: meta.title,
-          description: meta.description,
-          difficulty: meta.difficulty,
-          createdAt: meta.createdAt,
-          items: songs,
-          isUserCreated: meta is HiveTrainingSession
-              ? (meta as dynamic).isUserCreated ?? false
-              : false,
-        ));
-      }
+      List<TrainingSession> localTrainingSessions = buildTSs(grouped, localTrainingSessionsMetaBox, localTracks);
 
       ///remote:
       // Fetch all tables from remote
@@ -121,50 +79,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       await localDatabase.saveTrainingSessionItems(mergedTrainingSessionItems);
 
       // Build training_sessions by joining tables (remote)
-      final serverTrainingSessions = training_sessionsRaw
-          .map((training_sessionJson) {
-            final training_sessionId = training_sessionJson['id'] as int?;
-            if (training_sessionId == null) return null;
-            final thisTrainingSessionItems = remoteTrainingSessionItems
-                .where((ps) => ps.training_sessionId == training_sessionId)
-                .toList();
-            thisTrainingSessionItems
-                .sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
-            final training_sessionTracks = thisTrainingSessionItems.map((ps) {
-              final track = remoteExercises.firstWhere((t) => t.id == ps.itemId,
-                  orElse: () => HiveExercise(
-                        id: 0,
-                        name: '',
-                        author: '',
-                        type: '',
-                        url: '',
-                        position: 0,
-                        repetitions: null,
-                      ));
-              return TrainingSessionItem(
-                id: track.id,
-                name: track.name,
-                author: track.author,
-                type: track.type,
-                audioFileUrl: track.url,
-                position: ps.position ?? 0,
-                repsToDo: ps.repsToDo,
-              );
-            }).toList();
-            return TrainingSession(
-              id: training_sessionId,
-              title: training_sessionJson['title'] as String? ?? 'Unknown TrainingSession',
-              description: training_sessionJson['description'] as String? ?? '',
-              difficulty: training_sessionJson['difficulty'] as int? ?? 1,
-              createdAt: training_sessionJson['created_at'] is String
-                  ? DateTime.tryParse(training_sessionJson['created_at'])
-                  : null,
-              items: training_sessionTracks,
-              isUserCreated: false,
-            );
-          })
-          .whereType<TrainingSession>()
-          .toList();
+      List<TrainingSession> serverTrainingSessions = buildTSsByJoining(training_sessionsRaw, remoteTrainingSessionItems, remoteExercises);
 
       // Combine server training_sessions with user-created ones
       final combinedTrainingSessions = [
@@ -187,25 +102,30 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         final training_sessionSongs = await localDatabase.getTrainingSessionItems();
         final training_sessionsMetaBox = await localDatabase.getTrainingSessionBox();
         final tracks = await localDatabase.getTracks();
-        final Map<int, List<HiveTrainingSessionItem>> grouped = {};
-        for (final ps in training_sessionSongs) {
-          grouped.putIfAbsent(ps.training_sessionId, () => []).add(ps);
-        }
-        final localTrainingSessions = <TrainingSession>[];
-        for (final entry in grouped.entries) {
-          final training_sessionId = entry.key;
-          final songLinks = entry.value
-            ..sort((a, b) => (a.position).compareTo(b.position));
-          HiveTrainingSession? meta;
-          try {
-            meta =
-                training_sessionsMetaBox.values.firstWhere((p) => p.id == training_sessionId);
-          } catch (_) {
-            meta = null;
-          }
-          if (meta == null) continue;
-          final songs = songLinks.map((ps) {
-            final track = tracks.firstWhere((t) => t.id == ps.itemId,
+        Map<int, List<HiveTrainingSessionItem>> grouped = groupTSItems(training_sessionSongs);
+        List<TrainingSession> localTrainingSessions = buildTSs(grouped, training_sessionsMetaBox, tracks);
+        return localTrainingSessions;
+      } catch (localError) {
+        print("Error reading from local database: $localError");
+      }
+
+      // If both remote and local fail, throw the original error
+      throw Exception('Could not fetch training_sessions: $e');
+    }
+  }
+
+  List<TrainingSession> buildTSsByJoining(List<Map<String, dynamic>> training_sessionsRaw, List<HiveTrainingSessionItem> remoteTrainingSessionItems, List<HiveExercise> remoteExercises) {
+    final serverTrainingSessions = training_sessionsRaw
+        .map((training_sessionJson) {
+          final training_sessionId = training_sessionJson['id'] as int?;
+          if (training_sessionId == null) return null;
+          final thisTrainingSessionItems = remoteTrainingSessionItems
+              .where((ps) => ps.training_sessionId == training_sessionId)
+              .toList();
+          thisTrainingSessionItems
+              .sort((a, b) => (a.position ?? 0).compareTo(b.position ?? 0));
+          final training_sessionTracks = thisTrainingSessionItems.map((ps) {
+            final track = remoteExercises.firstWhere((t) => t.id == ps.itemId,
                 orElse: () => HiveExercise(
                       id: 0,
                       name: '',
@@ -221,30 +141,82 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
               author: track.author,
               type: track.type,
               audioFileUrl: track.url,
-              position: ps.position,
+              position: ps.position ?? 0,
               repsToDo: ps.repsToDo,
             );
           }).toList();
-          localTrainingSessions.add(TrainingSession(
+          return TrainingSession(
             id: training_sessionId,
-            title: meta.title,
-            description: meta.description,
-            difficulty: meta.difficulty,
-            createdAt: meta.createdAt,
-            items: songs,
-            isUserCreated: meta is HiveTrainingSession
-                ? (meta as dynamic).isUserCreated ?? false
-                : false,
-          ));
-        }
-        return localTrainingSessions;
-      } catch (localError) {
-        print("Error reading from local database: $localError");
-      }
+            title: training_sessionJson['title'] as String? ?? 'Unknown TrainingSession',
+            description: training_sessionJson['description'] as String? ?? '',
+            difficulty: training_sessionJson['difficulty'] as int? ?? 1,
+            createdAt: training_sessionJson['created_at'] is String
+                ? DateTime.tryParse(training_sessionJson['created_at'])
+                : null,
+            items: training_sessionTracks,
+            isUserCreated: false,
+          );
+        })
+        .whereType<TrainingSession>()
+        .toList();
+    return serverTrainingSessions;
+  }
 
-      // If both remote and local fail, throw the original error
-      throw Exception('Could not fetch training_sessions: $e');
+  List<TrainingSession> buildTSs(Map<int, List<HiveTrainingSessionItem>> grouped, Box<HiveTrainingSession> localTrainingSessionsMetaBox, List<HiveExercise> localExercises) {
+    final localTrainingSessions = <TrainingSession>[];
+    for (final entry in grouped.entries) {
+      final training_sessionId = entry.key;
+      final trainingItems = entry.value
+        ..sort((a, b) => (a.position).compareTo(b.position));
+      HiveTrainingSession? meta;
+      try {
+        meta = localTrainingSessionsMetaBox.values.firstWhere((p) => p.id == training_sessionId);
+      } catch (_) {
+        meta = null;
+      }
+      if (meta == null) continue;
+      final items = trainingItems.map((ps) {
+        final exercise = localExercises.firstWhere((t) => t.id == ps.itemId,
+            orElse: () => HiveExercise(
+                  id: 0,
+                  name: '',
+                  author: '',
+                  type: '',
+                  url: '',
+                  position: 0,
+                  repetitions: null,
+                ));
+        return TrainingSessionItem(
+          id: exercise.id,
+          name: exercise.name,
+          author: exercise.author,
+          type: exercise.type,
+          audioFileUrl: exercise.url,
+          position: ps.position,
+          repsToDo: ps.repsToDo,
+        );
+      }).toList();
+      localTrainingSessions.add(TrainingSession(
+        id: training_sessionId,
+        title: meta.title,
+        description: meta.description,
+        difficulty: meta.difficulty,
+        createdAt: meta.createdAt,
+        items: items,
+        isUserCreated: meta is HiveTrainingSession
+            ? (meta as dynamic).isUserCreated ?? false
+            : false,
+      ));
     }
+    return localTrainingSessions;
+  }
+
+  Map<int, List<HiveTrainingSessionItem>> groupTSItems(List<HiveTrainingSessionItem> localTrainingSessionItems) {
+    final Map<int, List<HiveTrainingSessionItem>> grouped = {};
+    for (final ps in localTrainingSessionItems) {
+      grouped.putIfAbsent(ps.training_sessionId, () => []).add(ps);
+    }
+    return grouped;
   }
 
   @override
