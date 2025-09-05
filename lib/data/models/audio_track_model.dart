@@ -1,4 +1,4 @@
-import '../../domain/entities/audio/audio_track.dart';
+import '../../domain/entities/audio/training_item_with_audio.dart';
 
 /// Data model implementation of AudioTrack entity
 class AudioTrackModel extends TrainingItemWithAudio {
