@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/domain/entities/audio/audio_track.dart';
+import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 
 /// State for the AudioPlayerCubit
 class AudioPlayerState {

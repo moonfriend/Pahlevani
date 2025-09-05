@@ -22,7 +22,6 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       description: fields[2] as String,
       difficulty: fields[3] as int,
       createdAt: fields[4] as DateTime?,
-      items: (fields[5] as List).cast<HiveExercise>(),
       isUserCreated: fields[6] as bool? ?? false,
     );
   }
@@ -42,8 +41,6 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(4)
       ..write(obj.createdAt)
       ..writeByte(5)
-      ..write(obj.items)
-      ..writeByte(6)
       ..write(obj.isUserCreated);
   }
 

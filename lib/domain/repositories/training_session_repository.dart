@@ -1,11 +1,14 @@
+import 'package:pahlevani/data/mappers/row_to_domain.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
+import '../../data/mappers/snapshot_builders.dart';
+
 /// Interface for fetching and managing training_session data and downloads.
 abstract class TrainingSessionRepository {
   /// Fetches the list of training_sessions (e.g., from a remote source).
-  Future<List<TrainingSession>> getTrainingSessions();
+  Future<DomainSnapshot> getTrainingSessions({bool refresh = false});
 
   /// Gets the initial download status for all known training_sessions (e.g., from local storage).
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses();

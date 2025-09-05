@@ -23,14 +23,10 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching training_sessions table from Supabase...");
       final response = await _client.from('training_session').select();
-      if (response is List) {
-        final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
-        print("Fetched  [32m${data.length} [0m training_sessions.");
-        return data;
-      } else {
-        throw Exception('Invalid response format from Supabase for training_session table. Expected a List.');
-      }
-    } catch (e) {
+      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      print("Fetched  [32m${data.length} [0m training_sessions.");
+      return data;
+        } catch (e) {
       print("Supabase fetch error (training_session): $e");
       throw Exception('Failed to fetch training_sessions table: $e');
     }
@@ -41,14 +37,10 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching Exercise table from Supabase...");
       final response = await _client.from('exercise').select();
-      if (response is List) {
-        final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
-        print("Fetched  [32m${data.length} [0m Exercise.");
-        return data;
-      } else {
-        throw Exception('Invalid response format from Supabase for Exercise table. Expected a List.');
-      }
-    } catch (e) {
+      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      print("Fetched  [32m${data.length} [0m Exercise.");
+      return data;
+        } catch (e) {
       print("Supabase fetch error (Exercise): $e");
       throw Exception('Failed to fetch Exercise table: $e');
     }
@@ -59,14 +51,10 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching training_session_items table from Supabase...");
       final response = await _client.from('training_session_item').select();
-      if (response is List) {
-        final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
-        print("Fetched  [32m${data.length} [0m training_session_items.");
-        return data;
-      } else {
-        throw Exception('Invalid response format from Supabase for training_session_items table. Expected a List.');
-      }
-    } catch (e) {
+      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      print("Fetched  [32m${data.length} [0m training_session_items.");
+      return data;
+        } catch (e) {
       print("Supabase fetch error (training_session_items): $e");
       throw Exception('Failed to fetch training_session_items table: $e');
     }

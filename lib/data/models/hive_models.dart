@@ -23,9 +23,6 @@ class HiveTrainingSession extends HiveObject {
   final DateTime? createdAt;
 
   @HiveField(5)
-  final List<HiveExercise> items;
-
-  @HiveField(6)
   final bool isUserCreated;
 
 
@@ -35,7 +32,6 @@ class HiveTrainingSession extends HiveObject {
     required this.description,
     required this.difficulty,
     this.createdAt,
-    required this.items,
     this.isUserCreated = false,
   });
 
@@ -47,9 +43,6 @@ class HiveTrainingSession extends HiveObject {
       difficulty: json['difficulty'] as int,
       createdAt: json['created_at'] == null ? null : DateTime.parse(
           json['created_at'] as String),
-      items: (json['items'] as List<dynamic>)
-          .map((e) => HiveExercise.fromJson(e as Map<String, dynamic>))
-          .toList(),
       isUserCreated: json['is_user_created'] as bool? ?? false,
     );
   }
@@ -60,31 +53,29 @@ class HiveTrainingSession extends HiveObject {
         'description': description,
         'difficulty': difficulty,
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
-        'items': items.map((e) => e.toJson()).toList(),
         'is_user_created': isUserCreated,
       };
 
 
   factory HiveTrainingSession.fromDomain(TrainingSession training_session) {
     return HiveTrainingSession(
-      id: training_session.id,
+      id: int.parse(training_session.id),
       title: training_session.title,
       description: training_session.description,
       difficulty: training_session.difficulty,
       createdAt: training_session.createdAt,
-      items: training_session.items.map((s) => HiveExercise.fromDomain(s)).toList(),
+      // items: training_session.items.map((s) => HiveExercise.fromDomain(s)).toList(),
       isUserCreated: training_session.isUserCreated,
     );
   }
 
   TrainingSession toDomain() {
     return TrainingSession(
-      id: id,
+      id: id.toString(),
       title: title,
       description: description,
       difficulty: difficulty,
       createdAt: createdAt,
-      items: items.map((s) => s.toDomain()).toList(),
       isUserCreated: isUserCreated,
     );
   }
@@ -171,7 +162,7 @@ class HiveExercise extends HiveObject {
 @HiveType(typeId: 2)
 class HiveTrainingSessionItem extends HiveObject {
   @HiveField(0)
-  final int training_sessionId;
+  final int training_sessionId; // it doesn't really need it todo: remove
   @HiveField(1)
   final int itemId;
   @HiveField(2)
