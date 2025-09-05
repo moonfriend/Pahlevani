@@ -18,7 +18,7 @@ class EditTrainingSessionPage extends StatefulWidget {
 }
 
 class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
-  late List<TrainingSessionItem> _songs;
+  late List<TrainingSessionItem> _items;
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
   bool _hasChanges = false;
@@ -29,10 +29,10 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
   @override
   void initState() {
     super.initState();
-    _songs = List.from(widget.training_session.items);
+    _items = List.from(widget.training_session.items);
     _titleController = TextEditingController(text: widget.training_session.title);
     _descriptionController = TextEditingController(text: widget.training_session.description);
-    _repetitionsMap = {for (final song in _songs) song.id: 1};
+    _repetitionsMap = {for (final song in _items) song.id: 1};
     _loadRepetitionsFromLocal();
   }
 
@@ -41,7 +41,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
     final training_sessionSongs = await db.getTrainingSessionItems();
     final currentTrainingSessionSongs = training_sessionSongs.where((ps) => ps.training_sessionId == widget.training_session.id).toList();
     final map = <int, int>{};
-    for (final song in _songs) {
+    for (final song in _items) {
       HiveTrainingSessionItem? ps;
       try {
         ps = currentTrainingSessionSongs.firstWhere((p) => p.itemId == song.id);
@@ -64,8 +64,8 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
 
   void _removeSong(int index) {
     setState(() {
-      _repetitionsMap.remove(_songs[index].id);
-      _songs.removeAt(index);
+      _repetitionsMap.remove(_items[index].id);
+      _items.removeAt(index);
       _hasChanges = true;
     });
   }
@@ -75,8 +75,8 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
       if (oldIndex < newIndex) {
         newIndex -= 1;
       }
-      final song = _songs.removeAt(oldIndex);
-      _songs.insert(newIndex, song);
+      final song = _items.removeAt(oldIndex);
+      _items.insert(newIndex, song);
       // Repetitions map remains valid since song ids are unchanged
       _hasChanges = true;
     });
@@ -86,44 +86,44 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
     print("Saving changes - hasChanges: $_hasChanges");
     print("Original title: ${widget.training_session.title}, New title: ${_titleController.text}");
     print("Original description: ${widget.training_session.description}, New description: ${_descriptionController.text}");
-    print("Original songs count: ${widget.training_session.items.length}, New songs count: ${_songs.length}");
-    
-    if (!_hasChanges) {
-      print("No changes detected, just popping");
-      Navigator.pop(context);
-      return;
-    }
-
-    final isEditingUserTrainingSession = widget.training_session.isUserCreated;
-    final newId = isEditingUserTrainingSession ? widget.training_session.id : DateTime.now().millisecondsSinceEpoch;
-    final updatedTrainingSession = TrainingSession(
-      id: newId,
-      title: _titleController.text,
-      description: _descriptionController.text,
-      difficulty: widget.training_session.difficulty,
-      createdAt: DateTime.now(),
-      items: _songs.map((song) {
-        return TrainingSessionItem(
-          id: song.id,
-          name: song.name,
-          author: song.author,
-          type: song.type,
-          audioFileUrl: song.audioFileUrl,
-          position: song.position,
-          repsToDo: song.repsToDo,//TODO: this was added to skip error, double check
-        );
-      }).toList(),
-      isUserCreated: true, // Always mark as user-created for edits
-    );
-
-    print("Returning updated training_session with ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated}");
-    print("Repetitions map: $_repetitionsMap");
-
-    // Pass repetitions map as a second argument
-    Navigator.pop(context, {
-      'training_session': updatedTrainingSession,
-      'repetitionsMap': _repetitionsMap,
-    });
+    print("Original songs count: ${widget.training_session.items.length}, New songs count: ${_items.length}");
+    //
+    // if (!_hasChanges) {
+    //   print("No changes detected, just popping");
+    //   Navigator.pop(context);
+    //   return;
+    // }
+    //
+    // final isEditingUserTrainingSession = widget.training_session.isUserCreated;
+    // final newId = isEditingUserTrainingSession ? widget.training_session.id : DateTime.now().millisecondsSinceEpoch;
+    // final updatedTrainingSession = TrainingSession(
+    //   id: newId,
+    //   title: _titleController.text,
+    //   description: _descriptionController.text,
+    //   difficulty: widget.training_session.difficulty,
+    //   createdAt: DateTime.now(),
+    //   items: _items.map((song) {
+    //     return TrainingSessionItem(
+    //       id: song.id,
+    //       name: song.name,
+    //       author: song.author,
+    //       type: song.type,
+    //       audioFileUrl: song.audioFileUrl,
+    //       position: song.position,
+    //       repsToDo: song.repsToDo,//TODO: this was added to skip error, double check
+    //     );
+    //   }).toList(),
+    //   isUserCreated: true, // Always mark as user-created for edits
+    // );
+    //
+    // print("Returning updated training_session with ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated}");
+    // print("Repetitions map: $_repetitionsMap");
+    //
+    // // Pass repetitions map as a second argument
+    // Navigator.pop(context, {
+    //   'training_session': updatedTrainingSession,
+    //   'repetitionsMap': _repetitionsMap,
+    // });
   }
 
   @override
@@ -186,11 +186,11 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: ReorderableListView.builder(
-                itemCount: _songs.length,
+                itemCount: _items.length,
                 onReorder: _reorderSongs,
                 buildDefaultDragHandles: false,
                 itemBuilder: (context, index) {
-                  final song = _songs[index];
+                  final song = _items[index];
                   return Card(
                     key: ValueKey(song.id),
                     margin: const EdgeInsets.symmetric(vertical: 8),
