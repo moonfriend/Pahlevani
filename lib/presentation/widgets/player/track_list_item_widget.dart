@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../domain/entities/audio/audio_track.dart';
+import '../../../domain/entities/audio/training_item_with_audio.dart';
 
 /// A widget representing a track in the training_session
 class TrackListItemWidget extends StatelessWidget {

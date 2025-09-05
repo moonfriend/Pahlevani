@@ -1,0 +1,32 @@
+class TrainingSessionRow {
+  final int id; // integer in DB
+  final String? title;
+  final String? description;
+  final int? difficulty;
+  final DateTime? createdAt;
+  final bool? isUserCreated;
+
+  TrainingSessionRow({
+    required this.id,
+    this.title,
+    this.description,
+    this.difficulty,
+    this.createdAt,
+    this.isUserCreated,
+  });
+
+  factory TrainingSessionRow.fromJson(Map<String, dynamic> json) {
+    DateTime? parsedDate;
+    if (json['created_at'] is String) {
+      parsedDate = DateTime.tryParse(json['created_at'] as String);
+    }
+    return TrainingSessionRow(
+      id: json['id'] as int? ?? 1,
+      title: json['title'] as String? ?? 'Unknown TrainingSession',
+      description: json['description'] as String? ?? '',
+      difficulty: json['difficulty'] as int? ?? 1,
+      createdAt: parsedDate,
+      isUserCreated: json['is_user_created'] as bool? ?? false,
+    );
+  }
+}

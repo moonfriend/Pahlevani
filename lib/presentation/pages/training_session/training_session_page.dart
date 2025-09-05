@@ -3,7 +3,7 @@ import 'dart:io'; // For File and Directory
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
-import 'package:pahlevani/domain/entities/audio/audio_track.dart'; // Import existing AudioTrack
+import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart'; // Import existing AudioTrack
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
@@ -61,6 +61,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         }
 
         // Get source path
+        //if it is already downloaded pass the address else pass the url (online)
         if (isDownloaded) {
           final filename = _getSafeFilename(song);
           final localPath = '$training_sessionDirPath/$filename';
@@ -124,11 +125,11 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   }
 
   // Helper to get safe filename (could be moved to a utility class)
-  String _getSafeFilename(TrainingSessionItem song) {
-    final safeName = song.name.replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_').replaceAll(' ', '_');
+  String _getSafeFilename(TrainingSessionItem tsItem) {
+    final safeName = tsItem.name.replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_').replaceAll(' ', '_');
     String extension = '.mp3';
     try {
-      final uri = Uri.parse(song.audioFileUrl);
+      final uri = Uri.parse(tsItem.audioFileUrl);
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
         extension = uri.pathSegments.last.substring(uri.pathSegments.last.lastIndexOf('.'));
         if (!['.mp3', '.m4a', '.wav', '.ogg'].contains(extension.toLowerCase())) {
@@ -138,7 +139,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     } catch (_) {
       /* Keep default */
     }
-    return '${song.id}_${safeName}$extension';
+    return '${tsItem.id}_${safeName}$extension';
   }
 
   void _navigateToPlayer(BuildContext context, TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
@@ -154,6 +155,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
       return;
     }
 
+    // final detail = buildSessionDetail(training_session.id, domainSnapshot);
     // Navigate to the player page with the tracks
     if (mounted) {
       Navigator.push(
@@ -182,7 +184,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         builder: (context, state) {
           Widget bodyContent;
 
-          if (state is TrainingSessionInitial || (state is TrainingSessionLoading && state.training_sessions.isEmpty)) {
+          if (state is TrainingSessionInitial || (state is TrainingSessionLoading && state.domainSnapShot.isEmpty)) {
             bodyContent = const Center(child: CircularProgressIndicator());
           } else if (state is TrainingSessionError) {
             bodyContent = _buildErrorWidget(context, state.message);
@@ -192,13 +194,13 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             Map<int, double> downloadProgress = {};
 
             if (state is TrainingSessionLoading) {
-              training_sessions = state.training_sessions;
+              training_sessions = state.domainSnapShot.sessionsById.values.toList();
               downloadStatus = state.downloadStatus;
             } else if (state is TrainingSessionLoaded) {
-              training_sessions = state.training_sessions;
+              training_sessions = state.domainSnapShot.sessionsById.values.toList();
               downloadStatus = state.downloadStatus;
             } else if (state is TrainingSessionDownloading) {
-              training_sessions = state.training_sessions;
+              training_sessions = state.domainSnapShot.sessionsById.values.toList();
               downloadStatus = state.downloadStatus;
               downloadProgress = state.downloadProgress;
             }
@@ -326,7 +328,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                 } else if (value == 'delete') {
                   _deleteTrainingSession(context, training_session);
                 } else if (value == 'download') {
-                  context.read<TrainingSessionCubit>().downloadTrainingSession(training_session.id);
+                  context.read<TrainingSessionCubit>().downloadTrainingSession(training_session.id as int);
                 }
               },
               itemBuilder: (context) => [
