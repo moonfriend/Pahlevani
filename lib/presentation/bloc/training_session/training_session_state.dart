@@ -10,58 +10,58 @@ class TrainingSessionInitial extends TrainingSessionState {
   List<Object?> get props => [];
 }
 
-// Represents general loading (fetching training_sessions)
+// Represents general loading (fetching domainSnapShot)
 class TrainingSessionLoading extends TrainingSessionState {
-  final List<TrainingSession> training_sessions; // Keep existing training_sessions if available
+  final DomainSnapshot  domainSnapShot; // Keep existing domainSnapShot if available
   final Map<int, DownloadStatus> downloadStatus;
 
-  const TrainingSessionLoading({required this.training_sessions, required this.downloadStatus});
+  const TrainingSessionLoading({required this.domainSnapShot, required this.downloadStatus});
 
   @override
-  List<Object?> get props => [training_sessions, downloadStatus];
+  List<Object?> get props => [domainSnapShot, downloadStatus];
 }
 
-// Represents state where training_sessions are loaded and displayed
+// Represents state where domainSnapShot are loaded and displayed
 class TrainingSessionLoaded extends TrainingSessionState {
-  final List<TrainingSession> training_sessions;
+  final DomainSnapshot domainSnapShot;
   final Map<int, DownloadStatus> downloadStatus;
 
-  const TrainingSessionLoaded({required this.training_sessions, required this.downloadStatus});
+  const TrainingSessionLoaded({required this.domainSnapShot, required this.downloadStatus});
 
   @override
-  List<Object?> get props => [training_sessions, downloadStatus];
+  List<Object?> get props => [domainSnapShot, downloadStatus];
 }
 
 // Represents state during an active download
 class TrainingSessionDownloading extends TrainingSessionState {
-  final List<TrainingSession> training_sessions;
+  final DomainSnapshot domainSnapShot;
   final Map<int, DownloadStatus> downloadStatus; // Updated status map
   final Map<int, double> downloadProgress; // Progress map
   final int downloadingTrainingSessionId; // ID being downloaded
 
   const TrainingSessionDownloading({
-    required this.training_sessions,
+    required this.domainSnapShot,
     required this.downloadStatus,
     required this.downloadProgress,
     required this.downloadingTrainingSessionId,
   });
 
   @override
-  List<Object?> get props => [training_sessions, downloadStatus, downloadProgress, downloadingTrainingSessionId];
+  List<Object?> get props => [domainSnapShot, downloadStatus, downloadProgress, downloadingTrainingSessionId];
 }
 
 // Represents an error state (fetching or downloading)
 class TrainingSessionError extends TrainingSessionState {
   final String message;
-  final List<TrainingSession> training_sessions; // Keep training_sessions if possible
+  final DomainSnapshot domainSnapShot; // Keep domainSnapShot if possible
   final Map<int, DownloadStatus> downloadStatus;
 
   const TrainingSessionError({
     required this.message,
-    required this.training_sessions,
+    required this.domainSnapShot,
     required this.downloadStatus,
   });
 
   @override
-  List<Object?> get props => [message, training_sessions, downloadStatus];
+  List<Object?> get props => [message, domainSnapShot, downloadStatus];
 }
