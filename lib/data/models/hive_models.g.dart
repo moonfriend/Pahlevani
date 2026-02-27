@@ -22,14 +22,14 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       description: fields[2] as String,
       difficulty: fields[3] as int,
       createdAt: fields[4] as DateTime?,
-      isUserCreated: fields[6] as bool? ?? false,
+      isUserCreated: fields[5] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -55,7 +55,7 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
           typeId == other.typeId;
 }
 
-class HiveAudioAdapter extends TypeAdapter<HiveExercise> {
+class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
   @override
   final int typeId = 1;
 
@@ -79,7 +79,7 @@ class HiveAudioAdapter extends TypeAdapter<HiveExercise> {
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(obj.repetitions != null ? 7 : 6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -91,10 +91,9 @@ class HiveAudioAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(4)
       ..write(obj.url)
       ..writeByte(5)
-      ..write(obj.position);
-    if (obj.repetitions != null) {
-      writer..writeByte(6)..write(obj.repetitions);
-    }
+      ..write(obj.position)
+      ..writeByte(6)
+      ..write(obj.repetitions);
   }
 
   @override
@@ -103,14 +102,15 @@ class HiveAudioAdapter extends TypeAdapter<HiveExercise> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is HiveAudioAdapter &&
+      other is HiveExerciseAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
 
-class HiveTrainingSessionItemAdapter extends TypeAdapter<HiveTrainingSessionItem> {
+class HiveTrainingSessionItemAdapter
+    extends TypeAdapter<HiveTrainingSessionItem> {
   @override
-  final int typeId = 3;
+  final int typeId = 2;
 
   @override
   HiveTrainingSessionItem read(BinaryReader reader) {

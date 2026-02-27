@@ -1,4 +1,3 @@
-import 'package:pahlevani/data/mappers/row_to_domain.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
