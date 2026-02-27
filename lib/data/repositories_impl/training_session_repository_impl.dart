@@ -67,7 +67,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final TSItemMaps = await remoteDataSource.fetchTrainingSessionItemTable();
 
       // also get locals here and merge with remote
-      localTSMaps = localDataSource.getTrainingSessionsTable();
+      final localTSMaps = await localDataSource.getTrainingSessionsTable();
 
       // convert to exerciseRow TSRow and TSItemRow
       final TSRows = TSMaps.map((e) => TrainingSessionRow.fromJson(e))
@@ -239,11 +239,11 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       for (final itemDetail in validItemDetails) {
         final filename = _getSafeFilename(itemDetail);
         final savePath = '$targetDirPath/$filename';
-        print("Downloading song: ${itemDetail.name}");
+        print("Downloading song: ${itemDetail.exercise.name}");
 
         try {
           await localDataSource.downloadFile(
-            itemDetail.audioFileUrl,
+            itemDetail.exercise.audioFileUrl ?? '',
             savePath,
             (received, total) {
               if (total > 0) {
@@ -260,15 +260,15 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           downloadedCount++;
           final progress = (downloadedCount / totalItems).clamp(0.0, 1.0);
           print(
-              "Song completed: ${itemDetail.name}, overall progress: ${(progress * 100).toStringAsFixed(1)}%");
+              "Song completed: ${itemDetail.exercise.name}, overall progress: ${(progress * 100).toStringAsFixed(1)}%");
           controller.add(progress);
 
           // Add a small delay between downloads to prevent overwhelming the server
           await Future.delayed(const Duration(milliseconds: 100));
         } catch (e) {
-          print("Error downloading song ${itemDetail.name}: $e");
+          print("Error downloading song ${itemDetail.exercise.name}: $e");
           controller.addError(
-              Exception("Failed to download song: ${itemDetail.name} - $e"));
+              Exception("Failed to download song: ${itemDetail.exercise.name} - $e"));
           await _saveDownloadStatus(trainingSessionId, DownloadStatus.error);
           await controller.close();
           return;
@@ -348,7 +348,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   @override
-  Future<String?> getLocalSongPath(int training_sessionId, TrainingSessionItem song) async {
+  Future<String?> getLocalSongPath(int training_sessionId, ItemDetail song) async {
     if (await isTrainingSessionDownloaded(training_sessionId)) {
       final training_sessionDirPath =
           await localDataSource.getTrainingSessionDirectoryPath(training_sessionId);
@@ -361,14 +361,14 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     return null; // Return null if not downloaded or file missing
   }
 
-  /// Helper to create a safe filename (duplicate from page, should be centralized)
+  /// Helper to create a safe filename
   String _getSafeFilename(ItemDetail item) {
     final safeName = item.exercise.name
         .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
         .replaceAll(' ', '_');
     String extension = '.mp3';
     try {
-      final uri = Uri.parse(item.exercise.audioFileUrl);
+      final uri = Uri.parse(item.exercise.audioFileUrl ?? '');
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
         extension = uri.pathSegments.last
             .substring(uri.pathSegments.last.lastIndexOf('.'));
@@ -380,7 +380,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     } catch (_) {
       /* Keep default */
     }
-    return '${item.id}_${safeName}$extension';
+    return '${item.item.id}_${safeName}$extension';
   }
 
   @override

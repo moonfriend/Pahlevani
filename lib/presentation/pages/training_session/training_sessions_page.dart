@@ -1,17 +1,10 @@
-import 'dart:io'; // For File and Directory
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
-import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart'; // Import existing AudioTrack
-import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart'; // Import enum
+import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
-import 'package:path_provider/path_provider.dart'; // For finding paths
 
 class TrainingSessionPage extends StatefulWidget {
   const TrainingSessionPage({super.key});
@@ -21,152 +14,13 @@ class TrainingSessionPage extends StatefulWidget {
 }
 
 class _TrainingSessionPageState extends State<TrainingSessionPage> {
-  //thoughts on refactoring:
-  // all this should be done in the repository. what we need here is something
-  // like just: repo.getTracks(TSID)
-  // and that should also be not here, it should be in the viewmodel (cubit or so)
-  // to refactor like that we might just ignore these parts now and just pass a sessionsID
-  // to the audio_player_page. There we will receive the sessionID and ask the repo for the
-  // right tracks. We might then reuse all these logic there.
-  // points of unclarity are: -I don't yet know how offline/online tracks are being handled
-  // - what are these preloaded/actual track thing
-  //
-  Future<List<TrainingItemWithAudio>> _convertSongsToAudioTracks(TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
-    final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
-    final isDownloaded = status == DownloadStatus.downloaded;
-    String training_sessionDirPath = '';
-
-    try {
-      if (isDownloaded) {
-        final localDirectoryPath = (await getApplicationDocumentsDirectory()).path;
-        training_sessionDirPath = '$localDirectoryPath/training_session_${training_session.id}';
-
-        // Verify training_session directory exists
-        final training_sessionDir = Directory(training_sessionDirPath);
-        if (!await training_sessionDir.exists()) {
-          print("Warning: TrainingSession directory not found: $training_sessionDirPath");
-          return [];
-        }
-      }
-
-      // Get repetition information from local database
-      final localDatabase = TrainingSessionLocalDatabase();
-      final tracks = await localDatabase.getTracks();
-      final trainingSessionItems = await localDatabase.getTrainingSessionItems();
-
-      List<TrainingItemWithAudio> audioTracks = [];
-      for (final item in training_session.items) {
-        if (item.audioFileUrl.trim().isEmpty) continue;
-
-        String sourcePath;
-        String imagePath;
-
-        // Get image path
-        try {
-          final safeTypeName = item.type.toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^a-z0-9_]'), '');
-          final baseName = safeTypeName.isNotEmpty ? safeTypeName : 'unknown';
-          imagePath = 'assets/images/$baseName.png';
-        } catch (_) {
-          imagePath = 'assets/images/placeholder.png';
-        }
-
-        // Get source path
-        //if it is already downloaded pass the address else pass the url (online)
-        if (isDownloaded) {
-          final filename = _getSafeFilename(item);
-          final localPath = '$training_sessionDirPath/$filename';
-          final file = File(localPath);
-
-          if (await file.exists()) {
-            final fileSize = await file.length();
-            if (fileSize > 0) {
-              sourcePath = localPath;
-            } else {
-              print("Warning: Downloaded file is empty: $localPath");
-              continue;
-            }
-          } else {
-            print("Warning: Downloaded file missing: $localPath");
-            continue;
-          }
-        } else {
-          sourcePath = item.audioFileUrl.trim();
-        }
-
-        // Get repetition information
-        int? defaultRepetitions;
-        int? userRepetitions;
-
-        // Find default repetitions from HiveAudio
-        try {
-          final hiveTrack = tracks.firstWhere((t) => t.id == item.id);
-          defaultRepetitions = hiveTrack.repetitions;
-        } catch (_) {
-          // Track not found in local database
-        }
-
-        // Find user-specific repetitions from HiveTrainingSessionSong
-        try {
-          final training_sessionSong = trainingSessionItems.firstWhere((ps) => ps.trainingSessionId == training_session.id && ps.itemId == item.id);
-          userRepetitions = training_sessionSong.repsToDo;
-        } catch (_) {
-          // TrainingSessionSong not found in local database
-        }
-
-        audioTracks.add(TrainingItemWithAudio(
-          id: item.id.toString(),
-          title: item.name,
-          audioFilePath: sourcePath,
-          imagePath: imagePath,
-          defaultRepetitions: defaultRepetitions,
-          userRepetitions: userRepetitions,
-        ));
-      }
-
-      if (audioTracks.isEmpty) {
-        print("Warning: No valid tracks found for training_session ${training_session.id}");
-      }
-
-      return audioTracks;
-    } catch (e) {
-      print("Error converting songs to audio tracks: $e");
-      return [];
-    }
-  }
-
-  // Helper to get safe filename (could be moved to a utility class)
-  String _getSafeFilename(TrainingSessionItem tsItem) {
-    final safeName = tsItem.name.replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_').replaceAll(' ', '_');
-    String extension = '.mp3';
-    try {
-      final uri = Uri.parse(tsItem.audioFileUrl);
-      if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
-        extension = uri.pathSegments.last.substring(uri.pathSegments.last.lastIndexOf('.'));
-        if (!['.mp3', '.m4a', '.wav', '.ogg'].contains(extension.toLowerCase())) {
-          extension = '.mp3';
-        }
-      }
-    } catch (_) {
-      /* Keep default */
-    }
-    return '${tsItem.id}_${safeName}$extension';
-  }
-
-  void _navigateToPlayer(BuildContext context, TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
-    // Convert songs using the current download status from the state
-    final audioTracks = await _convertSongsToAudioTracks(training_session, downloadStatus);
-
-
-    // final detail = buildSessionDetail(training_session.id, domainSnapshot);
-    // Navigate to the player page with the tracks
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => AudioPlayerPage(trainingSession: training_session),
-        ),
-      );
-    }
+  void _navigateToPlayer(BuildContext context, TrainingSession trainingSession) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AudioPlayerPage(trainingSession: trainingSession),
+      ),
+    );
   }
 
   @override
@@ -194,17 +48,21 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             List<TrainingSession> training_sessions = [];
             Map<int, DownloadStatus> downloadStatus = {};
             Map<int, double> downloadProgress = {};
+            Map<int, int> itemCounts = {};
 
             if (state is TrainingSessionLoading) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
+              itemCounts = state.uiModel.sessionItemCounts;
             } else if (state is TrainingSessionLoaded) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
+              itemCounts = state.uiModel.sessionItemCounts;
             } else if (state is TrainingSessionDownloading) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
               downloadProgress = state.downloadProgress;
+              itemCounts = state.uiModel.sessionItemCounts;
             }
 
             if (training_sessions.isEmpty && state is! TrainingSessionLoading) {
@@ -217,6 +75,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                   training_sessions,
                   downloadStatus,
                   downloadProgress,
+                  itemCounts,
                   theme,
                 ),
               );
@@ -239,6 +98,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     List<TrainingSession> training_sessions,
     Map<int, DownloadStatus> downloadStatus,
     Map<int, double> downloadProgress,
+    Map<int, int> itemCounts,
     ThemeData theme,
   ) {
     return ListView.builder(
@@ -247,6 +107,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         final training_session = training_sessions[index];
         final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
         final progress = downloadProgress[training_session.id];
+        final trackCount = itemCounts[training_session.id] ?? 0;
 
         return Card(
           color: theme.colorScheme.surface.withOpacity(0.97),
@@ -297,7 +158,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                       // const SizedBox(width: 4),
                       Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
                       // const SizedBox(width: 4),
-                      Text('${training_session.items.length} tracks', style: theme.textTheme.bodySmall),
+                      Text('$trackCount tracks', style: theme.textTheme.bodySmall),
                       // const SizedBox(width: 16),
                       Icon(Icons.bolt_rounded, size: 16, color: theme.colorScheme.secondary),
                       // const SizedBox(width: 4),
@@ -368,7 +229,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                   ),
               ],
             ),
-            onTap: () => _navigateToPlayer(context, training_session, downloadStatus),
+            onTap: () => _navigateToPlayer(context, training_session),
           ),
         );
       },

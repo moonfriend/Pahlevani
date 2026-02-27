@@ -1,5 +1,5 @@
 import 'package:pahlevani/data/mappers/row_to_domain.dart';
-import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -20,8 +20,8 @@ abstract class TrainingSessionRepository {
   /// Checks if a specific training_session is considered fully downloaded locally.
   Future<bool> isTrainingSessionDownloaded(int training_sessionId);
 
-  /// Gets the local file path for a song if downloaded, otherwise null.
-  Future<String?> getLocalSongPath(int training_sessionId, TrainingSessionItem song);
+  /// Gets the local file path for an item if downloaded, otherwise null.
+  Future<String?> getLocalSongPath(int training_sessionId, ItemDetail song);
 
   /// Saves a training_session to the repository.
   Future<TrainingSession> saveTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap});

@@ -36,16 +36,13 @@ abstract class TrainingSessionLocalDataSource {
   Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress);
 
   /// gets all Training Sessions from the local storage
-  Future<List<Map<String, dynamic>>> getTrainingSessions();
+  Future<List<Map<String, dynamic>>> getTrainingSessionsTable();
 
   /// Fetches all Exercises from the local storage
-  Future<List<Map<String, dynamic>>> getExercises();
+  Future<List<Map<String, dynamic>>> getExerciseTable();
 
   /// Fetches all training_session_items from the local storage
-  Future<List<Map<String, dynamic>>> getTrainingSessionItems();
-
-  Future<void> saveTrainingSession(List<TrainingSession> trainingSessions) async {//rows(dto) or entity here?
-  }
+  Future<List<Map<String, dynamic>>> getTrainingSessionItemTable();
 
 }
 
