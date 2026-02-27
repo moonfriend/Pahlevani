@@ -1,6 +1,3 @@
-
-import 'package:pahlevani/domain/entities/training_session/training_item.dart';
-
 class TrainingSession {
   final int id;
   final String title;
@@ -17,12 +14,6 @@ class TrainingSession {
     this.createdAt,
     this.isUserCreated = false,
   });
-
-  Iterable get items {//fake for edit page, todo: remove
-    List<TrainingSessionItem> its = [];
-    return its;
-  }
-
 
   TrainingSession copyWith({
     int? id,
