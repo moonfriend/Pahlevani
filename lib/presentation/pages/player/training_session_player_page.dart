@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 import '../../../presentation/bloc/player/audio_player_cubit.dart';
 
 /// Player page for displaying and controlling audio playback
 class AudioPlayerPage extends StatefulWidget {
-  final List<TrainingItemWithAudio> initialTracks;
+  final TrainingSession trainingSession;
 
   const AudioPlayerPage({
     super.key,
-    required this.initialTracks,
+    required this.trainingSession,
   });
 
   @override
@@ -21,15 +22,15 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
   late AnimationController _repetitionAnimationController;
   late Animation<double> _repetitionAnimation;
   int? _lastRepetitionNumber;
-  late final AudioPlayerCubit _playerCubit;
+  late final TrainingSessionPlayerCubit _playerCubit;
 
   @override
   void initState() {
     super.initState();
     // Create a new cubit instance for this page
-    _playerCubit = AudioPlayerCubit();
+    _playerCubit = TrainingSessionPlayerCubit(trainingSession: widget.trainingSession);
     // Load the initial tracks
-    _playerCubit.loadSpecificTracks(widget.initialTracks);
+    _playerCubit.loadTracks();
 
     _repetitionAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -70,7 +71,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
           ),
           iconTheme: const IconThemeData(color: Colors.white),
         ),
-        body: BlocBuilder<AudioPlayerCubit, AudioPlayerState>(
+        body: BlocBuilder<TrainingSessionPlayerCubit, AudioPlayerState>(
           builder: (context, state) {
             if (state.isLoading) {
               return const Center(

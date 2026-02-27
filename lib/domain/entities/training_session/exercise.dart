@@ -1,5 +1,5 @@
 class Exercise {
-  final String id;
+  final int id;
   final String name;
   final String? author;
   final String? type;

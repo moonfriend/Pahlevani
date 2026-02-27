@@ -45,12 +45,12 @@ class TrainingSessionLocalDatabase {
   }
 
   /// Save training_sessions to local database
-  Future<void> saveTrainingSessions(List<TrainingSession> training_sessions) async {
+  Future<void> saveTrainingSessions(List<TrainingSession> trainingSessions) async {
     final box = await getTrainingSessionBox();
     final settingsBox = await _getSettingsBox();
 
     // Convert domain models to Hive models
-    final hiveTrainingSessions = training_sessions.map((p) => HiveTrainingSession.fromDomain(p)).toList();
+    final hiveTrainingSessions = trainingSessions.map((p) => HiveTrainingSession.fromDomain(p)).toList();
 
     // Save all training_sessions
     await box.clear(); // Clear existing data
