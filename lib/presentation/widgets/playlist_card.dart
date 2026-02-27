@@ -7,6 +7,7 @@ class TrainingSessionCard extends StatelessWidget {
   final TrainingSession training_session;
   final DownloadStatus downloadStatus;
   final double? downloadProgress;
+  final int itemCount;
   final VoidCallback onTap;
   final VoidCallback onDownloadTap;
   final VoidCallback onEditTap;
@@ -17,6 +18,7 @@ class TrainingSessionCard extends StatelessWidget {
     required this.training_session,
     required this.downloadStatus,
     this.downloadProgress,
+    this.itemCount = 0,
     required this.onTap,
     required this.onDownloadTap,
     required this.onEditTap,
@@ -73,7 +75,7 @@ class TrainingSessionCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${training_session.items.length} songs',
+                              '$itemCount songs',
                               style: Theme.of(context).textTheme.labelMedium,
                             ),
                             Row(
@@ -189,7 +191,7 @@ class TrainingSessionCard extends StatelessWidget {
         return IconButton(
           icon: const Icon(Icons.download),
           tooltip: 'Download TrainingSession',
-          onPressed: training_session.items.isEmpty ? null : onDownloadTap,
+          onPressed: itemCount == 0 ? null : onDownloadTap,
         );
     }
   }

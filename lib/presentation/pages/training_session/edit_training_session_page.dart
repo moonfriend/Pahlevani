@@ -29,7 +29,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
   @override
   void initState() {
     super.initState();
-    _items = List.from(widget.training_session.items);
+    _items = []; // items are loaded separately via DomainSnapshot, not embedded in TrainingSession
     _titleController = TextEditingController(text: widget.training_session.title);
     _descriptionController = TextEditingController(text: widget.training_session.description);
     _repetitionsMap = {for (final song in _items) song.id: 1};
@@ -86,7 +86,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
     print("Saving changes - hasChanges: $_hasChanges");
     print("Original title: ${widget.training_session.title}, New title: ${_titleController.text}");
     print("Original description: ${widget.training_session.description}, New description: ${_descriptionController.text}");
-    print("Original songs count: ${widget.training_session.items.length}, New songs count: ${_items.length}");
+    print("New songs count: ${_items.length}");
     //
     // if (!_hasChanges) {
     //   print("No changes detected, just popping");
