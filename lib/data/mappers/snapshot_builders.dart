@@ -14,9 +14,9 @@ import '../../domain/entities/training_session/training_item.dart';
 /// - a ready `SessionDetail` for a chosen session.
 
 class DomainSnapshot {
-  final Map<String, TrainingSession> sessionsById;
-  final Map<String, List<TrainingItem>> itemsBySessionId; // ordered
-  final Map<String, Exercise> exercisesById;
+  final Map<int, TrainingSession> sessionsById;
+  final Map<int, List<TrainingItem>> itemsBySessionId; // ordered
+  final Map<int, Exercise> exercisesById;
 
   DomainSnapshot({
     required this.sessionsById,
@@ -43,12 +43,10 @@ DomainSnapshot buildDomainSnapshot({
   required List<TrainingItemRow> itemRows,
   required List<ExerciseRow> exerciseRows,
 }) {
-  final sessionsById = {
-    for (final s in sessionRows.map(mapSession)) s.id: s
-  };
+  final sessionsById = {for (final s in sessionRows.map(mapSession)) s.id: s};
 
   // group items by session, ordered by position
-  final grouped = <String, List<TrainingItem>>{};
+  final grouped = <int, List<TrainingItem>>{};
   for (final row in itemRows) {
     final item = mapItem(row);
     grouped.putIfAbsent(item.sessionId, () => []).add(item);
@@ -69,10 +67,7 @@ DomainSnapshot buildDomainSnapshot({
 }
 
 /// Build a read model for one session (ready for the UI)
-SessionDetail buildSessionDetail(
-    String sessionId,
-    DomainSnapshot snap,
-    ) {
+SessionDetail buildSessionDetail(int sessionId, DomainSnapshot snap) {
   final session = snap.sessionsById[sessionId];
   if (session == null) {
     throw StateError('Session $sessionId not found');

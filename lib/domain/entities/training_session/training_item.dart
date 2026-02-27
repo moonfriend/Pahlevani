@@ -38,9 +38,9 @@ class TrainingSessionItem {//todo: this needs to have the repetition!
 
 //the new model to replace the old one
 class TrainingItem {
-  final String id; // We’ll compose one from (sessionId, position) if not present
-  final String sessionId;
-  final String exerciseId;
+  final int id; // We’ll compose one from (sessionId, position) if not present
+  final int sessionId;
+  final int exerciseId;
   final int position; // 1-based or 0-based doesn’t matter—stay consistent
   final Prescription prescription;
   const TrainingItem({

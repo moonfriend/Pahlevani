@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
 /// State for the AudioPlayerCubit
 class AudioPlayerState {
@@ -17,13 +20,20 @@ class AudioPlayerState {
   final Duration logicalDuration; // Logical total duration
 
   /// Current track being played or selected
-  TrainingItemWithAudio? get currentTrack => tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length ? tracks[playingIndex] : null;
+  TrainingItemWithAudio? get currentTrack =>
+      tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
+          ? tracks[playingIndex]
+          : null;
 
   /// Next track in the training_session
-  TrainingItemWithAudio? get nextTrack => tracks.isNotEmpty && playingIndex < tracks.length - 1 ? tracks[playingIndex + 1] : null;
+  TrainingItemWithAudio? get nextTrack =>
+      tracks.isNotEmpty && playingIndex < tracks.length - 1
+          ? tracks[playingIndex + 1]
+          : null;
 
   /// Previous track in the training_session
-  TrainingItemWithAudio? get previousTrack => tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
+  TrainingItemWithAudio? get previousTrack =>
+      tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
 
   const AudioPlayerState({
     required this.playingIndex,
@@ -74,8 +84,9 @@ class AudioPlayerState {
 }
 
 /// Cubit for managing audio player state and operations
-class AudioPlayerCubit extends Cubit<AudioPlayerState> {
+class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   late AudioPlayer _audioPlayer;
+  late TrainingSession _trainingSession;
 
   // Subscriptions to audio streams
   StreamSubscription<Duration>? _positionSubscription;
@@ -95,7 +106,10 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
   /// Expose the AudioPlayer instance
   AudioPlayer get audioPlayer => _audioPlayer;
 
-  AudioPlayerCubit() : super(const AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
+  TrainingSessionPlayerCubit({required TrainingSession trainingSession})
+      : super(const AudioPlayerState(
+            playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
+    _trainingSession = trainingSession;
     _audioPlayer = AudioPlayer();
     _initAudioPlayerListeners();
   }
@@ -116,7 +130,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     });
 
     // Listen for player state changes
-    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((playerState) {
+    _playerStateSubscription =
+        _audioPlayer.onPlayerStateChanged.listen((playerState) {
       if (playerState == PlayerState.completed) {
         _handleTrackCompletion();
       }
@@ -126,19 +141,38 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     _audioPlayer.setReleaseMode(ReleaseMode.loop);
   }
 
-  /// Factory constructor to create and initialize the AudioPlayerCubit
-  static Future<AudioPlayerCubit> create() async {
-    final cubit = AudioPlayerCubit();
-    return cubit;
-  }
+  // /// Factory constructor to create and initialize the AudioPlayerCubit
+  // static Future<TrainingSessionPlayerCubit> create() async {
+  //   final cubit = TrainingSessionPlayerCubit();
+  //   return cubit;
+  // }
 
   /// Loads a specific list of tracks, replacing existing ones.
-  Future<void> loadSpecificTracks(List<TrainingItemWithAudio> tracksToLoad) async {
+  Future<void> loadTracks() async {
+    List<TrainingItemWithAudio> tracksToLoad = []; //tmp TODO
+
     emit(state.copyWith(isLoading: true, errorMessage: null));
+    // todo: is this stop necessary?
     await _audioPlayer.stop(); // Stop current playback
+
+    final repo = getIt<TrainingSessionRepository>();
+    final domainSnapshot = await repo.getTrainingSessions();
+    final items = domainSnapshot.itemsBySessionId[_trainingSession.id];
+
+    items?.forEach((item) {
+      final exercise = domainSnapshot.exercisesById[item.exerciseId];
+      final itemWithAudio = TrainingItemWithAudio(
+          id: item.id.toString(), title: exercise?.name ?? '', audioFilePath: exercise?.audioFileUrl ?? '');
+      tracksToLoad.add(itemWithAudio);
+    });
+
     try {
       if (tracksToLoad.isEmpty) {
-        emit(state.copyWith(isLoading: false, tracks: [], playingIndex: -1, errorMessage: 'Selected training_session is empty'));
+        emit(state.copyWith(
+            isLoading: false,
+            tracks: [],
+            playingIndex: -1,
+            errorMessage: 'Selected training_session is empty'));
       } else {
         emit(state.copyWith(
           tracks: tracksToLoad,
@@ -153,7 +187,9 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       }
     } catch (e) {
       print("Error in loadSpecificTracks: $e");
-      emit(state.copyWith(isLoading: false, errorMessage: 'Failed to load selected tracks: $e'));
+      emit(state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to load selected tracks: $e'));
     }
   }
 
@@ -191,7 +227,9 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Set the current track index
   void setIndex(int index) {
-    if (index >= 0 && index < state.tracks.length && index != state.playingIndex) {
+    if (index >= 0 &&
+        index < state.tracks.length &&
+        index != state.playingIndex) {
       final wasPlaying = state.isPlaying;
       // Update state with the new index FIRST
       emit(state.copyWith(
@@ -218,7 +256,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Helper to handle track changes
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
-    if (index < 0 || index >= state.tracks.length) return; // Index out of bounds
+    if (index < 0 || index >= state.tracks.length)
+      return; // Index out of bounds
 
     final track = state.tracks[index];
     final sourcePath = track.audioFilePath; // Get the path/URL from the track
@@ -239,7 +278,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       print("Attempting to load source: $sourcePath"); // Debugging print
 
       // Determine the source type based on the path format
-      if (sourcePath.startsWith('http://') || sourcePath.startsWith('https://')) {
+      if (sourcePath.startsWith('http://') ||
+          sourcePath.startsWith('https://')) {
         print("Detected URL source");
         audioSource = UrlSource(sourcePath);
       } else if (sourcePath.startsWith('/')) {
@@ -265,7 +305,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       await _audioPlayer.stop();
       await _audioPlayer.setSource(audioSource);
       print("Source set successfully for: ${track.displayName}");
-      print("Track repetitions - Default: ${track.defaultRepetitions}, User: ${track.userRepetitions}, Effective: ${track.effectiveRepetitions}");
+      print(
+          "Track repetitions - Default: ${track.defaultRepetitions}, User: ${track.userRepetitions}, Effective: ${track.effectiveRepetitions}");
       // emit(state.copyWith(isLoading: false)); // Remove loading state
 
       // Resume playback if requested and source was set successfully
@@ -275,7 +316,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
       }
     } catch (e) {
       print("Error setting source for $sourcePath: $e");
-      emit(state.copyWith(errorMessage: "Error loading track: ${track.displayName}"));
+      emit(state.copyWith(
+          errorMessage: "Error loading track: ${track.displayName}"));
       // emit(state.copyWith(isLoading: false)); // Ensure loading is removed on error
       await _audioPlayer.stop(); // Stop playback on error
     }
@@ -322,7 +364,7 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
     final defaultReps = currentTrack.defaultRepetitions ?? 1;
     final effectiveReps = currentTrack.effectiveRepetitions;
-    
+
     if (defaultReps == effectiveReps) {
       // No change needed, use original duration
       _targetDuration = _originalDuration;
@@ -330,11 +372,13 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     } else {
       // Calculate target duration
       final originalDurationMs = _originalDuration!.inMilliseconds;
-      final targetDurationMs = (originalDurationMs / defaultReps * effectiveReps).round();
+      final targetDurationMs =
+          (originalDurationMs / defaultReps * effectiveReps).round();
       _targetDuration = Duration(milliseconds: targetDurationMs);
       _isLooping = effectiveReps > defaultReps;
-      
-      print("Dynamic duration: Original=${_originalDuration}, Target=${_targetDuration}, DefaultReps=$defaultReps, EffectiveReps=$effectiveReps");
+
+      print(
+          "Dynamic duration: Original=${_originalDuration}, Target=${_targetDuration}, DefaultReps=$defaultReps, EffectiveReps=$effectiveReps");
     }
   }
 
@@ -357,7 +401,8 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Handle track completion
   void _handleTrackCompletion() {
-    if (_logicalTargetDuration != null && _logicalElapsed < _logicalTargetDuration!) {
+    if (_logicalTargetDuration != null &&
+        _logicalElapsed < _logicalTargetDuration!) {
       // Loop audio
       _audioPlayer.seek(Duration.zero);
       _audioPlayer.resume();
@@ -375,10 +420,14 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
     final defaultReps = currentTrack.defaultRepetitions ?? 1;
     final effectiveReps = currentTrack.effectiveRepetitions;
     final originalDurationMs = _originalDuration!.inMilliseconds;
-    final targetDurationMs = (originalDurationMs / defaultReps * effectiveReps).round();
+    final targetDurationMs =
+        (originalDurationMs / defaultReps * effectiveReps).round();
     _logicalTargetDuration = Duration(milliseconds: targetDurationMs);
-    emit(state.copyWith(logicalPosition: _logicalElapsed, logicalDuration: _logicalTargetDuration));
-    _logicalTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+    emit(state.copyWith(
+        logicalPosition: _logicalElapsed,
+        logicalDuration: _logicalTargetDuration));
+    _logicalTimer =
+        Timer.periodic(const Duration(milliseconds: 200), (timer) async {
       // Only increment if isPlaying is true
       if (!state.isPlaying) return;
       _logicalElapsed += const Duration(milliseconds: 200);
@@ -395,7 +444,9 @@ class AudioPlayerCubit extends Cubit<AudioPlayerState> {
 
   void _stopLogicalTimer() {
     _logicalTimer?.cancel();
-    emit(state.copyWith(logicalPosition: _logicalElapsed, logicalDuration: _logicalTargetDuration ?? Duration.zero));
+    emit(state.copyWith(
+        logicalPosition: _logicalElapsed,
+        logicalDuration: _logicalTargetDuration ?? Duration.zero));
   }
 
   @override

@@ -59,7 +59,7 @@ class HiveTrainingSession extends HiveObject {
 
   factory HiveTrainingSession.fromDomain(TrainingSession training_session) {
     return HiveTrainingSession(
-      id: int.parse(training_session.id),
+      id: training_session.id,
       title: training_session.title,
       description: training_session.description,
       difficulty: training_session.difficulty,
@@ -71,7 +71,7 @@ class HiveTrainingSession extends HiveObject {
 
   TrainingSession toDomain() {
     return TrainingSession(
-      id: id.toString(),
+      id: id,
       title: title,
       description: description,
       difficulty: difficulty,
@@ -162,7 +162,7 @@ class HiveExercise extends HiveObject {
 @HiveType(typeId: 2)
 class HiveTrainingSessionItem extends HiveObject {
   @HiveField(0)
-  final int training_sessionId; // it doesn't really need it todo: remove
+  final int trainingSessionId; // it doesn't really need it todo: remove
   @HiveField(1)
   final int itemId;
   @HiveField(2)
@@ -171,21 +171,21 @@ class HiveTrainingSessionItem extends HiveObject {
   final int repsToDo;
 
   HiveTrainingSessionItem({
-    required this.training_sessionId,
+    required this.trainingSessionId,
     required this.itemId,
     required this.position,
     required this.repsToDo,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) => HiveTrainingSessionItem(
-    training_sessionId: json['training_session_id'] as int,
+    trainingSessionId: json['training_session_id'] as int,
     itemId: json['exercise_id'] as int,
     position: json['position'] as int,
     repsToDo: json['reps_to_do'] as int,
   );
 
   Map<String, dynamic> toJson() => {
-    'training_session_id': training_sessionId,
+    'training_session_id': trainingSessionId,
     'item_id': itemId,
     'position': position,
     'reps_to_do': repsToDo,
