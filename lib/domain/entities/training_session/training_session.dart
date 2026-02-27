@@ -2,7 +2,7 @@
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 
 class TrainingSession {
-  final String id;
+  final int id;
   final String title;
   final String description;
   final int difficulty;
@@ -25,7 +25,7 @@ class TrainingSession {
 
 
   TrainingSession copyWith({
-    String? id,
+    int? id,
     String? title,
     String? description,
     int? difficulty,

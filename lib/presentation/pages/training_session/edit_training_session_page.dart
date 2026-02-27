@@ -39,7 +39,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
   Future<void> _loadRepetitionsFromLocal() async {
     final db = getIt<TrainingSessionLocalDatabase>();
     final training_sessionSongs = await db.getTrainingSessionItems();
-    final currentTrainingSessionSongs = training_sessionSongs.where((ps) => ps.training_sessionId == widget.training_session.id).toList();
+    final currentTrainingSessionSongs = training_sessionSongs.where((ps) => ps.trainingSessionId == widget.training_session.id).toList();
     final map = <int, int>{};
     for (final song in _items) {
       HiveTrainingSessionItem? ps;

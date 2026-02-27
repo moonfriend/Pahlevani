@@ -8,7 +8,7 @@ import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
+import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart'; // Import enum
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:path_provider/path_provider.dart'; // For finding paths
@@ -21,6 +21,16 @@ class TrainingSessionPage extends StatefulWidget {
 }
 
 class _TrainingSessionPageState extends State<TrainingSessionPage> {
+  //thoughts on refactoring:
+  // all this should be done in the repository. what we need here is something
+  // like just: repo.getTracks(TSID)
+  // and that should also be not here, it should be in the viewmodel (cubit or so)
+  // to refactor like that we might just ignore these parts now and just pass a sessionsID
+  // to the audio_player_page. There we will receive the sessionID and ask the repo for the
+  // right tracks. We might then reuse all these logic there.
+  // points of unclarity are: -I don't yet know how offline/online tracks are being handled
+  // - what are these preloaded/actual track thing
+  //
   Future<List<TrainingItemWithAudio>> _convertSongsToAudioTracks(TrainingSession training_session, Map<int, DownloadStatus> downloadStatus) async {
     final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
     final isDownloaded = status == DownloadStatus.downloaded;
@@ -42,18 +52,18 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
       // Get repetition information from local database
       final localDatabase = TrainingSessionLocalDatabase();
       final tracks = await localDatabase.getTracks();
-      final training_sessionSongs = await localDatabase.getTrainingSessionItems();
+      final trainingSessionItems = await localDatabase.getTrainingSessionItems();
 
       List<TrainingItemWithAudio> audioTracks = [];
-      for (final song in training_session.items) {
-        if (song.audioFileUrl.trim().isEmpty) continue;
+      for (final item in training_session.items) {
+        if (item.audioFileUrl.trim().isEmpty) continue;
 
         String sourcePath;
         String imagePath;
 
         // Get image path
         try {
-          final safeTypeName = song.type.toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^a-z0-9_]'), '');
+          final safeTypeName = item.type.toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^a-z0-9_]'), '');
           final baseName = safeTypeName.isNotEmpty ? safeTypeName : 'unknown';
           imagePath = 'assets/images/$baseName.png';
         } catch (_) {
@@ -63,7 +73,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         // Get source path
         //if it is already downloaded pass the address else pass the url (online)
         if (isDownloaded) {
-          final filename = _getSafeFilename(song);
+          final filename = _getSafeFilename(item);
           final localPath = '$training_sessionDirPath/$filename';
           final file = File(localPath);
 
@@ -80,7 +90,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             continue;
           }
         } else {
-          sourcePath = song.audioFileUrl.trim();
+          sourcePath = item.audioFileUrl.trim();
         }
 
         // Get repetition information
@@ -89,7 +99,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
 
         // Find default repetitions from HiveAudio
         try {
-          final hiveTrack = tracks.firstWhere((t) => t.id == song.id);
+          final hiveTrack = tracks.firstWhere((t) => t.id == item.id);
           defaultRepetitions = hiveTrack.repetitions;
         } catch (_) {
           // Track not found in local database
@@ -97,15 +107,15 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
 
         // Find user-specific repetitions from HiveTrainingSessionSong
         try {
-          final training_sessionSong = training_sessionSongs.firstWhere((ps) => ps.training_sessionId == training_session.id && ps.itemId == song.id);
+          final training_sessionSong = trainingSessionItems.firstWhere((ps) => ps.trainingSessionId == training_session.id && ps.itemId == item.id);
           userRepetitions = training_sessionSong.repsToDo;
         } catch (_) {
           // TrainingSessionSong not found in local database
         }
 
         audioTracks.add(TrainingItemWithAudio(
-          id: song.id.toString(),
-          title: song.name,
+          id: item.id.toString(),
+          title: item.name,
           audioFilePath: sourcePath,
           imagePath: imagePath,
           defaultRepetitions: defaultRepetitions,
@@ -146,14 +156,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     // Convert songs using the current download status from the state
     final audioTracks = await _convertSongsToAudioTracks(training_session, downloadStatus);
 
-    if (audioTracks.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not prepare any tracks for this training_session.')),
-        );
-      }
-      return;
-    }
 
     // final detail = buildSessionDetail(training_session.id, domainSnapshot);
     // Navigate to the player page with the tracks
@@ -161,7 +163,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => AudioPlayerPage(initialTracks: audioTracks),
+          builder: (context) => AudioPlayerPage(trainingSession: training_session),
         ),
       );
     }
@@ -184,7 +186,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         builder: (context, state) {
           Widget bodyContent;
 
-          if (state is TrainingSessionInitial || (state is TrainingSessionLoading && state.domainSnapShot.isEmpty)) {
+          if (state is TrainingSessionInitial || (state is TrainingSessionLoading && state.uiModel.trainingSessions.isEmpty)) {
             bodyContent = const Center(child: CircularProgressIndicator());
           } else if (state is TrainingSessionError) {
             bodyContent = _buildErrorWidget(context, state.message);
@@ -194,14 +196,14 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             Map<int, double> downloadProgress = {};
 
             if (state is TrainingSessionLoading) {
-              training_sessions = state.domainSnapShot.sessionsById.values.toList();
-              downloadStatus = state.downloadStatus;
+              training_sessions = state.uiModel.trainingSessions;
+              downloadStatus = state.uiModel.downloadStatuses;
             } else if (state is TrainingSessionLoaded) {
-              training_sessions = state.domainSnapShot.sessionsById.values.toList();
-              downloadStatus = state.downloadStatus;
+              training_sessions = state.uiModel.trainingSessions;
+              downloadStatus = state.uiModel.downloadStatuses;
             } else if (state is TrainingSessionDownloading) {
-              training_sessions = state.domainSnapShot.sessionsById.values.toList();
-              downloadStatus = state.downloadStatus;
+              training_sessions = state.uiModel.trainingSessions;
+              downloadStatus = state.uiModel.downloadStatuses;
               downloadProgress = state.downloadProgress;
             }
 
@@ -328,7 +330,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                 } else if (value == 'delete') {
                   _deleteTrainingSession(context, training_session);
                 } else if (value == 'download') {
-                  context.read<TrainingSessionCubit>().downloadTrainingSession(training_session.id as int);
+                  context.read<TrainingSessionCubit>().downloadTrainingSession(training_session.id);
                 }
               },
               itemBuilder: (context) => [
