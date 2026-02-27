@@ -19,7 +19,7 @@ class TrainingSessionLocalDatabase {
   static Future<void> init() async {
     await Hive.initFlutter();
     Hive.registerAdapter(HiveTrainingSessionAdapter());
-    Hive.registerAdapter(HiveAudioAdapter());
+    Hive.registerAdapter(HiveExerciseAdapter());
     Hive.registerAdapter(HiveTrainingSessionItemAdapter());
   }
 
