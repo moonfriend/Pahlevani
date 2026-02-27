@@ -28,9 +28,6 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<TrainingSessionCubit>(
-          create: (context) => getIt<TrainingSessionCubit>(),
-        ),
-        BlocProvider<TrainingSessionCubit>(
           create: (context) => getIt<TrainingSessionCubit>()..initialize(),
           lazy: false,
         ),
