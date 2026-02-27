@@ -34,6 +34,19 @@ abstract class TrainingSessionLocalDataSource {
 
   /// Downloads a file from a URL to a specific local path, reporting progress.
   Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress);
+
+  /// gets all Training Sessions from the local storage
+  Future<List<Map<String, dynamic>>> getTrainingSessions();
+
+  /// Fetches all Exercises from the local storage
+  Future<List<Map<String, dynamic>>> getExercises();
+
+  /// Fetches all training_session_items from the local storage
+  Future<List<Map<String, dynamic>>> getTrainingSessionItems();
+
+  Future<void> saveTrainingSession(List<TrainingSession> trainingSessions) async {//rows(dto) or entity here?
+  }
+
 }
 
 /// Implementation of [TrainingSessionLocalDataSource] using SharedPreferences, path_provider, and Dio.
@@ -150,5 +163,24 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
       }
       rethrow;
     }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getExerciseTable() async {
+    // TODO: implement getExerciseTable using a real local database like sqflite or isar
+    // For now, returning an empty list as a placeholder.
+    return [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getTrainingSessionItemTable() async {
+    // TODO: implement getTrainingSessionItemTable using a real local database
+    return [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getTrainingSessionsTable() async {
+    // TODO: implement getTrainingSessionsTable using a real local database
+    return [];
   }
 }

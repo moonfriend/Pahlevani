@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
 part 'training_session_state.dart';
@@ -40,8 +41,12 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       // If training_sessions are already loaded, emit loaded state with statuses
       if (_currentTSSnapshot.isNotEmpty) {
           emit(TrainingSessionLoaded(
-            domainSnapShot: _currentTSSnapshot,
-            downloadStatus: _currentDownloadStatus,
+            uiModel: TrainingSessionsUiModel(
+                trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
+                downloadStatuses: _currentDownloadStatus,
+            ),
+            // domainSnapShot: _currentTSSnapshot,
+            // downloadStatus: _currentDownloadStatus,
           ));
         }
     } catch (e) {
@@ -59,20 +64,23 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       return;
     }
     // Use TrainingSessionLoading state, preserving current lists/statuses
-    emit(TrainingSessionLoading(domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
+    emit(TrainingSessionLoading(
+        uiModel: buildTrainingSessionsUiModel()));
+
+        // domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
     try {
       _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions();
       // Merge fetched training_sessions with current download statuses
       emit(TrainingSessionLoaded(
-        domainSnapShot: _currentTSSnapshot,
-        downloadStatus: _currentDownloadStatus,
+        uiModel: buildTrainingSessionsUiModel(),
+        // domainSnapShot: _currentTSSnapshot,
+        // downloadStatus: _currentDownloadStatus,
       ));
     } catch (e) {
       print("Error fetching training_sessions: $e");
       emit(TrainingSessionError(
         message: "Failed to load training_sessions: ${e.toString()}",
-        domainSnapShot: _currentTSSnapshot, // Show old training_sessions if fetch fails
-        downloadStatus: _currentDownloadStatus,
+        uiModel: buildTrainingSessionsUiModel(),
       ));
     }
   }
@@ -82,14 +90,16 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     TrainingSession? training_session;
     try {
       training_session = _currentTSSnapshot.sessionsById[training_sessionId];
-      // training_session = _currentTSSnapshot.firstWhere((p) => p.id == training_sessionId);
     } catch (e) {
       training_session = null;
     }
 
     if (training_session == null) {
       emit(TrainingSessionError(
-          message: "TrainingSession with ID $training_sessionId not found.", domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
+          message: "TrainingSession with ID $training_sessionId not found.",
+          uiModel: buildTrainingSessionsUiModel(),
+          )
+      );
       return;
     }
 
@@ -103,11 +113,9 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     _currentDownloadStatus[training_sessionId] = DownloadStatus.downloading;
     _currentDownloadProgress[training_sessionId] = 0.0;
     emit(TrainingSessionDownloading(
-        domainSnapShot: _currentTSSnapshot,
-        downloadStatus: Map.of(_currentDownloadStatus), // Use copies
-        downloadProgress: Map.of(_currentDownloadProgress),
-        downloadingTrainingSessionId: training_sessionId));
-
+      uiModel: buildTrainingSessionsUiModel(),
+          downloadProgress: Map.of(_currentDownloadProgress),
+          downloadingTrainingSessionId: training_sessionId));
     try {
       final downloadStream = _training_sessionRepository.downloadTrainingSession(training_session);
       _downloadSubscription = downloadStream.listen(
@@ -116,8 +124,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
           _currentDownloadProgress[training_sessionId] = progress;
           // print("Download progress received: ${(progress * 100).toStringAsFixed(1)}% for training_session $training_sessionId");
           emit(TrainingSessionDownloading(
-              domainSnapShot: _currentTSSnapshot,
-              downloadStatus: Map.of(_currentDownloadStatus),
+              uiModel: buildTrainingSessionsUiModel(),
               downloadProgress: Map.of(_currentDownloadProgress),
               downloadingTrainingSessionId: training_sessionId));
         },
@@ -127,8 +134,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
           _currentDownloadProgress.remove(training_sessionId);
           emit(TrainingSessionError(
               message: "Download failed for ${training_session?.title ?? 'TrainingSession $training_sessionId'}: $error",
-              domainSnapShot: _currentTSSnapshot,
-              downloadStatus: Map.of(_currentDownloadStatus)));
+              uiModel: buildTrainingSessionsUiModel()));
         },
         onDone: () {
           print("Download stream done for training_session $training_sessionId");
@@ -138,8 +144,9 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
             _currentDownloadStatus[training_sessionId] = isDownloaded ? DownloadStatus.downloaded : DownloadStatus.error;
             _currentDownloadProgress.remove(training_sessionId);
             emit(TrainingSessionLoaded(
-              domainSnapShot: _currentTSSnapshot,
-              downloadStatus: Map.of(_currentDownloadStatus),
+              uiModel: buildTrainingSessionsUiModel()
+              // domainSnapShot: _currentTSSnapshot,
+              // downloadStatus: Map.of(_currentDownloadStatus),
             ));
           });
         },
@@ -150,10 +157,17 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       _currentDownloadProgress.remove(training_sessionId);
       emit(TrainingSessionError(
           message: "Failed to start download for ${training_session.title}: $e",
-          domainSnapShot: _currentTSSnapshot,
-          downloadStatus: Map.of(_currentDownloadStatus)));
+          uiModel: buildTrainingSessionsUiModel()));
     }
   }
+
+  TrainingSessionsUiModel buildTrainingSessionsUiModel() {
+    return TrainingSessionsUiModel(
+        trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
+        downloadStatuses: _currentDownloadStatus);
+  }
+
+  //List<TrainingSession> getTrainingSessions(String id) => domainSnapshot.sessionsById.values.toList();
 
   void updateTrainingSession(TrainingSession updatedTrainingSession, {Map<int, int>? repetitionsMap}) {
     print("Updating training_session: ${updatedTrainingSession.title} (ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated})");
@@ -265,7 +279,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     // }
   }
 
-  Future<void> deleteTrainingSession(String training_sessionId) async {
+  Future<void> deleteTrainingSession(int training_sessionId) async {
     return;
     // try {
     //   await _training_sessionRepository.deleteTrainingSession(training_sessionId);
