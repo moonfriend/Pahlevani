@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
