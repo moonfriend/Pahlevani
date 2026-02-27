@@ -12,6 +12,7 @@ import 'package:pahlevani/data/mappers/row_to_domain.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -64,6 +65,9 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
       final TSItemMaps = await remoteDataSource.fetchTrainingSessionItemTable();
+
+      // also get locals here and merge with remote
+      localTSMaps = localDataSource.getTrainingSessionsTable();
 
       // convert to exerciseRow TSRow and TSItemRow
       final TSRows = TSMaps.map((e) => TrainingSessionRow.fromJson(e))
@@ -195,142 +199,142 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   Future<void> _downloadTrainingSessionAsync(
       TrainingSession training_session, StreamController<double> controller) async {
 
-    return;
+    // return;
 
-    // final training_sessionId = training_session.id;
-    //
-    // try {
-    //   // Get and create target directory
-    //   final targetDirPath =
-    //       await localDataSource.getTrainingSessionDirectoryPath(training_sessionId as int);
-    //   final targetDir = Directory(targetDirPath);
-    //   if (!await targetDir.exists()) {
-    //     await targetDir.create(recursive: true);
-    //   }
-    //
-    //   // Filter valid songs and calculate total
-    //   //todo: null safety of snap
-    //   final sessionDetails = buildSessionDetail(training_sessionId, _domainSnapshot!);
-    //   final validItemDetails =
-    //       sessionDetails.items.where((s) => s.exercise.audioFileUrl!.trim().isNotEmpty).toList();
-    //
-    //   // final validUrls =
-    //   //     training_session.items.where((s) => s.audioFileUrl.trim().isNotEmpty).toList();
-    //   final totalSongs = validItemDetails.length;
-    //
-    //   if (totalSongs == 0) {
-    //     controller
-    //         .addError(Exception("TrainingSession has no valid songs to download."));
-    //     await controller.close();
-    //     await _saveDownloadStatus(training_sessionId as int, DownloadStatus.error);
-    //     return;
-    //   }
-    //
-    //   int downloadedCount = 0;
-    //   controller.add(0.0); // Initial progress
-    //   print(
-    //       "Starting download for training_session $training_sessionId with $totalSongs songs");
-  //
-  //     // Download each song
-  //     for (final itemDetail in validItemDetails) {
-  //       final filename = _getSafeFilename(itemDetail.item);
-  //       final savePath = '$targetDirPath/$filename';
-  //       print("Downloading song: ${itemDetail.name}");
-  //
-  //       try {
-  //         await localDataSource.downloadFile(
-  //           itemDetail.audioFileUrl,
-  //           savePath,
-  //           (received, total) {
-  //             if (total > 0) {
-  //               double songProgress = received / total;
-  //               double overallProgress =
-  //                   (downloadedCount + songProgress) / totalSongs;
-  //               final progress = overallProgress.clamp(0.0, 1.0);
-  //               // print("Download progress: ${(progress * 100).toStringAsFixed(1)}%");
-  //               controller.add(progress);
-  //             }
-  //           },
-  //         );
-  //
-  //         downloadedCount++;
-  //         final progress = (downloadedCount / totalSongs).clamp(0.0, 1.0);
-  //         print(
-  //             "Song completed: ${itemDetail.name}, overall progress: ${(progress * 100).toStringAsFixed(1)}%");
-  //         controller.add(progress);
-  //
-  //         // Add a small delay between downloads to prevent overwhelming the server
-  //         await Future.delayed(const Duration(milliseconds: 100));
-  //       } catch (e) {
-  //         print("Error downloading song ${itemDetail.name}: $e");
-  //         controller.addError(
-  //             Exception("Failed to download song: ${itemDetail.name} - $e"));
-  //         await _saveDownloadStatus(training_sessionId, DownloadStatus.error);
-  //         await controller.close();
-  //         return;
-  //       }
-  //     }
-  //
-  //     // Verify all files were downloaded
-  //     bool allFilesExist = true;
-  //     for (final song in validItemDetails) {
-  //       final filename = _getSafeFilename(song);
-  //       final filePath = '$targetDirPath/$filename';
-  //       if (!await File(filePath).exists()) {
-  //         allFilesExist = false;
-  //         break;
-  //       }
-  //     }
-  //
-  //     if (allFilesExist && downloadedCount == totalSongs) {
-  //       await _saveDownloadStatus(training_sessionId, DownloadStatus.downloaded);
-  //       controller.add(1.0);
-  //       print("TrainingSession $training_sessionId download complete.");
-  //     } else {
-  //       print("TrainingSession $training_sessionId download incomplete.");
-  //       await _saveDownloadStatus(training_sessionId, DownloadStatus.error);
-  //       controller.addError(
-  //           Exception("Download incomplete - some files are missing."));
-  //     }
-  //
-  //     await controller.close();
-  //   } catch (e) {
-  //     print("Error during training_session download process for $training_sessionId: $e");
-  //     await _saveDownloadStatus(training_sessionId, DownloadStatus.error);
-  //     controller.addError(e);
-  //     await controller.close();
-  //   }
-  // }
-  //
-  // /// Helper to save download status via local data source
-  // Future<void> _saveDownloadStatus(
-  //     int training_sessionId, DownloadStatus status) async {
-  //   try {
-  //     final currentList = await localDataSource.getDownloadedTrainingSessionIds();
-  //     final idStr = training_sessionId.toString();
-  //     bool changed = false;
-  //
-  //     if (status == DownloadStatus.downloaded) {
-  //       if (!currentList.contains(idStr)) {
-  //         currentList.add(idStr);
-  //         changed = true;
-  //       }
-  //     } else {
-  //       // Not downloaded or error
-  //       if (currentList.contains(idStr)) {
-  //         currentList.remove(idStr);
-  //         changed = true;
-  //         // Optionally delete files when status is explicitly set to not downloaded/error
-  //         // await localDataSource.deleteTrainingSessionDirectory(training_sessionId);
-  //       }
-  //     }
-  //
-  //     if (changed) {
-  //       await localDataSource.saveDownloadedTrainingSessionIds(currentList);
-  //     }
-  //   } catch (e) {
-  //     print("Error saving training_session download status: $e");
-  //   }
+    final trainingSessionId = training_session.id;
+
+    try {
+      // Get and create target directory
+      final targetDirPath =
+          await localDataSource.getTrainingSessionDirectoryPath(trainingSessionId);
+      final targetDir = Directory(targetDirPath);
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+
+      // Filter valid songs and calculate total
+      //todo: null safety of snap
+      final sessionDetails = buildSessionDetail(trainingSessionId, _domainSnapshot!);
+      final validItemDetails =
+          sessionDetails.items.where((s) => s.exercise.audioFileUrl!.trim().isNotEmpty).toList();
+
+      // final validUrls =
+      //     training_session.items.where((s) => s.audioFileUrl.trim().isNotEmpty).toList();
+      final totalItems = validItemDetails.length;
+
+      if (totalItems == 0) {
+        controller
+            .addError(Exception("TrainingSession has no valid exercises to download."));
+        await controller.close();
+        await _saveDownloadStatus(trainingSessionId, DownloadStatus.error);
+        return;
+      }
+
+      int downloadedCount = 0;
+      controller.add(0.0); // Initial progress
+      print(
+          "Starting download for training_session $trainingSessionId with $totalItems songs");
+
+      // Download each item
+      for (final itemDetail in validItemDetails) {
+        final filename = _getSafeFilename(itemDetail);
+        final savePath = '$targetDirPath/$filename';
+        print("Downloading song: ${itemDetail.name}");
+
+        try {
+          await localDataSource.downloadFile(
+            itemDetail.audioFileUrl,
+            savePath,
+            (received, total) {
+              if (total > 0) {
+                double songProgress = received / total;
+                double overallProgress =
+                    (downloadedCount + songProgress) / totalItems;
+                final progress = overallProgress.clamp(0.0, 1.0);
+                // print("Download progress: ${(progress * 100).toStringAsFixed(1)}%");
+                controller.add(progress);
+              }
+            },
+          );
+
+          downloadedCount++;
+          final progress = (downloadedCount / totalItems).clamp(0.0, 1.0);
+          print(
+              "Song completed: ${itemDetail.name}, overall progress: ${(progress * 100).toStringAsFixed(1)}%");
+          controller.add(progress);
+
+          // Add a small delay between downloads to prevent overwhelming the server
+          await Future.delayed(const Duration(milliseconds: 100));
+        } catch (e) {
+          print("Error downloading song ${itemDetail.name}: $e");
+          controller.addError(
+              Exception("Failed to download song: ${itemDetail.name} - $e"));
+          await _saveDownloadStatus(trainingSessionId, DownloadStatus.error);
+          await controller.close();
+          return;
+        }
+      }
+
+      // Verify all files were downloaded
+      bool allFilesExist = true;
+      for (final song in validItemDetails) {
+        final filename = _getSafeFilename(song);
+        final filePath = '$targetDirPath/$filename';
+        if (!await File(filePath).exists()) {
+          allFilesExist = false;
+          break;
+        }
+      }
+
+      if (allFilesExist && downloadedCount == totalItems) {
+        await _saveDownloadStatus(trainingSessionId, DownloadStatus.downloaded);
+        controller.add(1.0);
+        print("TrainingSession $trainingSessionId download complete.");
+      } else {
+        print("TrainingSession $trainingSessionId download incomplete.");
+        await _saveDownloadStatus(trainingSessionId, DownloadStatus.error);
+        controller.addError(
+            Exception("Download incomplete - some files are missing."));
+      }
+
+      await controller.close();
+    } catch (e) {
+      print("Error during training_session download process for $trainingSessionId: $e");
+      await _saveDownloadStatus(trainingSessionId, DownloadStatus.error);
+      controller.addError(e);
+      await controller.close();
+    }
+  }
+
+  /// Helper to save download status via local data source
+  Future<void> _saveDownloadStatus(
+      int trainingSessionId, DownloadStatus status) async {
+    try {
+      final currentList = await localDataSource.getDownloadedTrainingSessionIds();
+      final idStr = trainingSessionId.toString();
+      bool changed = false;
+
+      if (status == DownloadStatus.downloaded) {
+        if (!currentList.contains(idStr)) {
+          currentList.add(idStr);
+          changed = true;
+        }
+      } else {
+        // Not downloaded or error
+        if (currentList.contains(idStr)) {
+          currentList.remove(idStr);
+          changed = true;
+          // Optionally delete files when status is explicitly set to not downloaded/error
+          // await localDataSource.deleteTrainingSessionDirectory(training_sessionId);
+        }
+      }
+
+      if (changed) {
+        await localDataSource.saveDownloadedTrainingSessionIds(currentList);
+      }
+    } catch (e) {
+      print("Error saving training_session download status: $e");
+    }
   }
 
   @override
@@ -358,13 +362,13 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   /// Helper to create a safe filename (duplicate from page, should be centralized)
-  String _getSafeFilename(TrainingSessionItem item) {
-    final safeName = item.name
+  String _getSafeFilename(ItemDetail item) {
+    final safeName = item.exercise.name
         .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
         .replaceAll(' ', '_');
     String extension = '.mp3';
     try {
-      final uri = Uri.parse(item.audioFileUrl);
+      final uri = Uri.parse(item.exercise.audioFileUrl);
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
         extension = uri.pathSegments.last
             .substring(uri.pathSegments.last.lastIndexOf('.'));

@@ -9,7 +9,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 /// ======== MAPPERS (DB rows → Domain) ========
 
 Exercise mapExercise(ExerciseRow r) => Exercise(
-  id: r.id.toString(),
+  id: r.id,
   name: r.name ?? 'Exercise ${r.id}',
   author: r.author,
   type: r.type,
@@ -18,7 +18,7 @@ Exercise mapExercise(ExerciseRow r) => Exercise(
 );
 
 TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
-  id: r.id.toString(),
+  id: r.id,
   title: r.title ?? 'Sample Session',
   description: r.description ?? 'Description',
   difficulty: r.difficulty ?? 5,
@@ -28,9 +28,9 @@ TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
 /// Your schema only exposes `reps_to_do`. If you later add time-based items,
 /// extend TrainingItemRow and map to TimePresc when appropriate.
 TrainingItem mapItem(TrainingItemRow r) => TrainingItem(
-  id: '${r.trainingSessionId}:${r.position}', // deterministic id
-  sessionId: r.trainingSessionId.toString(),
-  exerciseId: r.exerciseId.toString(),
+  id: r.trainingSessionId, // deterministic id
+  sessionId: r.trainingSessionId,
+  exerciseId: r.exerciseId,
   position: r.position,
   prescription: RepsPresc(r.repsToDo),
 );

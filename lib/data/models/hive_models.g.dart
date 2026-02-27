@@ -119,7 +119,7 @@ class HiveTrainingSessionItemAdapter extends TypeAdapter<HiveTrainingSessionItem
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return HiveTrainingSessionItem(
-      training_sessionId: fields[0] as int,
+      trainingSessionId: fields[0] as int,
       itemId: fields[1] as int,
       position: fields[2] as int,
       repsToDo: fields[3] as int,
@@ -131,7 +131,7 @@ class HiveTrainingSessionItemAdapter extends TypeAdapter<HiveTrainingSessionItem
     writer
       ..writeByte(4)
       ..writeByte(0)
-      ..write(obj.training_sessionId)
+      ..write(obj.trainingSessionId)
       ..writeByte(1)
       ..write(obj.itemId)
       ..writeByte(2)

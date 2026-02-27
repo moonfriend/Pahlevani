@@ -4,7 +4,7 @@ import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/training_session_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Application entry point
@@ -27,8 +27,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<AudioPlayerCubit>(
-          create: (context) => getIt<AudioPlayerCubit>(),
+        BlocProvider<TrainingSessionCubit>(
+          create: (context) => getIt<TrainingSessionCubit>(),
         ),
         BlocProvider<TrainingSessionCubit>(
           create: (context) => getIt<TrainingSessionCubit>()..initialize(),
