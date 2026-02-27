@@ -162,9 +162,14 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   }
 
   TrainingSessionsUiModel buildTrainingSessionsUiModel() {
+    final itemCounts = {
+      for (final entry in _currentTSSnapshot.itemsBySessionId.entries)
+        entry.key: entry.value.length
+    };
     return TrainingSessionsUiModel(
         trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
-        downloadStatuses: _currentDownloadStatus);
+        downloadStatuses: _currentDownloadStatus,
+        sessionItemCounts: itemCounts);
   }
 
   //List<TrainingSession> getTrainingSessions(String id) => domainSnapshot.sessionsById.values.toList();
