@@ -4,7 +4,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/main.dart' show MyApp;
-import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
+import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
