@@ -23,7 +23,7 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching training_sessions table from Supabase...");
       final response = await _client.from('training_session').select();
-      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
       print("Fetched  [32m${data.length} [0m training_sessions.");
       return data;
         } catch (e) {
@@ -37,7 +37,7 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching Exercise table from Supabase...");
       final response = await _client.from('exercise').select();
-      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
       print("Fetched  [32m${data.length} [0m Exercise.");
       return data;
         } catch (e) {
@@ -51,7 +51,7 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
     try {
       print("Fetching training_session_items table from Supabase...");
       final response = await _client.from('training_session_item').select();
-      final data = List<Map<String, dynamic>>.from(response.map((item) => item as Map<String, dynamic>));
+      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
       print("Fetched  [32m${data.length} [0m training_session_items.");
       return data;
         } catch (e) {
