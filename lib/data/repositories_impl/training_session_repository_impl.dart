@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'dart:async';
-import 'dart:io';
-
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
@@ -12,7 +9,7 @@ import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
-import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -42,119 +39,62 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   Future<DomainSnapshot> fetchTrainingSessions() async {
-    // what I expect here:
-    // getTS(s)  from remote, store them?
-    // add the locally saved ones to the list
-    // if offline return the local ones
     print("getTrainingSessions invoked");
     try {
-      // Load all local data
-      // final localTrainingSessionItems = await localDatabase.getTrainingSessionItems();
-      // final localTrainingSessionsMetaBox = await localDatabase.getTrainingSessionBox();
-      // final localTracks = await localDatabase.getTracks();
-
-      // Group training_sessionItems by training_sessionId  XXX why?
-      // Map<int, List<HiveTrainingSessionItem>> grouped = groupTSItems(localTrainingSessionItems);
-
-      // Build training_sessions from grouped training_sessionItems
-      // List<TrainingSession> localTrainingSessions = buildTSs(grouped, localTrainingSessionsMetaBox, localTracks);
-
-      ///remote:
-      // Fetch all tables from remote
       final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
       final TSItemMaps = await remoteDataSource.fetchTrainingSessionItemTable();
 
-      // also get locals here and merge with remote
-      final localTSMaps = await localDataSource.getTrainingSessionsTable();
-
-      // convert to exerciseRow TSRow and TSItemRow
-      final TSRows = TSMaps.map((e) => TrainingSessionRow.fromJson(e))
-          .toList();
-      final exerciseRows = exercisesMaps.map(((e) => ExerciseRow.fromJson(e)))
-          .toList();
-      final tsItemRows = TSItemMaps.map((e) => TrainingItemRow.fromJson(e))
-          .toList();
-
       final snap = buildDomainSnapshot(
-          sessionRows: TSRows,
-          itemRows: tsItemRows,
-          exerciseRows: exerciseRows
+        sessionRows: TSMaps.map((e) => TrainingSessionRow.fromJson(e)).toList(),
+        itemRows: TSItemMaps.map((e) => TrainingItemRow.fromJson(e)).toList(),
+        exerciseRows: exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
       );
       _domainSnapshot = snap;
 
+      // Cache all three tables to Hive for offline use (best-effort).
+      try {
+        await localDatabase.saveExercises(
+          exercisesMaps.map((e) => HiveExercise.fromJson(e)).toList(),
+        );
+        await localDatabase.saveTrainingSessionItems(
+          TSItemMaps.map((e) => HiveTrainingSessionItem.fromJson(e)).toList(),
+        );
+        await localDatabase.saveTrainingSessions(
+          snap.sessionsById.values.toList(),
+        );
+      } catch (cacheError) {
+        print("Warning: failed to write Hive cache: $cacheError");
+      }
 
-      //    // Convert to enttities
-      //    final exercises = exerciseRows.map((e) => Exercise.fromJson(e)).toList();
-      //    final training_sessions = TSRows.map((e) => TrainingSession.fromJson(e)).toList();
-      //    final training_sessionItems = tsItemRows.map((e) => TrainingItem.fromJson(e)).toList();
-      //
-      //    // Convert to Hive models
-      //    final remoteExercises = exercisesMaps.map((e) => HiveExercise.fromJson(e)).toList();
-      //    final remoteTrainingSessionItems =
-      //        TSItemMaps.map((e) => HiveTrainingSessionItem.fromJson(e)).toList();
-      //    //final remoteTrainingSessions = training_sessionsRaw.map((e) => HiveTrainingSession.fromJson(e)).toList();
-      //
-      //    // Save tracks locally
-      //    await localDatabase.saveExercises(remoteExercises);
-      //
-      //    // Merge remote and local training_session songs instead of overwriting
-      //    final existingTrainingSessionItems = await localDatabase.getTrainingSessionItems();
-      //    final mergedTrainingSessionItems = <HiveTrainingSessionItem>[];
-      //
-      //    // Add all existing local training_session songs (preserves user customizations)
-      //    mergedTrainingSessionItems.addAll(existingTrainingSessionItems);
-      //
-      //    // Add remote training_session songs only if they don't already exist locally
-      //    //todo: replace this with cursor updates
-      //    for (final remoteItem in remoteTrainingSessionItems) {
-      //      final existsLocally = existingTrainingSessionItems.any((localItem) =>
-      //          localItem.training_sessionId == remoteItem.training_sessionId &&
-      //          localItem.itemId == remoteItem.itemId &&
-      //          localItem.position == remoteItem.position);
-      //      if (!existsLocally) {
-      //        mergedTrainingSessionItems.add(remoteItem);
-      //      }
-      //    }
-      //
-      //    await localDatabase.saveTrainingSessionItems(mergedTrainingSessionItems);
-      //
-      //    // Build training_sessions by joining tables (remote)
-      //    List<TrainingSession> serverTrainingSessions = buildTSsByJoining(TSMaps, remoteTrainingSessionItems, remoteExercises);
-      //
-      //    // Combine server training_sessions with user-created ones
-      //    final combinedTrainingSessions = [
-      //      ...serverTrainingSessions,
-      //   //   ...localTrainingSessions.where((p) => p.isUserCreated)
-      //    ];
-      //
-      //    // Save to local database (metadata only)
-      //    await localDatabase.saveTrainingSessions([
-      //      ...serverTrainingSessions.map((p) => p.copyWith(isUserCreated: false)),
-      // //     ...localTrainingSessions.where((p) => p.isUserCreated)
-      //    ]);
-      //
-      //    return combinedTrainingSessions;
+      return snap;
     } catch (e) {
       print("Error fetching from remote: $e");
 
-      // If remote fetch fails, try to get from local database (rebuild from training_sessionItems)
-      //   try {
-      //     final training_sessionSongs = await localDatabase.getTrainingSessionItems();
-      //     final training_sessionsMetaBox = await localDatabase.getTrainingSessionBox();
-      //     final tracks = await localDatabase.getTracks();
-      //     Map<int, List<HiveTrainingSessionItem>> grouped = groupTSItems(training_sessionSongs);
-      //     List<TrainingSession> localTrainingSessions = buildTSs(grouped, training_sessionsMetaBox, tracks);
-      //     return localTrainingSessions;
-      //   } catch (localError) {
-      //     print("Error reading from local database: $localError");
-      //   }
-      //
-      //   // If both remote and local fail, throw the original error
-      //   throw Exception('Could not fetch training_sessions: $e');
-      // }
+      // Fall back to Hive cache.
+      try {
+        final hiveExercises = await localDatabase.getTracks();
+        final hiveItems = await localDatabase.getTrainingSessionItems();
+        final hiveSessions = await localDatabase.getTrainingSessionBox();
+
+        final snap = buildDomainSnapshot(
+          sessionRows: hiveSessions.values
+              .map((s) => TrainingSessionRow.fromJson(s.toJson()))
+              .toList(),
+          itemRows: hiveItems
+              .map((i) => TrainingItemRow.fromJson(i.toJson()))
+              .toList(),
+          exerciseRows: hiveExercises
+              .map((ex) => ExerciseRow.fromJson(ex.toJson()))
+              .toList(),
+        );
+        _domainSnapshot = snap;
+        return snap;
+      } catch (localError) {
+        print("Error reading from local cache: $localError");
+        throw Exception('Could not fetch training sessions: $e');
+      }
     }
-    return Future.value(_domainSnapshot);
   }
 
 

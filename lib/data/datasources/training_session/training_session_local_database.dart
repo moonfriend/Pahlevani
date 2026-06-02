@@ -15,12 +15,31 @@ class TrainingSessionLocalDatabase {
   static const String _training_sessionBoxName = 'training_sessions';
   static const String _lastSyncKey = 'last_sync';
 
-  /// Initialize Hive and register adapters
+  // Increment this when the Hive schema changes to trigger a cache wipe.
+  static const int _cacheVersion = 1;
+  static const String _cacheVersionKey = 'cache_version';
+
+  /// Initialize Hive and register adapters.
+  /// Deletes all typed boxes when the cache version changes (schema migration).
   static Future<void> init() async {
     await Hive.initFlutter();
     Hive.registerAdapter(HiveTrainingSessionAdapter());
     Hive.registerAdapter(HiveExerciseAdapter());
     Hive.registerAdapter(HiveTrainingSessionItemAdapter());
+    await _migrateIfNeeded();
+  }
+
+  // Uses the untyped 'settings' box (primitive values only) to detect stale
+  // typed boxes and delete them before they are opened.
+  static Future<void> _migrateIfNeeded() async {
+    final settings = await Hive.openBox('settings');
+    final stored = settings.get(_cacheVersionKey, defaultValue: 0) as int;
+    if (stored < _cacheVersion) {
+      await Hive.deleteBoxFromDisk(_training_sessionBoxName);
+      await Hive.deleteBoxFromDisk(_trackBoxName);
+      await Hive.deleteBoxFromDisk(_training_sessionSongBoxName);
+      await settings.put(_cacheVersionKey, _cacheVersion);
+    }
   }
 
   /// Get the training_sessions box

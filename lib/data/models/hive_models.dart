@@ -186,7 +186,7 @@ class HiveTrainingSessionItem extends HiveObject {
 
   Map<String, dynamic> toJson() => {
     'training_session_id': trainingSessionId,
-    'item_id': itemId,
+    'exercise_id': itemId,
     'position': position,
     'reps_to_do': repsToDo,
   };

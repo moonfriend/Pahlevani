@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 import '../../../presentation/bloc/player/audio_player_cubit.dart';
