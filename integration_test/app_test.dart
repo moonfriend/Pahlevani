@@ -5,7 +5,6 @@ import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/main.dart' show MyApp;
 import 'package:pahlevani/presentation/pages/player/audio_player_page.dart';
-import 'package:pahlevani/presentation/widgets/playlist_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -17,58 +16,49 @@ void main() {
   });
 
   Future<void> screenshot(WidgetTester tester, String name) async {
+    // Pump twice to flush layout + paint passes before capturing.
+    await tester.pump();
+    await tester.pump();
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('screenshots/$name.png'),
     );
   }
 
-  // ─── Test 1: Smoke ────────────────────────────────────────────────────────
-  testWidgets('smoke: app boots and shows playlist page', (tester) async {
+  // Single test keeps the GetIt cubit singleton alive across all assertions.
+  testWidgets('smoke + interaction: boot, load sessions, open player', (tester) async {
     await tester.pumpWidget(const MyApp());
 
-    // Capture the immediate loading state before any data arrives.
+    // ── Stage 1: Loading state ──
     await tester.pump();
     await screenshot(tester, '01_loading_state');
 
-    // Allow real network calls to complete (Supabase fetch).
+    // ── Stage 2: Wait for Supabase fetch ──
     await Future.delayed(const Duration(seconds: 6));
     await tester.pump();
-    await screenshot(tester, '02_playlists_loaded');
+    await screenshot(tester, '02_sessions_loaded');
 
-    // The app must not have crashed — at least one Scaffold is visible.
     expect(find.byType(Scaffold), findsWidgets,
         reason: 'App crashed before rendering any UI');
+    expect(find.text('Select a TrainingSession'), findsOneWidget,
+        reason: 'TrainingSessionPage AppBar title not found');
 
-    // At least the AppBar title should be visible.
-    expect(find.text('Select a Playlist'), findsOneWidget,
-        reason: 'PlaylistPage AppBar title not found — page may not have loaded');
-  });
-
-  // ─── Test 2: Interaction ──────────────────────────────────────────────────
-  testWidgets('interaction: tap first playlist card opens player', (tester) async {
-    await tester.pumpWidget(const MyApp());
-
-    // Wait for playlists to load.
-    await Future.delayed(const Duration(seconds: 6));
-    await tester.pump();
-    await screenshot(tester, '03_before_tap');
-
-    final cards = find.byType(PlaylistCard);
+    // ── Stage 3: Tap first card ──
+    // Cards are inline Card+ListTile widgets, not a named widget class.
+    final cards = find.byType(ListTile);
     expect(cards, findsWidgets,
-        reason: 'No playlist cards found — Supabase may be unreachable or empty');
+        reason: 'No session cards found — Supabase may be unreachable or DB table missing');
 
-    // Tap the first card — this triggers async track resolution before navigation.
     await tester.tap(cards.first);
     await tester.pump();
-    await screenshot(tester, '04_after_tap_loading');
+    await screenshot(tester, '03_after_tap_loading');
 
-    // Wait for track loading + page navigation.
+    // ── Stage 4: Wait for player page ──
     await Future.delayed(const Duration(seconds: 6));
     await tester.pump();
-    await screenshot(tester, '05_player_page');
+    await screenshot(tester, '04_player_page');
 
     expect(find.byType(AudioPlayerPage), findsOneWidget,
-        reason: 'Player page did not appear after tapping a playlist card');
+        reason: 'Player page did not appear after tapping a session card');
   });
 }
