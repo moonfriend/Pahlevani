@@ -28,7 +28,9 @@ TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
 /// Your schema only exposes `reps_to_do`. If you later add time-based items,
 /// extend TrainingItemRow and map to TimePresc when appropriate.
 TrainingItem mapItem(TrainingItemRow r) => TrainingItem(
-  id: r.trainingSessionId, // deterministic id
+  // Unique per item: sessionId * 10000 + position.
+  // Safe for both small server IDs and large timestamp-based user session IDs.
+  id: r.trainingSessionId * 10000 + r.position,
   sessionId: r.trainingSessionId,
   exerciseId: r.exerciseId,
   position: r.position,
