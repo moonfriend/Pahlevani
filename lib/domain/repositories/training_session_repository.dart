@@ -22,11 +22,12 @@ abstract class TrainingSessionRepository {
   /// Gets the local file path for an item if downloaded, otherwise null.
   Future<String?> getLocalSongPath(int training_sessionId, ItemDetail song);
 
-  /// Saves a training_session to the repository.
-  Future<TrainingSession> saveTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap});
+  /// Saves a new user-created session. [items] defines the ordered exercises
+  /// and their prescriptions.
+  Future<TrainingSession> saveTrainingSession(TrainingSession training_session, {List<ItemDetail>? items});
 
-  /// Updates a training_session in the repository.
-  Future<void> updateTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap});
+  /// Updates an existing session's metadata and/or item list.
+  Future<void> updateTrainingSession(TrainingSession training_session, {List<ItemDetail>? items});
 
   /// Deletes a training_session and its downloaded files.
   Future<void> deleteTrainingSession(int training_sessionId);
