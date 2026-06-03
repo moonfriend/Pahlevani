@@ -236,51 +236,35 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     );
   }
 
-  Future<void> _navigateToEditTrainingSession(BuildContext context, TrainingSession training_session) async {
-    print("Navigating to edit training_session: ${training_session.title} (ID: ${training_session.id})");
-    
-    final result = await Navigator.push(
+  Future<void> _navigateToEditTrainingSession(
+      BuildContext context, TrainingSession trainingSession) async {
+    final cubit = context.read<TrainingSessionCubit>();
+    final sessionDetail = cubit.getSessionDetail(trainingSession.id);
+
+    final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (context) => EditTrainingSessionPage(training_session: training_session),
+        builder: (context) => EditTrainingSessionPage(
+          trainingSession: trainingSession,
+          items: sessionDetail?.items ?? const [],
+        ),
       ),
     );
 
-    print("Edit training_session result: $result");
-    print("Result type: ${result.runtimeType}");
-    
     if (result != null && mounted) {
-      if (result is Map && result['training_session'] != null) {
-        final updatedTrainingSession = result['training_session'] as TrainingSession;
-        final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
-        print("Updating training_session via cubit: ${updatedTrainingSession.title} (ID: ${updatedTrainingSession.id})");
-        context.read<TrainingSessionCubit>().updateTrainingSession(updatedTrainingSession, repetitionsMap: repetitionsMap);
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${updatedTrainingSession.title} updated successfully'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else if (result is TrainingSession) {
-        print("Updating training_session via cubit: ${result.title} (ID: ${result.id})");
-        context.read<TrainingSessionCubit>().updateTrainingSession(result);
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${result.title} updated successfully'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
-        print("Unexpected result type: ${result.runtimeType}");
-      }
-    } else {
-      print("No result returned or widget not mounted");
+      final updatedSession = result['session'] as TrainingSession;
+      final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
+      context.read<TrainingSessionCubit>().updateTrainingSession(
+            updatedSession,
+            repetitionsMap: repetitionsMap,
+          );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${updatedSession.title} updated'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 

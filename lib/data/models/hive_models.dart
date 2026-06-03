@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 part 'hive_models.g.dart';
@@ -114,15 +114,15 @@ class HiveExercise extends HiveObject {
     this.repetitions,
   });
 
-  factory HiveExercise.fromDomain(TrainingSessionItem song) {//serious mistake here!
+  factory HiveExercise.fromDomain(Exercise exercise) {
     return HiveExercise(
-      id: song.id,
-      name: song.name,
-      author: song.author,
-      type: song.type,
-      url: song.audioFileUrl,
-      position: song.position,
-      repetitions: null, // Domain Audio does not have repetitions (XXX? why?: )
+      id: exercise.id,
+      name: exercise.name,
+      author: exercise.author ?? '',
+      type: exercise.type ?? '',
+      url: exercise.audioFileUrl ?? '',
+      position: 0,
+      repetitions: exercise.repetitionsDefault,
     );
   }
 
@@ -146,15 +146,14 @@ class HiveExercise extends HiveObject {
     if (repetitions != null) 'repetitions': repetitions,
   };
 
-  TrainingSessionItem toDomain() {
-    return TrainingSessionItem(
+  Exercise toDomain() {
+    return Exercise(
       id: id,
       name: name,
       author: author,
       type: type,
       audioFileUrl: url,
-      position: position,
-      repsToDo: 0,
+      repetitionsDefault: repetitions ?? 1,
     );
   }
 }
