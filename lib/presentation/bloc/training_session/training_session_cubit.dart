@@ -183,138 +183,31 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     }
   }
 
-  void updateTrainingSession(TrainingSession updatedTrainingSession, {Map<int, int>? repetitionsMap}) {
-    print("Updating training_session: ${updatedTrainingSession.title} (ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated})");
-    return;
-    // Get current training_sessions and download status from any state
-    // List<TrainingSession> currentTrainingSessions = [];
-    // Map<int, DownloadStatus> currentDownloadStatus = {};
-    //
-    // if (state is TrainingSessionLoaded) {
-    //   final currentState = state as TrainingSessionLoaded;
-    //   currentTrainingSessions = List<TrainingSession>.from(currentState.training_sessions);
-    //   currentDownloadStatus = Map.from(currentState.downloadStatus);
-    //   print("Current state: TrainingSessionLoaded with ${currentTrainingSessions.length} training_sessions");
-    // } else if (state is TrainingSessionLoading) {
-    //   final currentState = state as TrainingSessionLoading;
-    //   currentTrainingSessions = List<TrainingSession>.from(currentState.domainSnapShot);
-    //   currentDownloadStatus = Map.from(currentState.downloadStatus);
-    //   print("Current state: TrainingSessionLoading with ${currentTrainingSessions.length} training_sessions");
-    // } else if (state is TrainingSessionDownloading) {
-    //   final currentState = state as TrainingSessionDownloading;
-    //   currentTrainingSessions = List<TrainingSession>.from(currentState.training_sessions);
-    //   currentDownloadStatus = Map.from(currentState.downloadStatus);
-    //   print("Current state: TrainingSessionDownloading with ${currentTrainingSessions.length} training_sessions");
-    // } else if (state is TrainingSessionError) {
-    //   final currentState = state as TrainingSessionError;
-    //   currentTrainingSessions = List<TrainingSession>.from(currentState.training_sessions);
-    //   currentDownloadStatus = Map.from(currentState.downloadStatus);
-    //   print("Current state: TrainingSessionError with ${currentTrainingSessions.length} training_sessions");
-    // } else {
-    //   // If no training_sessions loaded yet, just fetch them
-    //   print("No training_sessions loaded yet, fetching training_sessions...");
-    //   fetchTrainingSessions(forceRefresh: true);
-    //   return;
-    // }
-    //
-    // // Update the training_sessions list
-    // final updatedTrainingSessions = List<TrainingSession>.from(currentTrainingSessions);
-    //
-    // if (updatedTrainingSession.isUserCreated) {
-    //   // For user-created training_sessions, update in place if it exists
-    //   final index = updatedTrainingSessions.indexWhere((p) => p.id == updatedTrainingSession.id && p.isUserCreated);
-    //   if (index != -1) {
-    //     // Update existing training_session
-    //     print("Updating existing training_session at index $index");
-    //     _training_sessionRepository.updateTrainingSession(updatedTrainingSession, repetitionsMap: repetitionsMap).then((_) {
-    //       print("TrainingSession updated successfully in repository");
-    //       updatedTrainingSessions[index] = updatedTrainingSession;
-    //       // Update internal state variables
-    //       currentTSSnapshot = updatedTrainingSessions;
-    //       _currentDownloadStatus = currentDownloadStatus;
-    //       print("Emitting TrainingSessionLoaded with ${updatedTrainingSessions.length} training_sessions");
-    //       emit(TrainingSessionLoaded(
-    //         training_sessions: updatedTrainingSessions,
-    //         downloadStatus: currentDownloadStatus,
-    //       ));
-    //     }).catchError((error) {
-    //       print("Error updating training_session: $error");
-    //       emit(TrainingSessionError(
-    //         message: "Failed to update training_session: $error",
-    //         training_sessions: currentTrainingSessions,
-    //         downloadStatus: currentDownloadStatus,
-    //       ));
-    //     });
-    //   } else {
-    //     // Add as new training_session if not found
-    //     print("Adding as new training_session (not found in existing list)");
-    //     _training_sessionRepository.saveTrainingSession(updatedTrainingSession, repetitionsMap: repetitionsMap).then((savedTrainingSession) {
-    //       print("TrainingSession saved successfully in repository");
-    //       updatedTrainingSessions.add(savedTrainingSession);
-    //       // Update internal state variables
-    //       currentTSSnapshot = updatedTrainingSessions;
-    //       _currentDownloadStatus = currentDownloadStatus;
-    //       print("Emitting TrainingSessionLoaded with ${updatedTrainingSessions.length} training_sessions");
-    //       emit(TrainingSessionLoaded(
-    //         training_sessions: updatedTrainingSessions,
-    //         downloadStatus: currentDownloadStatus,
-    //       ));
-    //     }).catchError((error) {
-    //       print("Error saving training_session: $error");
-    //       emit(TrainingSessionError(
-    //         message: "Failed to save training_session: $error",
-    //         training_sessions: currentTrainingSessions,
-    //         downloadStatus: currentDownloadStatus,
-    //       ));
-    //     });
-    //   }
-    // } else {
-    //   // For server training_sessions, always treat as new item
-    //   print("Saving server training_session as new item");
-    //   _training_sessionRepository.saveTrainingSession(updatedTrainingSession, repetitionsMap: repetitionsMap).then((savedTrainingSession) {
-    //     print("Server training_session saved successfully in repository");
-    //     updatedTrainingSessions.add(savedTrainingSession);
-    //     // Update internal state variables
-    //     currentTSSnapshot = updatedTrainingSessions;
-    //     _currentDownloadStatus = currentDownloadStatus;
-    //     print("Emitting TrainingSessionLoaded with ${updatedTrainingSessions.length} training_sessions");
-    //     emit(TrainingSessionLoaded(
-    //       training_sessions: updatedTrainingSessions,
-    //       downloadStatus: currentDownloadStatus,
-    //     ));
-    //   }).catchError((error) {
-    //     print("Error saving server training_session: $error");
-    //     emit(TrainingSessionError(
-    //       message: "Failed to save training_session: $error",
-    //       training_sessions: currentTrainingSessions,
-    //       downloadStatus: currentDownloadStatus,
-    //     ));
-    //   });
-    // }
+  Future<void> updateTrainingSession(
+    TrainingSession session, {
+    List<ItemDetail>? items,
+  }) async {
+    try {
+      await _training_sessionRepository.updateTrainingSession(session, items: items);
+      await fetchTrainingSessions(forceRefresh: true);
+    } catch (e) {
+      emit(TrainingSessionError(
+        message: 'Failed to update session: $e',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
+    }
   }
 
-  Future<void> deleteTrainingSession(int training_sessionId) async {
-    return;
-    // try {
-    //   await _training_sessionRepository.deleteTrainingSession(training_sessionId);
-    //
-    //   if (state is TrainingSessionLoaded) {
-    //     final currentState = state as TrainingSessionLoaded;
-    //     final updatedTrainingSessions = List<TrainingSession>.from(currentState.training_sessions)
-    //       ..removeWhere((p) => p.id == training_sessionId);
-    //
-    //     emit(TrainingSessionLoaded(
-    //       training_sessions: updatedTrainingSessions,
-    //       downloadStatus: currentState.downloadStatus,
-    //     ));
-    //   }
-    // } catch (e) {
-    //   emit(TrainingSessionError(
-    //     message: 'Failed to delete training_session: $e',
-    //     training_sessions: state is TrainingSessionLoaded ? (state as TrainingSessionLoaded).training_sessions : [],
-    //     downloadStatus: state is TrainingSessionLoaded ? (state as TrainingSessionLoaded).downloadStatus : {},
-    //   ));
-    // }
+  Future<void> deleteTrainingSession(int sessionId) async {
+    try {
+      await _training_sessionRepository.deleteTrainingSession(sessionId);
+      await fetchTrainingSessions(forceRefresh: true);
+    } catch (e) {
+      emit(TrainingSessionError(
+        message: 'Failed to delete session: $e',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
+    }
   }
 
   @override

@@ -8,6 +8,7 @@ import 'package:pahlevani/data/dtos/exercise_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -331,143 +332,97 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   @override
-  Future<void> deleteTrainingSession(int training_sessionId) {
-    // TODO: implement deleteTrainingSession
-    throw UnimplementedError();
+  Future<void> deleteTrainingSession(int trainingSessionId) async {
+    try {
+      final box = await localDatabase.getTrainingSessionBox();
+      final key = box.keys.firstWhere(
+        (k) => box.get(k)?.id == trainingSessionId,
+        orElse: () => null,
+      );
+      if (key != null) await box.delete(key);
+
+      final itemBox = await localDatabase.getTrainingSessionItemBox();
+      final itemKeys = itemBox.keys
+          .where((k) => itemBox.get(k)?.trainingSessionId == trainingSessionId)
+          .toList();
+      await itemBox.deleteAll(itemKeys);
+
+      if (await isTrainingSessionDownloaded(trainingSessionId)) {
+        await localDataSource.deleteTrainingSessionDirectory(trainingSessionId);
+        await _saveDownloadStatus(trainingSessionId, DownloadStatus.notDownloaded);
+      }
+    } catch (e) {
+      throw Exception('Failed to delete session: $e');
+    }
   }
 
   @override
-  Future<TrainingSession> saveTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap}) {
-    // TODO: implement saveTrainingSession
-    throw UnimplementedError();
+  Future<TrainingSession> saveTrainingSession(
+    TrainingSession trainingSession, {
+    List<ItemDetail>? items,
+  }) async {
+    try {
+      final saved = trainingSession.copyWith(
+        id: DateTime.now().millisecondsSinceEpoch,
+        createdAt: DateTime.now(),
+        isUserCreated: true,
+      );
+      await localDatabase.saveTrainingSessions([saved]);
+      if (items != null) {
+        await _saveItemDetails(saved.id, items);
+      }
+      return saved;
+    } catch (e) {
+      throw Exception('Failed to save session: $e');
+    }
   }
 
   @override
-  Future<void> updateTrainingSession(TrainingSession training_session, {Map<int, int>? repetitionsMap}) {
-    // TODO: implement updateTrainingSession
-    throw UnimplementedError();
+  Future<void> updateTrainingSession(
+    TrainingSession trainingSession, {
+    List<ItemDetail>? items,
+  }) async {
+    try {
+      final box = await localDatabase.getTrainingSessionBox();
+      final key = box.keys.firstWhere(
+        (k) => box.get(k)?.id == trainingSession.id,
+        orElse: () => null,
+      );
+      final hive = HiveTrainingSession.fromDomain(trainingSession);
+      if (key != null) {
+        await box.put(key, hive);
+      } else {
+        await box.add(hive);
+      }
+      if (items != null) {
+        await _saveItemDetails(trainingSession.id, items);
+      }
+    } catch (e) {
+      throw Exception('Failed to update session: $e');
+    }
   }
-  //
-  // @override
-  // Future<TrainingSession> saveTrainingSession(TrainingSession training_session,
-  //     {Map<int, int>? repetitionsMap}) async {
-  //   try {
-  //     // Generate a new ID for the training_session
-  //     final newId = DateTime.now().millisecondsSinceEpoch;
-  //     final newTrainingSession = TrainingSession(
-  //       id: newId,
-  //       title: training_session.title,
-  //       description: training_session.description,
-  //       difficulty: training_session.difficulty,
-  //       createdAt: DateTime.now(),
-  //       items: training_session.items,
-  //       isUserCreated: true, // Always mark as user-created
-  //     );
-  //
-  //     // Save to local database
-  //     await localDatabase.saveTrainingSessions([newTrainingSession]);
-  //
-  //     // Save training_session_items with repsToDo
-  //     if (repetitionsMap != null) {
-  //       final training_sessionSongs = training_session.items.asMap().entries.map((entry) {
-  //         final index = entry.key;
-  //         final song = entry.value;
-  //         return HiveTrainingSessionItem(
-  //           training_sessionId: newId,
-  //           itemId: song.id,
-  //           position: index,
-  //           repsToDo: repetitionsMap[song.id] ?? 1,
-  //         );
-  //       }).toList();
-  //       await localDatabase.saveTrainingSessionItems(training_sessionSongs);
-  //     }
-  //
-  //     return newTrainingSession;
-  //   } catch (e) {
-  //     throw Exception('Failed to save training_session: $e');
-  //   }
-  // }
-  //
-  // @override
-  // Future<void> updateTrainingSession(TrainingSession training_session,
-  //     {Map<int, int>? repetitionsMap}) async {
-  //   try {
-  //     // Update HiveTrainingSession (metadata)
-  //     final training_sessionsMetaBox = await localDatabase.getTrainingSessionBox();
-  //     final existingMetaIndex = training_sessionsMetaBox.values
-  //         .toList()
-  //         .indexWhere((p) => p.id == training_session.id);
-  //     final newHiveTrainingSession = HiveTrainingSession(
-  //       id: training_session.id,
-  //       title: training_session.title,
-  //       description: training_session.description,
-  //       difficulty: training_session.difficulty,
-  //       createdAt: training_session.createdAt,
-  //       items: training_session.items.map((s) => HiveExercise.fromDomain(s)).toList(),
-  //       isUserCreated: true,
-  //     );
-  //     if (existingMetaIndex != -1) {
-  //       final key = training_sessionsMetaBox.keyAt(existingMetaIndex);
-  //       await training_sessionsMetaBox.put(key, newHiveTrainingSession);
-  //     } else {
-  //       await training_sessionsMetaBox.add(newHiveTrainingSession);
-  //     }
-  //
-  //     // Update HiveTrainingSessionSong (song links and repsToDo)
-  //     final training_sessionSongBox = await localDatabase.getTrainingSessionItemBox();
-  //     // Remove old song links for this training_session
-  //     final oldKeys = training_sessionSongBox.keys.where((k) {
-  //       final ps = training_sessionSongBox.get(k);
-  //       return ps != null && ps.training_sessionId == training_session.id;
-  //     }).toList();
-  //     for (final k in oldKeys) {
-  //       await training_sessionSongBox.delete(k);
-  //     }
-  //     // Add new song links
-  //     final training_sessionSongs = training_session.items.asMap().entries.map((entry) {
-  //       final index = entry.key;
-  //       final song = entry.value;
-  //       final repsToDo = repetitionsMap?[song.id] ?? 1;
-  //       return HiveTrainingSessionItem(
-  //         training_sessionId: training_session.id,
-  //         itemId: song.id,
-  //         position: index,
-  //         repsToDo: repsToDo,
-  //       );
-  //     }).toList();
-  //     await training_sessionSongBox.addAll(training_sessionSongs);
-  //   } catch (e) {
-  //     throw Exception('Failed to update training_session: $e');
-  //   }
-  // }
-  //
-  // @override
-  // Future<void> deleteTrainingSession(int training_sessionId) async {
-  //   try {
-  //     // Get existing training_sessions
-  //     final training_sessions = await localDatabase.getTrainingSessions();
-  //     final index = training_sessions.indexWhere((p) => p.id == training_sessionId);
-  //
-  //     if (index != -1) {
-  //       // Remove the training_session from the list
-  //       training_sessions.removeAt(index);
-  //       // Save the updated list
-  //       await localDatabase.saveTrainingSessions(training_sessions);
-  //
-  //       // Delete downloaded files if any
-  //       if (await isTrainingSessionDownloaded(training_sessionId)) {
-  //         await localDataSource.deleteTrainingSessionDirectory(training_sessionId);
-  //         await _saveDownloadStatus(training_sessionId, DownloadStatus.notDownloaded);
-  //       }
-  //     } else {
-  //       throw Exception('TrainingSession not found');
-  //     }
-  //   } catch (e) {
-  //     throw Exception('Failed to delete training_session: $e');
-  //   }
-  // }
-  //
 
-  
+  /// Replaces all HiveTrainingSessionItems for [sessionId] with [items].
+  Future<void> _saveItemDetails(int sessionId, List<ItemDetail> items) async {
+    final itemBox = await localDatabase.getTrainingSessionItemBox();
+    final oldKeys = itemBox.keys
+        .where((k) => itemBox.get(k)?.trainingSessionId == sessionId)
+        .toList();
+    await itemBox.deleteAll(oldKeys);
 
+    final hiveItems = items.asMap().entries.map((entry) {
+      final position = entry.key;
+      final detail = entry.value;
+      final reps = detail.item.prescription is RepsPresc
+          ? (detail.item.prescription as RepsPresc).count
+          : 1;
+      return HiveTrainingSessionItem(
+        trainingSessionId: sessionId,
+        itemId: detail.item.exerciseId,
+        position: position,
+        repsToDo: reps,
+      );
+    }).toList();
+    await itemBox.addAll(hiveItems);
+  }
 }
