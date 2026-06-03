@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 class EditTrainingSessionPage extends StatefulWidget {
@@ -69,17 +70,31 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
       Navigator.pop(context);
       return;
     }
-    // Returns the updated session metadata + ordered items with new rep counts
-    // so the calling page can persist via the cubit.
-    // Items are re-indexed by position = their current list index.
+    // Rebuild each ItemDetail so position = current list index and
+    // prescription = the user's edited rep count from _repetitionsMap.
+    final updatedItems = _items.asMap().entries.map((entry) {
+      final position = entry.key;
+      final detail = entry.value;
+      final reps = _repetitionsMap[detail.item.exerciseId] ?? 1;
+      return ItemDetail(
+        item: TrainingItem(
+          id: widget.trainingSession.id * 10000 + position,
+          sessionId: widget.trainingSession.id,
+          exerciseId: detail.item.exerciseId,
+          position: position,
+          prescription: RepsPresc(reps),
+        ),
+        exercise: detail.exercise,
+      );
+    }).toList();
+
     Navigator.pop(context, {
       'session': widget.trainingSession.copyWith(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         isUserCreated: true,
       ),
-      'items': _items,
-      'repetitionsMap': _repetitionsMap,
+      'items': updatedItems,
     });
   }
 

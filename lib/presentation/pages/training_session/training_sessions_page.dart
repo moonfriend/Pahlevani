@@ -4,6 +4,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 
 class TrainingSessionPage extends StatefulWidget {
@@ -253,10 +254,10 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
 
     if (result != null && mounted) {
       final updatedSession = result['session'] as TrainingSession;
-      final repetitionsMap = result['repetitionsMap'] as Map<int, int>?;
+      final items = result['items'] as List<ItemDetail>?;
       context.read<TrainingSessionCubit>().updateTrainingSession(
             updatedSession,
-            repetitionsMap: repetitionsMap,
+            items: items,
           );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
