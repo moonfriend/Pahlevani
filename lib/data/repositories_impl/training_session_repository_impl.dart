@@ -151,8 +151,16 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         await targetDir.create(recursive: true);
       }
 
-      // Filter valid songs and calculate total
-      //todo: null safety of snap
+      // Snapshot must exist before download can proceed — fetch it if missing.
+      if (_domainSnapshot == null) {
+        await fetchTrainingSessions();
+      }
+      if (_domainSnapshot == null) {
+        controller.addError(Exception("Cannot download: session data not loaded yet."));
+        await controller.close();
+        return;
+      }
+
       final sessionDetails = buildSessionDetail(trainingSessionId, _domainSnapshot!);
       final validItemDetails =
           sessionDetails.items.where((s) => s.exercise.audioFileUrl!.trim().isNotEmpty).toList();
