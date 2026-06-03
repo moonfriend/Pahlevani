@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
@@ -171,7 +172,16 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         sessionItemCounts: itemCounts);
   }
 
-  //List<TrainingSession> getTrainingSessions(String id) => domainSnapshot.sessionsById.values.toList();
+  /// Returns the detailed item list for a session, built from the in-memory snapshot.
+  /// Returns null if the snapshot hasn't loaded yet.
+  SessionDetail? getSessionDetail(int sessionId) {
+    if (_currentTSSnapshot.isEmpty) return null;
+    try {
+      return buildSessionDetail(sessionId, _currentTSSnapshot);
+    } catch (_) {
+      return null;
+    }
+  }
 
   void updateTrainingSession(TrainingSession updatedTrainingSession, {Map<int, int>? repetitionsMap}) {
     print("Updating training_session: ${updatedTrainingSession.title} (ID: ${updatedTrainingSession.id}, isUserCreated: ${updatedTrainingSession.isUserCreated})");
