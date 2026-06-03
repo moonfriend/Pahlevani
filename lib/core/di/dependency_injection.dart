@@ -4,42 +4,35 @@ import 'package:get_it/get_it.dart';
 import '../../data/datasources/training_session/training_session_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_datasource.dart';
 import '../../data/datasources/training_session/training_session_remote_datasource.dart';
+import '../../data/repositories_impl/download_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
+import '../../domain/repositories/download_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
-/// GetIt instance for dependency injection
 final getIt = GetIt.instance;
 
-/// Class responsible for setting up dependency injection
 class DependencyInjection {
-  // Singleton instance
   static final DependencyInjection _instance = DependencyInjection._internal();
-
   factory DependencyInjection() => _instance;
-
   DependencyInjection._internal();
 
   bool _initialized = false;
 
-  /// Initialize all dependencies - must be called before using any injected services
   Future<void> init() async {
     if (_initialized) return;
 
-    // Initialize Hive
     await TrainingSessionLocalDatabase.init();
 
-    // Register services as singletons
-
-    // External dependencies
     getIt.registerLazySingleton<Dio>(() => Dio());
 
-    // Data sources
-    getIt.registerLazySingleton<TrainingSessionLocalDataSource>(() => TrainingSessionLocalDataSourceImpl(dio: getIt<Dio>()));
-    getIt.registerLazySingleton<TrainingSessionRemoteDataSource>(() => TrainingSessionRemoteDataSourceImpl());
-    getIt.registerLazySingleton<TrainingSessionLocalDatabase>(() => TrainingSessionLocalDatabase());
+    getIt.registerLazySingleton<TrainingSessionLocalDataSource>(
+        () => TrainingSessionLocalDataSourceImpl(dio: getIt<Dio>()));
+    getIt.registerLazySingleton<TrainingSessionRemoteDataSource>(
+        () => TrainingSessionRemoteDataSourceImpl());
+    getIt.registerLazySingleton<TrainingSessionLocalDatabase>(
+        () => TrainingSessionLocalDatabase());
 
-    // Repositories
     getIt.registerLazySingleton<TrainingSessionRepository>(
       () => TrainingSessionRepositoryImpl(
         remoteDataSource: getIt<TrainingSessionRemoteDataSource>(),
@@ -48,15 +41,22 @@ class DependencyInjection {
       ),
     );
 
-    // State management
-    getIt.registerLazySingleton<TrainingSessionCubit>(() => TrainingSessionCubit(
-          training_sessionRepository: getIt<TrainingSessionRepository>(),
-        ));
+    getIt.registerLazySingleton<DownloadRepository>(
+      () => DownloadRepositoryImpl(
+        localDataSource: getIt<TrainingSessionLocalDataSource>(),
+      ),
+    );
+
+    getIt.registerLazySingleton<TrainingSessionCubit>(
+      () => TrainingSessionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        downloadRepository: getIt<DownloadRepository>(),
+      ),
+    );
 
     print("Dependency Injection setup complete.");
   }
 
-  /// Ensure all async dependencies are ready
   Future<void> ensureInitialized() async {
     if (!_initialized) {
       if (!getIt.isRegistered<Dio>()) {
@@ -68,13 +68,8 @@ class DependencyInjection {
     print("Dependency Injection Initialized and Ready.");
   }
 
-  /// Get an instance of TrainingSessionCubit
-  TrainingSessionCubit get training_sessionCubit => getIt<TrainingSessionCubit>();
-
-  /// Dispose all resources
   Future<void> dispose() async {
     await getIt.reset();
     _initialized = false;
-    print("Dependency Injection Disposed.");
   }
 }

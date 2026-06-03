@@ -5,6 +5,7 @@ import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -13,6 +14,7 @@ part 'training_session_state.dart';
 
 class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   final TrainingSessionRepository _training_sessionRepository;
+  final DownloadRepository _downloadRepository;
   StreamSubscription? _downloadSubscription;
 
   // Store current data locally in cubit to avoid passing it around in states excessively
@@ -23,8 +25,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
 
   // Future<DomainSnapshot> get currentTSSnapshot => _training_sessionRepository.getTrainingSessions();
 
-  TrainingSessionCubit({required TrainingSessionRepository training_sessionRepository})
-      : _training_sessionRepository = training_sessionRepository,
+  TrainingSessionCubit({
+    required TrainingSessionRepository sessionRepository,
+    required DownloadRepository downloadRepository,
+  })  : _training_sessionRepository = sessionRepository,
+        _downloadRepository = downloadRepository,
         super(TrainingSessionInitial());
 
   /// Loads initial download statuses and fetches the training_session list.
@@ -37,7 +42,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   Future<void> loadInitialStatuses() async {
     // No need for loading state here, happens quickly
     try {
-      _currentDownloadStatus = await _training_sessionRepository.getInitialDownloadStatuses();
+      _currentDownloadStatus = await _downloadRepository.getInitialDownloadStatuses();
       // If training_sessions are already loaded, emit loaded state with statuses
       if (_currentTSSnapshot.isNotEmpty) {
           emit(TrainingSessionLoaded(
@@ -85,79 +90,62 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     }
   }
 
-  /// Initiates download for a specific training_session.
-  Future<void> downloadTrainingSession(int training_sessionId) async {
-    TrainingSession? training_session;
-    try {
-      training_session = _currentTSSnapshot.sessionsById[training_sessionId];
-    } catch (e) {
-      training_session = null;
-    }
-
-    if (training_session == null) {
+  /// Initiates download for a specific training session.
+  Future<void> downloadTrainingSession(int sessionId) async {
+    final detail = getSessionDetail(sessionId);
+    if (detail == null) {
       emit(TrainingSessionError(
-          message: "TrainingSession with ID $training_sessionId not found.",
-          uiModel: buildTrainingSessionsUiModel(),
-          )
-      );
+        message: 'Session $sessionId not found in snapshot.',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
       return;
     }
 
-    // Check if already downloading
-    if (_currentDownloadStatus[training_sessionId] == DownloadStatus.downloading) return;
+    if (_currentDownloadStatus[sessionId] == DownloadStatus.downloading) return;
 
-    // Cancel any previous download stream for safety
     await _downloadSubscription?.cancel();
-
-    // Update status immediately to downloading
-    _currentDownloadStatus[training_sessionId] = DownloadStatus.downloading;
-    _currentDownloadProgress[training_sessionId] = 0.0;
+    _currentDownloadStatus[sessionId] = DownloadStatus.downloading;
+    _currentDownloadProgress[sessionId] = 0.0;
     emit(TrainingSessionDownloading(
       uiModel: buildTrainingSessionsUiModel(),
-          downloadProgress: Map.of(_currentDownloadProgress),
-          downloadingTrainingSessionId: training_sessionId));
+      downloadProgress: Map.of(_currentDownloadProgress),
+      downloadingTrainingSessionId: sessionId,
+    ));
+
     try {
-      final downloadStream = _training_sessionRepository.downloadTrainingSession(training_session);
-      _downloadSubscription = downloadStream.listen(
+      final stream = _downloadRepository.downloadTrainingSession(detail);
+      _downloadSubscription = stream.listen(
         (progress) {
-          // Update progress
-          _currentDownloadProgress[training_sessionId] = progress;
-          // print("Download progress received: ${(progress * 100).toStringAsFixed(1)}% for training_session $training_sessionId");
+          _currentDownloadProgress[sessionId] = progress;
           emit(TrainingSessionDownloading(
-              uiModel: buildTrainingSessionsUiModel(),
-              downloadProgress: Map.of(_currentDownloadProgress),
-              downloadingTrainingSessionId: training_sessionId));
+            uiModel: buildTrainingSessionsUiModel(),
+            downloadProgress: Map.of(_currentDownloadProgress),
+            downloadingTrainingSessionId: sessionId,
+          ));
         },
         onError: (error) {
-          print("Download error for training_session $training_sessionId: $error");
-          _currentDownloadStatus[training_sessionId] = DownloadStatus.error;
-          _currentDownloadProgress.remove(training_sessionId);
+          _currentDownloadStatus[sessionId] = DownloadStatus.error;
+          _currentDownloadProgress.remove(sessionId);
           emit(TrainingSessionError(
-              message: "Download failed for ${training_session?.title ?? 'TrainingSession $training_sessionId'}: $error",
-              uiModel: buildTrainingSessionsUiModel()));
+            message: 'Download failed: $error',
+            uiModel: buildTrainingSessionsUiModel(),
+          ));
         },
         onDone: () {
-          print("Download stream done for training_session $training_sessionId");
-          // Verify final status (repository should have updated it)
-          _training_sessionRepository.isTrainingSessionDownloaded(training_sessionId).then((isDownloaded) {
-            print("Download verification for training_session $training_sessionId: isDownloaded = $isDownloaded");
-            _currentDownloadStatus[training_sessionId] = isDownloaded ? DownloadStatus.downloaded : DownloadStatus.error;
-            _currentDownloadProgress.remove(training_sessionId);
-            emit(TrainingSessionLoaded(
-              uiModel: buildTrainingSessionsUiModel()
-              // domainSnapShot: _currentTSSnapshot,
-              // downloadStatus: Map.of(_currentDownloadStatus),
-            ));
+          _downloadRepository.isTrainingSessionDownloaded(sessionId).then((ok) {
+            _currentDownloadStatus[sessionId] =
+                ok ? DownloadStatus.downloaded : DownloadStatus.error;
+            _currentDownloadProgress.remove(sessionId);
+            emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
           });
         },
       );
     } catch (e) {
-      print("Error starting download stream for training_session $training_sessionId: $e");
-      _currentDownloadStatus[training_sessionId] = DownloadStatus.error;
-      _currentDownloadProgress.remove(training_sessionId);
+      _currentDownloadStatus[sessionId] = DownloadStatus.error;
+      _currentDownloadProgress.remove(sessionId);
       emit(TrainingSessionError(
-          message: "Failed to start download for ${training_session.title}: $e",
-          uiModel: buildTrainingSessionsUiModel()));
+        message: 'Failed to start download: $e',
+        uiModel: buildTrainingSessionsUiModel()));
     }
   }
 
