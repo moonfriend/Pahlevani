@@ -176,7 +176,15 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     List<ItemDetail>? items,
   }) async {
     try {
-      await _training_sessionRepository.updateTrainingSession(session, items: items);
+      // User sessions with a matching id → update in-place.
+      // Copies of server sessions (new timestamp id) → save as new.
+      final existsAsUserSession =
+          _currentTSSnapshot.sessionsById[session.id]?.isUserCreated ?? false;
+      if (existsAsUserSession) {
+        await _training_sessionRepository.updateTrainingSession(session, items: items);
+      } else {
+        await _training_sessionRepository.saveTrainingSession(session, items: items);
+      }
       await fetchTrainingSessions(forceRefresh: true);
     } catch (e) {
       emit(TrainingSessionError(

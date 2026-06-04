@@ -63,19 +63,36 @@ class TrainingSessionLocalDatabase {
     return await Hive.openBox<HiveTrainingSessionItem>(_training_sessionSongBoxName);
   }
 
-  /// Save training_sessions to local database
+  /// Upsert server sessions without touching user-created ones.
+  /// Entries present locally but absent from [trainingSessions] are removed
+  /// (unless isUserCreated).
   Future<void> saveTrainingSessions(List<TrainingSession> trainingSessions) async {
     final box = await getTrainingSessionBox();
+
+    final serverIds = trainingSessions.map((s) => s.id).toSet();
+
+    // Delete server entries that no longer exist on the server.
+    final staleKeys = box.keys.where((k) {
+      final entry = box.get(k);
+      return entry != null && !entry.isUserCreated && !serverIds.contains(entry.id);
+    }).toList();
+    await box.deleteAll(staleKeys);
+
+    // Upsert each server session.
+    for (final session in trainingSessions) {
+      final existingKey = box.keys.firstWhere(
+        (k) => box.get(k)?.id == session.id,
+        orElse: () => null,
+      );
+      final hive = HiveTrainingSession.fromDomain(session);
+      if (existingKey != null) {
+        await box.put(existingKey, hive);
+      } else {
+        await box.add(hive);
+      }
+    }
+
     final settingsBox = await _getSettingsBox();
-
-    // Convert domain models to Hive models
-    final hiveTrainingSessions = trainingSessions.map((p) => HiveTrainingSession.fromDomain(p)).toList();
-
-    // Save all training_sessions
-    await box.clear(); // Clear existing data
-    await box.addAll(hiveTrainingSessions);
-
-    // Update last sync time
     await settingsBox.put(_lastSyncKey, DateTime.now().toIso8601String());
   }
 
@@ -100,12 +117,22 @@ class TrainingSessionLocalDatabase {
     return box.values.toList();
   }
 
-  /// Save training_session_items to local database
-  /// [training_sessionSongs] is a list of HiveTrainingSessionSong objects representing the training_session_items table.
-  Future<void> saveTrainingSessionItems(List<HiveTrainingSessionItem> training_sessionSongs) async {
+  /// Replace items that belong to [serverSessionIds] with [items].
+  /// Items for user-created sessions are never touched.
+  Future<void> saveTrainingSessionItems(
+    List<HiveTrainingSessionItem> items, {
+    Set<int>? serverSessionIds,
+  }) async {
     final box = await getTrainingSessionItemBox();
-    await box.clear();
-    await box.addAll(training_sessionSongs);
+    if (serverSessionIds != null) {
+      final staleKeys = box.keys
+          .where((k) => serverSessionIds.contains(box.get(k)?.trainingSessionId))
+          .toList();
+      await box.deleteAll(staleKeys);
+    } else {
+      await box.clear();
+    }
+    await box.addAll(items);
   }
 
   /// Get all training_session_items from local database
