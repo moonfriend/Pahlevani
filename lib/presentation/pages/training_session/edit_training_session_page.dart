@@ -88,8 +88,14 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
       );
     }).toList();
 
+    // Server sessions become a new user-owned copy; user sessions update in-place.
+    final newId = widget.trainingSession.isUserCreated
+        ? widget.trainingSession.id
+        : DateTime.now().millisecondsSinceEpoch;
+
     Navigator.pop(context, {
       'session': widget.trainingSession.copyWith(
+        id: newId,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         isUserCreated: true,
