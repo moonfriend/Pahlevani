@@ -455,13 +455,8 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               ],
             ),
 
-            // Make the whole row tappable to select but not auto-play
           ).gestures(
-            onTap: () {
-              if (currentIndex != index) {
-                _playerCubit.setIndex(index);
-              }
-            },
+            onTap: () => _playerCubit.setIndexAndPlay(index),
           );
         },
       ),

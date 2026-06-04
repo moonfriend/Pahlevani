@@ -182,8 +182,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           isLoading: false,
           errorMessage: null,
         ));
-        await _loadSourceAtIndex(0);
-        await play();
+        await _loadSourceAtIndex(0, shouldPlay: true);
       }
     } catch (e) {
       print("Error in loadSpecificTracks: $e");
@@ -193,35 +192,29 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Move to the next track
+  /// Move to the next track and play it.
   void next() {
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
-      final wasPlaying = state.isPlaying;
-      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: nextIndex,
-        position: Duration.zero, // Reset position
-        duration: Duration.zero, // Reset duration
+        position: Duration.zero,
+        duration: Duration.zero,
       ));
-      // Now load the source for the new index
-      _loadSourceAtIndex(nextIndex, shouldPlay: wasPlaying);
+      _loadSourceAtIndex(nextIndex, shouldPlay: true);
     }
   }
 
-  /// Move to the previous track
+  /// Move to the previous track and play it.
   void prev() {
     if (state.playingIndex > 0) {
       final prevIndex = state.playingIndex - 1;
-      final wasPlaying = state.isPlaying;
-      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: prevIndex,
-        position: Duration.zero, // Reset position
-        duration: Duration.zero, // Reset duration
+        position: Duration.zero,
+        duration: Duration.zero,
       ));
-      // Now load the source for the new index
-      _loadSourceAtIndex(prevIndex, shouldPlay: wasPlaying);
+      _loadSourceAtIndex(prevIndex, shouldPlay: true);
     }
   }
 
