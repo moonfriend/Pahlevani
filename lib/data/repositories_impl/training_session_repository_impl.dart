@@ -8,6 +8,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
@@ -47,15 +48,15 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         itemRows: TSItemMaps.map((e) => TrainingItemRow.fromJson(e)).toList(),
         exerciseRows: exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
       );
-      _domainSnapshot = snap;
 
-      // Cache all three tables to Hive for offline use (best-effort).
+      // Cache to Hive (best-effort). Items are replaced only for server sessions.
       try {
         await localDatabase.saveExercises(
           exercisesMaps.map((e) => HiveExercise.fromJson(e)).toList(),
         );
         await localDatabase.saveTrainingSessionItems(
           TSItemMaps.map((e) => HiveTrainingSessionItem.fromJson(e)).toList(),
+          serverSessionIds: snap.sessionsById.keys.toSet(),
         );
         await localDatabase.saveTrainingSessions(
           snap.sessionsById.values.toList(),
@@ -64,6 +65,31 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         print("Warning: failed to write Hive cache: $cacheError");
       }
 
+      // Merge user-created sessions from Hive into the snapshot so they
+      // appear alongside server sessions in the UI.
+      try {
+        final box = await localDatabase.getTrainingSessionBox();
+        final allItems = await localDatabase.getTrainingSessionItems();
+        for (final hive in box.values.where((s) => s.isUserCreated)) {
+          final session = hive.toDomain();
+          snap.sessionsById[session.id] = session;
+          snap.itemsBySessionId[session.id] = allItems
+              .where((i) => i.trainingSessionId == session.id)
+              .map((i) => TrainingItem(
+                    id: i.trainingSessionId * 10000 + i.position,
+                    sessionId: i.trainingSessionId,
+                    exerciseId: i.itemId,
+                    position: i.position,
+                    prescription: RepsPresc(i.repsToDo),
+                  ))
+              .toList()
+            ..sort((a, b) => a.position.compareTo(b.position));
+        }
+      } catch (mergeError) {
+        print("Warning: failed to merge user sessions: $mergeError");
+      }
+
+      _domainSnapshot = snap;
       return snap;
     } catch (e) {
       print("Error fetching from remote: $e");
