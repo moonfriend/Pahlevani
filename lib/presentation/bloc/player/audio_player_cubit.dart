@@ -294,19 +294,18 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         throw Exception("Audio source path is empty");
       }
 
-      // Stop player before setting new source
-      await _audioPlayer.stop();
-      await _audioPlayer.setSource(audioSource);
-      print("Source set successfully for: ${track.displayName}");
-      print(
-          "Track repetitions - Default: ${track.defaultRepetitions}, User: ${track.userRepetitions}, Effective: ${track.effectiveRepetitions}");
-      // emit(state.copyWith(isLoading: false)); // Remove loading state
-
-      // Resume playback if requested and source was set successfully
       if (shouldPlay) {
-        await _audioPlayer.resume();
+        // play() atomically stops current source, loads new one, and starts
+        // playback — more reliable than stop+setSource+resume on GStreamer.
+        await _audioPlayer.play(audioSource);
+        emit(state.copyWith(isPlaying: true, isLoading: false));
         _startLogicalTimer();
+      } else {
+        await _audioPlayer.stop();
+        await _audioPlayer.setSource(audioSource);
+        emit(state.copyWith(isPlaying: false, isLoading: false));
       }
+      print("Source set: ${track.displayName} (play=$shouldPlay)");
     } catch (e) {
       print("Error setting source for $sourcePath: $e");
       emit(state.copyWith(
