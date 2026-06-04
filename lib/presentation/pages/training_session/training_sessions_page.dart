@@ -111,6 +111,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         final trackCount = itemCounts[training_session.id] ?? 0;
 
         return Card(
+          key: ValueKey(training_session.id),
           color: theme.colorScheme.surface.withOpacity(0.97),
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
