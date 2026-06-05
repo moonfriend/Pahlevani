@@ -1,0 +1,174 @@
+// Focus: Primarily concerned with storing and retrieving structured metadata and content definitions of training sessions, exercises (tracks), and their relationships.
+// Responsibilities:
+// Storing detailed information about each TrainingSession (e.g., its ID, name, author, type, and potentially a list of its constituent items/exercises).
+// Storing information about individual HiveExercise (tracks/audio files) like their name, author, URL (which TrainingSessionLocalDataSource might use to download the actual file).
+// Storing HiveTrainingSessionItem which likely links TrainingSessions to their HiveExercises, defining the content and order within a session.
+// Managing synchronization status (e.g., lastSyncTime, isDataStale).
+// Providing methods to save, retrieve, and clear this structured data.
+
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:pahlevani/data/models/hive_models.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+
+/// Service for handling local database operations using Hive
+class TrainingSessionLocalDatabase {
+  static const String _training_sessionBoxName = 'training_sessions';
+  static const String _lastSyncKey = 'last_sync';
+
+  // Increment this when the Hive schema changes to trigger a cache wipe.
+  static const int _cacheVersion = 1;
+  static const String _cacheVersionKey = 'cache_version';
+
+  /// Initialize Hive and register adapters.
+  /// Deletes all typed boxes when the cache version changes (schema migration).
+  static Future<void> init() async {
+    await Hive.initFlutter();
+    Hive.registerAdapter(HiveTrainingSessionAdapter());
+    Hive.registerAdapter(HiveExerciseAdapter());
+    Hive.registerAdapter(HiveTrainingSessionItemAdapter());
+    await _migrateIfNeeded();
+  }
+
+  // Uses the untyped 'settings' box (primitive values only) to detect stale
+  // typed boxes and delete them before they are opened.
+  static Future<void> _migrateIfNeeded() async {
+    final settings = await Hive.openBox('settings');
+    final stored = settings.get(_cacheVersionKey, defaultValue: 0) as int;
+    if (stored < _cacheVersion) {
+      await Hive.deleteBoxFromDisk(_training_sessionBoxName);
+      await Hive.deleteBoxFromDisk(_trackBoxName);
+      await Hive.deleteBoxFromDisk(_training_sessionSongBoxName);
+      await settings.put(_cacheVersionKey, _cacheVersion);
+    }
+  }
+
+  /// Get the training_sessions box
+  Future<Box<HiveTrainingSession>> getTrainingSessionBox() async {
+    return await Hive.openBox<HiveTrainingSession>(_training_sessionBoxName);
+  }
+
+  /// Get the settings box for last sync time
+  Future<Box> _getSettingsBox() async {
+    return await Hive.openBox('settings');
+  }
+
+  static const String _trackBoxName = 'tracks';
+  static const String _training_sessionSongBoxName = 'training_session_items';
+
+  Future<Box<HiveExercise>> _getTrackBox() async {
+    return await Hive.openBox<HiveExercise>(_trackBoxName);
+  }
+
+  Future<Box<HiveTrainingSessionItem>> getTrainingSessionItemBox() async {
+    return await Hive.openBox<HiveTrainingSessionItem>(_training_sessionSongBoxName);
+  }
+
+  /// Upsert server sessions without touching user-created ones.
+  /// Entries present locally but absent from [trainingSessions] are removed
+  /// (unless isUserCreated).
+  Future<void> saveTrainingSessions(List<TrainingSession> trainingSessions) async {
+    final box = await getTrainingSessionBox();
+
+    final serverIds = trainingSessions.map((s) => s.id).toSet();
+
+    // Delete server entries that no longer exist on the server.
+    final staleKeys = box.keys.where((k) {
+      final entry = box.get(k);
+      return entry != null && !entry.isUserCreated && !serverIds.contains(entry.id);
+    }).toList();
+    await box.deleteAll(staleKeys);
+
+    // Upsert each server session.
+    for (final session in trainingSessions) {
+      final existingKey = box.keys.firstWhere(
+        (k) => box.get(k)?.id == session.id,
+        orElse: () => null,
+      );
+      final hive = HiveTrainingSession.fromDomain(session);
+      if (existingKey != null) {
+        await box.put(existingKey, hive);
+      } else {
+        await box.add(hive);
+      }
+    }
+
+    final settingsBox = await _getSettingsBox();
+    await settingsBox.put(_lastSyncKey, DateTime.now().toIso8601String());
+  }
+
+  /// Get all training_sessions from local database
+  Future<List<TrainingSession>> getTrainingSessions() async {
+    final box = await getTrainingSessionBox();
+    return box.values.map((p) => p.toDomain()).toList();
+  }
+
+  /// Save tracks to local database
+  /// [Exercise] is a list of HiveAudio objects representing the tracks table.
+  Future<void> saveExercises(List<HiveExercise> Exercise) async {
+    final box = await _getTrackBox();//todo: rename to exercise
+    await box.clear();
+    await box.addAll(Exercise);
+  }
+
+  /// Get all tracks from local database
+  /// Returns a list of HiveAudio objects.
+  Future<List<HiveExercise>> getTracks() async {
+    final box = await _getTrackBox();
+    return box.values.toList();
+  }
+
+  /// Replace items that belong to [serverSessionIds] with [items].
+  /// Items for user-created sessions are never touched.
+  Future<void> saveTrainingSessionItems(
+    List<HiveTrainingSessionItem> items, {
+    Set<int>? serverSessionIds,
+  }) async {
+    final box = await getTrainingSessionItemBox();
+    if (serverSessionIds != null) {
+      final staleKeys = box.keys
+          .where((k) => serverSessionIds.contains(box.get(k)?.trainingSessionId))
+          .toList();
+      await box.deleteAll(staleKeys);
+    } else {
+      await box.clear();
+    }
+    await box.addAll(items);
+  }
+
+  /// Get all training_session_items from local database
+  /// Returns a list of HiveTrainingSessionSong objects.
+  Future<List<HiveTrainingSessionItem>> getTrainingSessionItems() async {
+    final box = await getTrainingSessionItemBox();
+    return box.values.toList();
+  }
+
+  /// Get last sync time
+  Future<DateTime?> getLastSyncTime() async {
+    final settingsBox = await _getSettingsBox();
+    final lastSyncStr = settingsBox.get(_lastSyncKey) as String?;
+    if (lastSyncStr == null) return null;
+    return DateTime.parse(lastSyncStr);
+  }
+
+  /// Check if local data is stale (older than 180 days)
+  Future<bool> isDataStale() async {
+    final lastSync = await getLastSyncTime();
+    if (lastSync == null) return true;
+
+    final now = DateTime.now();
+    final difference = now.difference(lastSync);
+    return difference.inDays >= 180;
+  }
+
+  /// Clear all local data
+  Future<void> clearAll() async {
+    final box = await getTrainingSessionBox();
+    final settingsBox = await _getSettingsBox();
+    final trackBox = await _getTrackBox();
+    final training_sessionSongBox = await getTrainingSessionItemBox();
+    await box.clear();
+    await settingsBox.clear();
+    await trackBox.clear();
+    await training_sessionSongBox.clear();
+  }
+}

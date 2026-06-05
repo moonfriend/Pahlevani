@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../domain/entities/audio/audio_track.dart';
+import '../../../domain/entities/audio/training_item_with_audio.dart';
 
 /// A widget to display the current track's image with play/pause controls
 class TrackImageWidget extends StatelessWidget {
-  final AudioTrack? track;
+  final TrainingItemWithAudio? track;
   final bool isPlaying;
   final VoidCallback onPlayPausePressed;
 
@@ -46,7 +46,7 @@ class TrackImageWidget extends StatelessWidget {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -69,7 +69,7 @@ class TrackImageWidget extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(

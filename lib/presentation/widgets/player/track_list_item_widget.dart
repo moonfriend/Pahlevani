@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../domain/entities/audio/audio_track.dart';
+import '../../../domain/entities/audio/training_item_with_audio.dart';
 
-/// A widget representing a track in the playlist
+/// A widget representing a track in the training_session
 class TrackListItemWidget extends StatelessWidget {
-  final AudioTrack track;
+  final TrainingItemWithAudio track;
   final bool isSelected;
   final bool isPlaying;
   final VoidCallback onTap;
@@ -58,15 +58,43 @@ class TrackListItemWidget extends StatelessWidget {
                   : null,
             ),
 
-            // Track title
+            // Track title and repetition info
             Expanded(
-              child: Text(
-                track.title,
-                style: TextStyle(
-                  fontSize: 18,
-                  color: isSelected ? Colors.black : Colors.grey[600],
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    track.displayName,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isSelected ? Colors.black : Colors.grey[600],
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Show repetition info if different from default
+                  if (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${track.effectiveRepetitions} reps',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
 
