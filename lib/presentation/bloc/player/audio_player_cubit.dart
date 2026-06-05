@@ -36,6 +36,8 @@ class AudioPlayerState {
   TrainingItemWithAudio? get previousTrack =>
       tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
 
+  final bool isFinished;
+
   const AudioPlayerState({
     required this.playingIndex,
     required this.isPlaying,
@@ -46,6 +48,7 @@ class AudioPlayerState {
     this.errorMessage,
     this.logicalPosition = Duration.zero,
     this.logicalDuration = Duration.zero,
+    this.isFinished = false,
   });
 
   /// Create a copy of the state with updated values
@@ -59,6 +62,7 @@ class AudioPlayerState {
     String? errorMessage,
     Duration? logicalPosition,
     Duration? logicalDuration,
+    bool? isFinished,
   }) {
     return AudioPlayerState(
       playingIndex: playingIndex ?? this.playingIndex,
@@ -70,6 +74,7 @@ class AudioPlayerState {
       errorMessage: errorMessage ?? this.errorMessage,
       logicalPosition: logicalPosition ?? this.logicalPosition,
       logicalDuration: logicalDuration ?? this.logicalDuration,
+      isFinished: isFinished ?? this.isFinished,
     );
   }
 
@@ -205,7 +210,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Move to the next track and play it.
+  /// Move to the next track and play it. Emits isFinished when the last track ends.
   void next() {
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
@@ -213,9 +218,29 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         playingIndex: nextIndex,
         position: Duration.zero,
         duration: Duration.zero,
+        isFinished: false,
       ));
       _loadSourceAtIndex(nextIndex, shouldPlay: true);
+    } else {
+      // Last track finished — stop and surface completion sheet.
+      _audioPlayer.stop();
+      _stopLogicalTimer();
+      emit(state.copyWith(isPlaying: false, isFinished: true));
     }
+  }
+
+  /// Replay session from the beginning.
+  void replay() {
+    emit(state.copyWith(
+      playingIndex: 0,
+      position: Duration.zero,
+      duration: Duration.zero,
+      logicalPosition: Duration.zero,
+      logicalDuration: Duration.zero,
+      isPlaying: false,
+      isFinished: false,
+    ));
+    _loadSourceAtIndex(0, shouldPlay: true);
   }
 
   /// Move to the previous track and play it.
@@ -347,7 +372,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Toggle between play and pause
   void togglePlay() {
-    if (state.isPlaying) {
+    if (state.isFinished) {
+      replay();
+    } else if (state.isPlaying) {
       _audioPlayer.pause();
       emit(state.copyWith(isPlaying: false));
     } else {
