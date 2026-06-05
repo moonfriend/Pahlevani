@@ -256,26 +256,38 @@ class _Header extends StatelessWidget {
                     style: PTextStyles.of(context).homeSubtitle.copyWith(color: colors.onMuted)),
               ]),
             ),
-            Row(children: [
-              // theme toggle
-              BlocBuilder<SettingsCubit, SettingsState>(
-                builder: (ctx, s) => _IconBtn(
+            BlocBuilder<SettingsCubit, SettingsState>(
+              builder: (ctx, s) => Row(children: [
+                // density toggle
+                _IconBtn(
+                  icon: s.listDensity == ListDensity.banner
+                      ? Icons.view_agenda_outlined
+                      : Icons.view_list_rounded,
+                  color: colors.onMuted,
+                  bg: colors.surface2,
+                  onTap: () => ctx.read<SettingsCubit>().setListDensity(
+                    s.listDensity == ListDensity.banner ? ListDensity.compact : ListDensity.banner,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // theme toggle
+                _IconBtn(
                   icon: s.themeMode == ThemeMode.dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
                   color: colors.onMuted,
                   bg: colors.surface2,
                   onTap: () => ctx.read<SettingsCubit>().toggleTheme(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              // refresh
-              _IconBtn(
-                icon: Icons.refresh_rounded,
-                color: colors.onMuted,
-                bg: colors.surface2,
-                onTap: onRefresh,
-                spinController: refreshing ? refreshSpin : null,
-              ),
-            ]),
+                const SizedBox(width: 8),
+                // refresh
+                _IconBtn(
+                  icon: Icons.refresh_rounded,
+                  color: colors.onMuted,
+                  bg: colors.surface2,
+                  onTap: onRefresh,
+                  spinController: refreshing ? refreshSpin : null,
+                ),
+              ]),
+            ),
           ],
         ),
         if (refreshing) ...[
@@ -342,7 +354,7 @@ class _SessionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final density = context.read<SettingsCubit>().state.listDensity;
+    final density = context.watch<SettingsCubit>().state.listDensity;
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 96),
