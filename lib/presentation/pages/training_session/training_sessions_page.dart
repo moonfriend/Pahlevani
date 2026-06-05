@@ -453,17 +453,20 @@ class _BannerCard extends StatelessWidget {
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                 ]),
               ),
-              if (session.titleFa != null)
-                Positioned(
-                  top: 12, right: 16,
-                  child: Text(session.titleFa!,
-                      style: PTextStyles.of(context).cardFa.copyWith(color: accent.fg),
-                      textDirection: TextDirection.rtl),
+              Positioned(
+                top: 12, right: 16,
+                child: Text(
+                  session.titleFa ?? 'زورخانه',
+                  style: PTextStyles.of(context).cardFa.copyWith(color: accent.fg),
+                  textDirection: TextDirection.rtl,
                 ),
+              ),
             ]),
           ),
-          // Body
-          Padding(
+          // Body — explicit opaque surface so the banner pattern never bleeds through
+          ColoredBox(
+            color: cs.surface,
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(session.description,
@@ -489,7 +492,7 @@ class _BannerCard extends StatelessWidget {
                 ),
               ]),
             ]),
-          ),
+          )), // ColoredBox + Padding
         ]),
       ),
     );
@@ -521,7 +524,8 @@ class _CompactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
-    final firstWord = (session.titleFa ?? session.title).split(' ').first;
+    // Use Farsi title if available; fall back to placeholder until DB has the column
+    final thumbnailFa = (session.titleFa ?? 'زورخانه').split(' ').first;
 
     return GestureDetector(
       onTap: onTap,
@@ -542,7 +546,7 @@ class _CompactCard extends StatelessWidget {
               child: Stack(alignment: Alignment.center, children: [
                 Positioned.fill(child: ColoredBox(color: accent.bg)),
                 Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.62, tileSize: 86)),
-                Text(firstWord,
+                Text(thumbnailFa,
                     style: PTextStyles.of(context).cardFa.copyWith(color: accent.fg, fontSize: 22, fontWeight: FontWeight.w700),
                     textDirection: TextDirection.rtl),
               ]),
