@@ -2,6 +2,7 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
@@ -42,17 +43,19 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
       final TSItemMaps = await remoteDataSource.fetchTrainingSessionItemTable();
+      final movementMaps = await remoteDataSource.fetchMovementTable();
 
       final snap = buildDomainSnapshot(
         sessionRows: TSMaps.map((e) => TrainingSessionRow.fromJson(e)).toList(),
         itemRows: TSItemMaps.map((e) => TrainingItemRow.fromJson(e)).toList(),
         exerciseRows: exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
+        movementRows: movementMaps.map((e) => MovementRow.fromJson(e)).toList(),
       );
 
-      // Cache to Hive (best-effort). Items are replaced only for server sessions.
+      // Cache to Hive using domain objects so movement data is denormalized in.
       try {
         await localDatabase.saveExercises(
-          exercisesMaps.map((e) => HiveExercise.fromJson(e)).toList(),
+          snap.exercisesById.values.map(HiveExercise.fromDomain).toList(),
         );
         await localDatabase.saveTrainingSessionItems(
           TSItemMaps.map((e) => HiveTrainingSessionItem.fromJson(e)).toList(),
@@ -94,22 +97,23 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     } catch (e) {
       print("Error fetching from remote: $e");
 
-      // Fall back to Hive cache.
+      // Fall back to Hive cache. Exercises are already denormalized
+      // (movement data was embedded when the cache was last written).
       try {
         final hiveExercises = await localDatabase.getTracks();
         final hiveItems = await localDatabase.getTrainingSessionItems();
         final hiveSessions = await localDatabase.getTrainingSessionBox();
 
-        final snap = buildDomainSnapshot(
-          sessionRows: hiveSessions.values
-              .map((s) => TrainingSessionRow.fromJson(s.toJson()))
-              .toList(),
-          itemRows: hiveItems
-              .map((i) => TrainingItemRow.fromJson(i.toJson()))
-              .toList(),
-          exerciseRows: hiveExercises
-              .map((ex) => ExerciseRow.fromJson(ex.toJson()))
-              .toList(),
+        final snap = buildDomainSnapshotFromDomain(
+          sessions: hiveSessions.values.map((s) => s.toDomain()).toList(),
+          exercises: hiveExercises.map((e) => e.toDomain()).toList(),
+          items: hiveItems.map((i) => TrainingItem(
+            id: i.trainingSessionId * 10000 + i.position,
+            sessionId: i.trainingSessionId,
+            exerciseId: i.itemId,
+            position: i.position,
+            prescription: RepsPresc(i.repsToDo),
+          )).toList(),
         );
         _domainSnapshot = snap;
         return snap;

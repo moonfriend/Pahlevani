@@ -94,13 +94,13 @@ class HiveExercise extends HiveObject {
   final String name;
 
   @HiveField(2)
-  final String author;
+  final String? author;
 
   @HiveField(3)
-  final String type;
+  final String? type;
 
   @HiveField(4)
-  final String url;
+  final String? url;
 
   @HiveField(5)
   final int position;
@@ -126,13 +126,16 @@ class HiveExercise extends HiveObject {
   @HiveField(12)
   final String? mediaPoster;
 
+  @HiveField(13)
+  final int? movementId;
+
   HiveExercise({
     required this.id,
     required this.name,
-    required this.author,
-    required this.type,
-    required this.url,
-    required this.position,
+    this.author,
+    this.type,
+    this.url,
+    this.position = 0,
     this.repetitions,
     this.durationSeconds,
     this.titleFa,
@@ -140,76 +143,42 @@ class HiveExercise extends HiveObject {
     this.mediaType,
     this.mediaSrc,
     this.mediaPoster,
+    this.movementId,
   });
 
-  factory HiveExercise.fromDomain(Exercise e) {
-    return HiveExercise(
-      id: e.id,
-      name: e.name,
-      author: e.author ?? '',
-      type: e.type ?? '',
-      url: e.audioFileUrl ?? '',
-      position: 0,
-      repetitions: e.repetitionsDefault,
-      durationSeconds: e.durationSeconds,
-      titleFa: e.titleFa,
-      gloss: e.gloss,
-      mediaType: e.media.type,
-      mediaSrc: e.media.src,
-      mediaPoster: e.media.poster,
-    );
-  }
+  factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
+        id: e.id,
+        movementId: e.movementId,
+        name: e.name,
+        author: e.author,
+        type: e.type,
+        url: e.audioFileUrl,
+        repetitions: e.repetitionsDefault,
+        durationSeconds: e.durationSeconds,
+        titleFa: e.titleFa,
+        gloss: e.gloss,
+        mediaType: e.media.type,
+        mediaSrc: e.media.src,
+        mediaPoster: e.media.poster,
+      );
 
-  factory HiveExercise.fromJson(Map<String, dynamic> json) => HiveExercise(
-    id: json['id'] as int,
-    name: json['name'] as String,
-    author: json['author'] as String,
-    type: json['type'] as String,
-    url: json['url'] as String,
-    position: json['position'] as int? ?? 0,
-    repetitions: json['repetitions'] as int?,
-    durationSeconds: json['duration_seconds'] as int?,
-    titleFa: json['title_fa'] as String?,
-    gloss: json['gloss'] as String?,
-    mediaType: json['media_type'] as String?,
-    mediaSrc: json['media_src'] as String?,
-    mediaPoster: json['media_poster'] as String?,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'author': author,
-    'type': type,
-    'url': url,
-    'position': position,
-    if (repetitions != null) 'repetitions': repetitions,
-    if (durationSeconds != null) 'duration_seconds': durationSeconds,
-    if (titleFa != null) 'title_fa': titleFa,
-    if (gloss != null) 'gloss': gloss,
-    if (mediaType != null) 'media_type': mediaType,
-    if (mediaSrc != null) 'media_src': mediaSrc,
-    if (mediaPoster != null) 'media_poster': mediaPoster,
-  };
-
-  Exercise toDomain() {
-    return Exercise(
-      id: id,
-      name: name,
-      titleFa: titleFa,
-      gloss: gloss,
-      author: author,
-      type: type,
-      audioFileUrl: url,
-      repetitionsDefault: repetitions ?? 1,
-      durationSeconds: durationSeconds,
-      media: ExerciseMedia(
-        type: mediaType ?? 'none',
-        src: mediaSrc,
-        poster: mediaPoster,
-      ),
-    );
-  }
+  Exercise toDomain() => Exercise(
+        id: id,
+        movementId: movementId,
+        name: name,
+        titleFa: titleFa,
+        gloss: gloss,
+        author: author,
+        type: type,
+        audioFileUrl: url,
+        repetitionsDefault: repetitions ?? 1,
+        durationSeconds: durationSeconds,
+        media: ExerciseMedia(
+          type: mediaType ?? 'none',
+          src: mediaSrc,
+          poster: mediaPoster,
+        ),
+      );
 }
 
 @HiveType(typeId: 2)
