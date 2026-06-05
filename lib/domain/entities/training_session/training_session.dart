@@ -1,6 +1,7 @@
 class TrainingSession {
   final int id;
   final String title;
+  final String? titleFa;
   final String description;
   final int difficulty;
   final DateTime? createdAt;
@@ -9,6 +10,7 @@ class TrainingSession {
   TrainingSession({
     required this.id,
     required this.title,
+    this.titleFa,
     required this.description,
     required this.difficulty,
     this.createdAt,
@@ -18,6 +20,7 @@ class TrainingSession {
   TrainingSession copyWith({
     int? id,
     String? title,
+    String? titleFa,
     String? description,
     int? difficulty,
     DateTime? createdAt,
@@ -26,6 +29,7 @@ class TrainingSession {
     return TrainingSession(
       id: id ?? this.id,
       title: title ?? this.title,
+      titleFa: titleFa ?? this.titleFa,
       description: description ?? this.description,
       difficulty: difficulty ?? this.difficulty,
       createdAt: createdAt ?? this.createdAt,
