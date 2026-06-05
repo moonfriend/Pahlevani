@@ -25,6 +25,8 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(5)
   final bool isUserCreated;
 
+  @HiveField(6)
+  final String? titleFa;
 
   HiveTrainingSession({
     required this.id,
@@ -33,6 +35,7 @@ class HiveTrainingSession extends HiveObject {
     required this.difficulty,
     this.createdAt,
     this.isUserCreated = false,
+    this.titleFa,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -41,9 +44,9 @@ class HiveTrainingSession extends HiveObject {
       title: json['title'] as String,
       description: json['description'] as String,
       difficulty: json['difficulty'] as int,
-      createdAt: json['created_at'] == null ? null : DateTime.parse(
-          json['created_at'] as String),
+      createdAt: json['created_at'] == null ? null : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
+      titleFa: json['title_fa'] as String?,
     );
   }
 
@@ -54,18 +57,18 @@ class HiveTrainingSession extends HiveObject {
         'difficulty': difficulty,
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
+        if (titleFa != null) 'title_fa': titleFa,
       };
 
-
-  factory HiveTrainingSession.fromDomain(TrainingSession training_session) {
+  factory HiveTrainingSession.fromDomain(TrainingSession s) {
     return HiveTrainingSession(
-      id: training_session.id,
-      title: training_session.title,
-      description: training_session.description,
-      difficulty: training_session.difficulty,
-      createdAt: training_session.createdAt,
-      // items: training_session.items.map((s) => HiveExercise.fromDomain(s)).toList(),
-      isUserCreated: training_session.isUserCreated,
+      id: s.id,
+      title: s.title,
+      description: s.description,
+      difficulty: s.difficulty,
+      createdAt: s.createdAt,
+      isUserCreated: s.isUserCreated,
+      titleFa: s.titleFa,
     );
   }
 
@@ -73,6 +76,7 @@ class HiveTrainingSession extends HiveObject {
     return TrainingSession(
       id: id,
       title: title,
+      titleFa: titleFa,
       description: description,
       difficulty: difficulty,
       createdAt: createdAt,
@@ -107,6 +111,21 @@ class HiveExercise extends HiveObject {
   @HiveField(7)
   final int? durationSeconds;
 
+  @HiveField(8)
+  final String? titleFa;
+
+  @HiveField(9)
+  final String? gloss;
+
+  @HiveField(10)
+  final String? mediaType;
+
+  @HiveField(11)
+  final String? mediaSrc;
+
+  @HiveField(12)
+  final String? mediaPoster;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -116,18 +135,28 @@ class HiveExercise extends HiveObject {
     required this.position,
     this.repetitions,
     this.durationSeconds,
+    this.titleFa,
+    this.gloss,
+    this.mediaType,
+    this.mediaSrc,
+    this.mediaPoster,
   });
 
-  factory HiveExercise.fromDomain(Exercise exercise) {
+  factory HiveExercise.fromDomain(Exercise e) {
     return HiveExercise(
-      id: exercise.id,
-      name: exercise.name,
-      author: exercise.author ?? '',
-      type: exercise.type ?? '',
-      url: exercise.audioFileUrl ?? '',
+      id: e.id,
+      name: e.name,
+      author: e.author ?? '',
+      type: e.type ?? '',
+      url: e.audioFileUrl ?? '',
       position: 0,
-      repetitions: exercise.repetitionsDefault,
-      durationSeconds: exercise.durationSeconds,
+      repetitions: e.repetitionsDefault,
+      durationSeconds: e.durationSeconds,
+      titleFa: e.titleFa,
+      gloss: e.gloss,
+      mediaType: e.media.type,
+      mediaSrc: e.media.src,
+      mediaPoster: e.media.poster,
     );
   }
 
@@ -140,6 +169,11 @@ class HiveExercise extends HiveObject {
     position: json['position'] as int? ?? 0,
     repetitions: json['repetitions'] as int?,
     durationSeconds: json['duration_seconds'] as int?,
+    titleFa: json['title_fa'] as String?,
+    gloss: json['gloss'] as String?,
+    mediaType: json['media_type'] as String?,
+    mediaSrc: json['media_src'] as String?,
+    mediaPoster: json['media_poster'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -151,17 +185,29 @@ class HiveExercise extends HiveObject {
     'position': position,
     if (repetitions != null) 'repetitions': repetitions,
     if (durationSeconds != null) 'duration_seconds': durationSeconds,
+    if (titleFa != null) 'title_fa': titleFa,
+    if (gloss != null) 'gloss': gloss,
+    if (mediaType != null) 'media_type': mediaType,
+    if (mediaSrc != null) 'media_src': mediaSrc,
+    if (mediaPoster != null) 'media_poster': mediaPoster,
   };
 
   Exercise toDomain() {
     return Exercise(
       id: id,
       name: name,
+      titleFa: titleFa,
+      gloss: gloss,
       author: author,
       type: type,
       audioFileUrl: url,
       repetitionsDefault: repetitions ?? 1,
       durationSeconds: durationSeconds,
+      media: ExerciseMedia(
+        type: mediaType ?? 'none',
+        src: mediaSrc,
+        poster: mediaPoster,
+      ),
     );
   }
 }
