@@ -172,7 +172,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
+                  color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
@@ -237,7 +237,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -262,7 +262,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Row(
@@ -314,7 +314,7 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
+                  color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -422,8 +422,8 @@ class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderSta
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
-                                ? Colors.orange.withOpacity(0.2)
-                                : Colors.green.withOpacity(0.2),
+                                ? Colors.orange.withValues(alpha: 0.2)
+                                : Colors.green.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(

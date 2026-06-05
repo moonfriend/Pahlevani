@@ -233,7 +233,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                                                     vertical: 4),
                                             decoration: BoxDecoration(
                                               color: theme.colorScheme.primary
-                                                  .withOpacity(0.08),
+                                                  .withValues(alpha: 0.08),
                                               borderRadius:
                                                   BorderRadius.circular(8),
                                             ),
