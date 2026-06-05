@@ -23,13 +23,14 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       difficulty: fields[3] as int,
       createdAt: fields[4] as DateTime?,
       isUserCreated: fields[5] as bool,
+      titleFa: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(4)
       ..write(obj.createdAt)
       ..writeByte(5)
-      ..write(obj.isUserCreated);
+      ..write(obj.isUserCreated)
+      ..writeByte(6)
+      ..write(obj.titleFa);
   }
 
   @override
@@ -74,13 +77,18 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       position: fields[5] as int,
       repetitions: fields[6] as int?,
       durationSeconds: fields[7] as int?,
+      titleFa: fields[8] as String?,
+      gloss: fields[9] as String?,
+      mediaType: fields[10] as String?,
+      mediaSrc: fields[11] as String?,
+      mediaPoster: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -96,7 +104,17 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(6)
       ..write(obj.repetitions)
       ..writeByte(7)
-      ..write(obj.durationSeconds);
+      ..write(obj.durationSeconds)
+      ..writeByte(8)
+      ..write(obj.titleFa)
+      ..writeByte(9)
+      ..write(obj.gloss)
+      ..writeByte(10)
+      ..write(obj.mediaType)
+      ..writeByte(11)
+      ..write(obj.mediaSrc)
+      ..writeByte(12)
+      ..write(obj.mediaPoster);
   }
 
   @override

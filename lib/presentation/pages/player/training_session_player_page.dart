@@ -1,536 +1,616 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 
-import '../../../presentation/bloc/player/audio_player_cubit.dart';
-
-/// Player page for displaying and controlling audio playback
+// ─────────────────────────────────────────────────────────────────────────────
+// Page shell
+// ─────────────────────────────────────────────────────────────────────────────
 class AudioPlayerPage extends StatefulWidget {
+  const AudioPlayerPage({super.key, required this.trainingSession});
   final TrainingSession trainingSession;
 
-  const AudioPlayerPage({
-    super.key,
-    required this.trainingSession,
-  });
-
   @override
-  AudioPlayerPageState createState() => AudioPlayerPageState();
+  State<AudioPlayerPage> createState() => _AudioPlayerPageState();
 }
 
-class AudioPlayerPageState extends State<AudioPlayerPage> with TickerProviderStateMixin {
-  late AnimationController _repetitionAnimationController;
-  late Animation<double> _repetitionAnimation;
-  int? _lastRepetitionNumber;
-  late final TrainingSessionPlayerCubit _playerCubit;
+class _AudioPlayerPageState extends State<AudioPlayerPage> {
+  late final TrainingSessionPlayerCubit _cubit;
+  final _trackListKey = GlobalKey<_TrackListState>();
 
   @override
   void initState() {
     super.initState();
-    // Create a new cubit instance for this page
-    _playerCubit = TrainingSessionPlayerCubit(trainingSession: widget.trainingSession);
-    // Load the initial tracks
-    _playerCubit.loadTracks();
-
-    _repetitionAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _repetitionAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _repetitionAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    _cubit = TrainingSessionPlayerCubit(trainingSession: widget.trainingSession);
+    _cubit.loadTracks();
   }
 
   @override
   void dispose() {
-    _playerCubit.stop();
-    _playerCubit.close(); // Dispose the cubit
-    _repetitionAnimationController.dispose();
+    _cubit.stop();
+    _cubit.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final accent = colors.accentFor(widget.trainingSession.id);
+
     return BlocProvider.value(
-      value: _playerCubit,
+      value: _cubit,
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: theme.colorScheme.primary,
-          elevation: 2,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-          ),
-          title: const Text(
-            'Play along',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: BlocBuilder<TrainingSessionPlayerCubit, AudioPlayerState>(
+        backgroundColor: colors.bg,
+        body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
+          listenWhen: (prev, cur) => prev.playingIndex != cur.playingIndex,
+          listener: (_, state) => _trackListKey.currentState?.scrollToActive(state.playingIndex),
           builder: (context, state) {
-            if (state.isLoading) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+            if (state.isLoading && state.tracks.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
             }
-
-            if (state.errorMessage != null) {
-              return Center(
-                child: Text(
-                  state.errorMessage!,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              );
+            if (state.errorMessage != null && state.tracks.isEmpty) {
+              return Center(child: Text(state.errorMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)));
             }
-
-            return Column(
-              children: [
-                // Current movement image display
-                Expanded(
-                  flex: 4,
-                  child: _buildCurrentMovementImage(context, state),
-                ),
-                // Repetition tracker
-                _buildRepetitionTracker(context, state),
-                // Audio progress bar
-                _buildAudioProgressBar(context, state),
-                // TrainingSession with movement thumbnails
-                Expanded(
-                  flex: 5,
-                  child: _buildTrainingSession(context, state),
-                ),
-                // Navigation buttons
-                _buildNavigationButtons(context, state),
-              ],
-            );
+            return Column(children: [
+              _AppBar(session: widget.trainingSession),
+              _Stage(state: state, accent: accent, cubit: _cubit),
+              _RepCounter(state: state),
+              _ProgressBlock(state: state),
+              Expanded(child: _TrackList(
+                  key: _trackListKey, state: state, accent: accent, cubit: _cubit)),
+              _Transport(state: state, cubit: _cubit),
+            ]);
           },
         ),
       ),
     );
   }
+}
 
-  Widget _buildRepetitionTracker(BuildContext context, AudioPlayerState state) {
-    final currentTrack = state.currentTrack;
-    if (currentTrack == null || state.logicalDuration.inMilliseconds == 0) {
-      return const SizedBox.shrink();
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// App bar
+// ─────────────────────────────────────────────────────────────────────────────
+class _AppBar extends StatelessWidget {
+  const _AppBar({required this.session});
+  final TrainingSession session;
 
-    final totalRepetitions = currentTrack.effectiveRepetitions;
-    final secondsPerRep = state.logicalDuration.inMilliseconds / totalRepetitions / 1000;
-    final currentRep = ((state.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
-    final clampedCurrentRep = currentRep.clamp(1, totalRepetitions);
-
-    // Trigger animation when repetition number changes
-    if (_lastRepetitionNumber != null && _lastRepetitionNumber != clampedCurrentRep) {
-      _repetitionAnimationController.forward().then((_) {
-        _repetitionAnimationController.reverse();
-      });
-    }
-    _lastRepetitionNumber = clampedCurrentRep;
-
-    // Check if this is a custom duration
-    final isCustomDuration = currentTrack.effectiveRepetitions != (currentTrack.defaultRepetitions ?? 1);
-    final backgroundColor = isCustomDuration ? Colors.orange : Colors.green;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[200],
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AnimatedBuilder(
-            animation: _repetitionAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _repetitionAnimation.value,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Rep $clampedCurrentRep of $totalRepetitions',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          // Show custom duration indicator
-          if (isCustomDuration)
-            Padding(
-              padding: const EdgeInsets.only(left: 8.0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Custom',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.orange,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCurrentMovementImage(BuildContext context, AudioPlayerState state) {
-    final currentTrack = state.currentTrack;
-    final String imagePath = currentTrack != null ? 'assets/images/${currentTrack.imagePath}' : 'assets/images/placeholder.png';
-    final bool isPlaying = state.isPlaying;
-
-    return Stack(
-      children: [
-        // Image container
-        Container(
-          width: double.infinity,
-          color: const Color(0xFFEEEEEE),
-          child: Center(
-            child: Image.asset(
-              imagePath,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                // Placeholder for when the image can't be loaded
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.sports_martial_arts, size: 120, color: Colors.black54),
-                      const SizedBox(height: 16),
-                      Text(
-                        currentTrack?.displayName ?? 'No movement selected',
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-
-        // Overlay play button (centered large play button when paused)
-        if (!isPlaying)
-          Positioned.fill(
-            child: Center(
-              child: GestureDetector(
-                onTap: () {
-                  _playerCubit.togglePlay();
-                },
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 50,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-        // Small playing indicator in corner when playing
-        if (isPlaying)
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: GestureDetector(
-              onTap: () {
-                _playerCubit.togglePlay();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.pause, color: Colors.white, size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      'Now playing',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildAudioProgressBar(BuildContext context, AudioPlayerState state) {
-    final currentTrack = state.currentTrack;
-    final logicalPosition = state.logicalPosition;
-    final logicalDuration = state.logicalDuration;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[200],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Current track name display
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text(
-              currentTrack?.displayName ?? 'No track selected',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // Repetition info display
-          if (currentTrack != null && currentTrack.effectiveRepetitions != (currentTrack.defaultRepetitions ?? 1))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Custom duration: ${currentTrack.effectiveRepetitions} reps (default: ${currentTrack.defaultRepetitions ?? 1})',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.orange,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          // Logical progress indicator (not interactive)
-          // if (logicalDuration.inMilliseconds > 0)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: LinearProgressIndicator(
-              value: (logicalPosition.inMilliseconds / logicalDuration.inMilliseconds).clamp(0.0, 1.0),
-              minHeight: 6,
-              backgroundColor: Colors.grey[300],
-              color: Colors.green,
-            ),
-          ),
-          // Show time as text (optional, not interactive)
-          if (logicalDuration.inMilliseconds > 0)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(_formatDuration(logicalPosition), style: const TextStyle(fontSize: 12)),
-                Text(_formatDuration(logicalDuration), style: const TextStyle(fontSize: 12)),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  // Helper method to format duration as mm:ss
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
-
-  Widget _buildTrainingSession(BuildContext context, AudioPlayerState state) {
-    final currentIndex = state.playingIndex;
-    final isPlaying = state.isPlaying;
-    final tracks = state.tracks;
-
-    return Container(
-      color: Colors.grey[200],
-      child: ListView.builder(
-        padding: EdgeInsets.zero,
-        itemCount: tracks.length,
-        itemBuilder: (context, index) {
-          final track = tracks[index];
-          final bool isSelected = index == currentIndex;
-
-          return Container(
-            height: 70,
-            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              children: [
-                // Logo container
-                Container(
-                  width: 50,
-                  height: 50,
-                  margin: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Center(
-                    child: Text(
-                      (index + 1).toString(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                // Text content with repetition info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        track.displayName,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isSelected ? Colors.black : Colors.grey[600],
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      // Show repetition info if different from default
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2.0),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
-                                ? Colors.orange.withValues(alpha: 0.2)
-                                : Colors.green.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${track.effectiveRepetitions} reps',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: (track.effectiveRepetitions != (track.defaultRepetitions ?? 1)) ? Colors.orange : Colors.green,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Play/Pause button - only for selected item
-                if (isSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16.0),
-                    child: IconButton(
-                      icon: isPlaying
-                          ? const Icon(Icons.pause, color: Colors.green, size: 30)
-                          : const Icon(Icons.play_arrow, color: Colors.green, size: 30),
-                      onPressed: () {
-                        _playerCubit.togglePlay();
-                      },
-                    ),
-                  ),
-              ],
-            ),
-
-          ).gestures(
-            onTap: () => _playerCubit.setIndexAndPlay(index),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildNavigationButtons(BuildContext context, AudioPlayerState state) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          ElevatedButton.icon(
-            icon: const Icon(Icons.arrow_upward),
-            label: const Text('Previous'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(140, 45),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-            ),
-            onPressed: () {
-              _playerCubit.prev();
-            },
-          ),
-          // Play/Pause button
-          FloatingActionButton(
-            backgroundColor: Colors.green,
-            child: Icon(
-              state.isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              _playerCubit.togglePlay();
-            },
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.arrow_downward),
-            label: const Text('Next'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(140, 45),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-            ),
-            onPressed: () {
-              _playerCubit.next();
-            },
-          ),
-        ],
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
+        child: Row(children: [
+          _RoundBtn(icon: Icons.arrow_back_rounded, color: cs.onSurface,
+              onTap: () => Navigator.pop(context)),
+          const SizedBox(width: 4),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('PLAY ALONG',
+                style: PTextStyles.of(context).playerOverline.copyWith(color: colors.onFaint)),
+            Text(session.title,
+                style: PTextStyles.of(context).appBarTitle.copyWith(color: cs.onSurface),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+          ])),
+        ]),
       ),
     );
   }
 }
 
-// Extension to make widgets tappable
-extension GestureExtension on Widget {
-  Widget gestures({
-    GestureTapCallback? onTap,
-    GestureTapCallback? onDoubleTap,
-    GestureLongPressCallback? onLongPress,
-  }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Media stage (232px)
+// ─────────────────────────────────────────────────────────────────────────────
+class _Stage extends StatelessWidget {
+  const _Stage({required this.state, required this.accent, required this.cubit});
+  final AudioPlayerState state;
+  final SessionAccent accent;
+  final TrainingSessionPlayerCubit cubit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+
     return GestureDetector(
-      onTap: onTap,
-      onDoubleTap: onDoubleTap,
-      onLongPress: onLongPress,
-      child: this,
+      onTap: cubit.togglePlay,
+      child: Container(
+        height: 232,
+        margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+        decoration: BoxDecoration(
+          color: accent.bg,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: colors.borderSoft),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(children: [
+          Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
+          // Exercise name — bottom left
+          Positioned(
+            left: 16, bottom: 16, right: 80,
+            child: Text(state.currentTrack?.title ?? '',
+                style: PTextStyles.of(context).playerExLatin.copyWith(color: cs.onSurface),
+                maxLines: 2),
+          ),
+          // Paused overlay
+          if (!state.isPlaying)
+            Positioned.fill(
+              child: ColoredBox(
+                color: colors.scrim,
+                child: Center(
+                  child: Container(
+                    width: 72, height: 72,
+                    decoration: BoxDecoration(
+                        color: cs.surface, shape: BoxShape.circle,
+                        boxShadow: colors.shadowPop),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.play_arrow_rounded, size: 34, color: cs.primary),
+                  ),
+                ),
+              ),
+            ),
+          // Now-playing pill
+          if (state.isPlaying)
+            Positioned(
+              right: 14, bottom: 14,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+                decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(99),
+                    boxShadow: colors.shadowCard),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _Equalizer(color: accent.fg),
+                  const SizedBox(width: 8),
+                  Text('Pause',
+                      style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
+                          fontSize: 12, color: cs.onSurface)),
+                ]),
+              ),
+            ),
+        ]),
+      ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rep counter — the signature moment
+// ─────────────────────────────────────────────────────────────────────────────
+class _RepCounter extends StatefulWidget {
+  const _RepCounter({required this.state});
+  final AudioPlayerState state;
+
+  @override
+  State<_RepCounter> createState() => _RepCounterState();
+}
+
+class _RepCounterState extends State<_RepCounter>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 420));
+  late final Animation<double> _scale = TweenSequence([
+    TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.28).chain(CurveTween(curve: Curves.easeOut)), weight: 35),
+    TweenSequenceItem(
+        tween: Tween(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeIn)), weight: 65),
+  ]).animate(_ctrl);
+  late final Animation<double> _flash = Tween(begin: 0.85, end: 0.0)
+      .animate(CurvedAnimation(parent: _ctrl,
+          curve: const Interval(0, 0.6, curve: Curves.easeOut)));
+
+  int _lastRep = 0;
+
+  int _computeRep(AudioPlayerState s) {
+    if (s.logicalDuration.inMilliseconds <= 0) return 1;
+    final total = s.currentTrack?.effectiveRepetitions ?? 1;
+    final secondsPerRep = s.logicalDuration.inMilliseconds / total / 1000;
+    if (secondsPerRep <= 0) return 1;
+    return ((s.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
+  }
+
+  @override
+  void didUpdateWidget(_RepCounter old) {
+    super.didUpdateWidget(old);
+    final total = widget.state.currentTrack?.effectiveRepetitions ?? 1;
+    final rep = _computeRep(widget.state).clamp(1, total);
+    if (_lastRep != 0 && rep != _lastRep) {
+      HapticFeedback.selectionClick();
+      _ctrl.forward(from: 0);
+    }
+    _lastRep = rep;
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.state;
+    if (s.currentTrack == null || s.logicalDuration.inMilliseconds == 0) {
+      return const SizedBox(height: 16);
+    }
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final track = s.currentTrack!;
+    final total = track.effectiveRepetitions;
+    final isCustom = track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
+    final rep = _computeRep(s).clamp(1, total);
+    final pillBg  = isCustom ? colors.repCustomBg  : colors.repDefaultBg;
+    final pillFg  = isCustom ? colors.repCustom     : colors.repDefault;
+    final glow = isCustom
+        ? colors.repCustom.withValues(alpha: 0.4)
+        : colors.repDefault.withValues(alpha: 0.36);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Center(
+        child: ScaleTransition(
+          scale: _scale,
+          child: Container(
+            decoration: BoxDecoration(
+              color: pillBg,
+              borderRadius: BorderRadius.circular(99),
+              boxShadow: [BoxShadow(color: glow, blurRadius: 10, offset: const Offset(0, 2))],
+            ),
+            child: Stack(alignment: Alignment.center, children: [
+              // Flash overlay
+              AnimatedBuilder(
+                animation: _flash,
+                builder: (_, __) => Container(
+                  decoration: BoxDecoration(
+                    color: pillFg.withValues(alpha: _flash.value),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 9, 20, 9),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: 30, height: 30,
+                    decoration: BoxDecoration(color: pillFg, shape: BoxShape.circle),
+                    alignment: Alignment.center,
+                    child: Text('$rep',
+                        style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w800,
+                            fontSize: 15, color: pillBg)),
+                  ),
+                  const SizedBox(width: 10),
+                  RichText(text: TextSpan(
+                    style: PTextStyles.of(context).repPill.copyWith(color: pillFg),
+                    children: [
+                      TextSpan(text: 'Rep $rep '),
+                      TextSpan(text: 'of $total',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      if (isCustom)
+                        const TextSpan(text: '  · custom',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
+                    ],
+                  )),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Progress block
+// ─────────────────────────────────────────────────────────────────────────────
+class _ProgressBlock extends StatelessWidget {
+  const _ProgressBlock({required this.state});
+  final AudioPlayerState state;
+
+  static String _clock(Duration d) {
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    final dur = state.logicalDuration;
+    final pos = state.logicalPosition;
+    final progress = dur.inMilliseconds > 0
+        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
+      child: Column(children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(state.currentTrack?.title ?? '',
+                  style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
+                      fontSize: 13.5, color: cs.onSurface),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            Text('${_clock(pos)} / ${_clock(dur)}',
+                style: PTextStyles.of(context).playerTime.copyWith(color: colors.onMuted)),
+          ],
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: LinearProgressIndicator(
+            value: progress, minHeight: 6,
+            backgroundColor: colors.surface3,
+            valueColor: AlwaysStoppedAnimation(colors.repDefault),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Track list
+// ─────────────────────────────────────────────────────────────────────────────
+class _TrackList extends StatefulWidget {
+  const _TrackList({super.key, required this.state, required this.accent, required this.cubit});
+  final AudioPlayerState state;
+  final SessionAccent accent;
+  final TrainingSessionPlayerCubit cubit;
+
+  @override
+  State<_TrackList> createState() => _TrackListState();
+}
+
+class _TrackListState extends State<_TrackList> {
+  final _scrollCtrl = ScrollController();
+  final _itemKeys = <int, GlobalKey>{};
+
+  void scrollToActive(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _itemKeys[index];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(key!.currentContext!,
+            duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  @override
+  void dispose() { _scrollCtrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    final tracks = widget.state.tracks;
+    final activeIndex = widget.state.playingIndex;
+    final isPlaying = widget.state.isPlaying;
+
+    return ListView.builder(
+      controller: _scrollCtrl,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      itemCount: tracks.length,
+      itemBuilder: (context, i) {
+        _itemKeys[i] ??= GlobalKey();
+        final track = tracks[i];
+        final active = i == activeIndex;
+        final isCustom = track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
+        final repFg = isCustom ? colors.repCustom   : colors.repDefault;
+        final repBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+
+        return GestureDetector(
+          key: _itemKeys[i],
+          onTap: () => widget.cubit.setIndexAndPlay(i),
+          child: Container(
+            height: 70,
+            margin: const EdgeInsets.only(bottom: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: active ? colors.surface2 : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(children: [
+              Container(
+                width: 28, height: 28,
+                decoration: BoxDecoration(
+                  color: active ? widget.accent.fg : colors.surface3,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: Text('${i + 1}', style: TextStyle(
+                    fontFamily: PFonts.ui, fontWeight: FontWeight.w700, fontSize: 13,
+                    color: active ? cs.onPrimary : colors.onMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(track.title, style: TextStyle(
+                      fontFamily: PFonts.ui,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+                      fontSize: 14.5,
+                      color: active ? cs.onSurface : colors.onMuted),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text('${track.effectiveRepetitions} reps',
+                      style: PTextStyles.of(context).trackRowGloss.copyWith(color: colors.onFaint)),
+                ],
+              )),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(color: repBg, borderRadius: BorderRadius.circular(99)),
+                child: Text('${track.effectiveRepetitions}×',
+                    style: PTextStyles.of(context).repChip.copyWith(color: repFg)),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 22,
+                child: active
+                    ? Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        size: 18, color: widget.accent.fg)
+                    : const SizedBox.shrink(),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom transport
+// ─────────────────────────────────────────────────────────────────────────────
+class _Transport extends StatelessWidget {
+  const _Transport({required this.state, required this.cubit});
+  final AudioPlayerState state;
+  final TrainingSessionPlayerCubit cubit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    final atStart = state.playingIndex <= 0;
+    final atEnd = state.playingIndex >= state.tracks.length - 1;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          colors: [colors.bg, colors.bg.withValues(alpha: 0)],
+          stops: const [0.6, 1.0],
+        ),
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        _TransportBtn(size: 52, icon: Icons.keyboard_arrow_up_rounded,
+            enabled: !atStart, colors: colors, onTap: cubit.prev),
+        const SizedBox(width: 28),
+        GestureDetector(
+          onTap: cubit.togglePlay,
+          child: Container(
+            width: 68, height: 68,
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: colors.shadowPop,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              size: 30, color: cs.onPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 28),
+        _TransportBtn(size: 52, icon: Icons.keyboard_arrow_down_rounded,
+            enabled: !atEnd, colors: colors, onTap: cubit.next),
+      ]),
+    );
+  }
+}
+
+class _TransportBtn extends StatelessWidget {
+  const _TransportBtn({
+    required this.size, required this.icon,
+    required this.enabled, required this.colors, required this.onTap,
+  });
+  final double size;
+  final IconData icon;
+  final bool enabled;
+  final PahlevaniColors colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.5,
+        child: Container(
+          width: size, height: size,
+          decoration: BoxDecoration(
+            color: colors.surface2,
+            shape: BoxShape.circle,
+            border: Border.all(color: colors.borderSoft),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 24, color: enabled ? cs.onSurface : colors.onFaint),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundBtn extends StatelessWidget {
+  const _RoundBtn({required this.icon, required this.color, required this.onTap});
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: SizedBox(width: 44, height: 44,
+        child: Icon(icon, size: 24, color: color)),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated equalizer bars
+// ─────────────────────────────────────────────────────────────────────────────
+class _Equalizer extends StatefulWidget {
+  const _Equalizer({required this.color});
+  final Color color;
+
+  @override
+  State<_Equalizer> createState() => _EqualizerState();
+}
+
+class _EqualizerState extends State<_Equalizer> with TickerProviderStateMixin {
+  late final List<AnimationController> _ctrls;
+  late final List<Animation<double>> _anims;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = List.generate(3, (i) => AnimationController(
+      vsync: this, duration: Duration(milliseconds: 700 + i * 180))..repeat(reverse: true));
+    _anims = _ctrls.map((c) =>
+        Tween(begin: 4.0, end: 14.0).animate(CurvedAnimation(parent: c, curve: Curves.easeInOut))
+    ).toList();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) { c.dispose(); }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 14,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(3, (i) => Padding(
+        padding: EdgeInsets.only(left: i > 0 ? 2.5 : 0),
+        child: AnimatedBuilder(
+          animation: _anims[i],
+          builder: (_, __) => Container(
+            width: 3, height: _anims[i].value,
+            decoration: BoxDecoration(color: widget.color, borderRadius: BorderRadius.circular(2)),
+          ),
+        ),
+      )),
+    ),
+  );
 }
