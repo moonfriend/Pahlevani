@@ -155,8 +155,10 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }) async {
     try {
       final saved = trainingSession.copyWith(
-        id: DateTime.now().millisecondsSinceEpoch,
-        createdAt: DateTime.now(),
+        id: trainingSession.isUserCreated
+            ? trainingSession.id
+            : DateTime.now().millisecondsSinceEpoch,
+        createdAt: trainingSession.createdAt ?? DateTime.now(),
         isUserCreated: true,
       );
       await localDatabase.saveTrainingSessions([saved]);

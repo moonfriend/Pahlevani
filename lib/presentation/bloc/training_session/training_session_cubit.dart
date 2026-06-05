@@ -75,7 +75,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
 
         // domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
     try {
-      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions();
+      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions(refresh: forceRefresh);
       // Merge fetched training_sessions with current download statuses
       emit(TrainingSessionLoaded(
         uiModel: buildTrainingSessionsUiModel(),
