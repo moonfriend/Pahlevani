@@ -1,20 +1,23 @@
 import 'package:equatable/equatable.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 
 /// Represents an audio track with its basic properties
 class TrainingItemWithAudio extends Equatable {
   final String id;
   final String title;
   final String audioFilePath;
-  final String? imagePath;
+  final String? imagePath;       // legacy local asset path — kept for widgets that still use it
+  final ExerciseMedia media;     // photo / video from the movement table
   final Duration? duration;
-  final int? defaultRepetitions; // Default repetitions from HiveAudio
-  final int? userRepetitions; // User-specific repsToDo from HiveTrainingSessionSong
+  final int? defaultRepetitions;
+  final int? userRepetitions;
 
   const TrainingItemWithAudio({
     required this.id,
     required this.title,
     required this.audioFilePath,
     this.imagePath,
+    this.media = ExerciseMedia.none,
     this.duration,
     this.defaultRepetitions,
     this.userRepetitions,
@@ -45,5 +48,5 @@ class TrainingItemWithAudio extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, audioFilePath, imagePath, duration, defaultRepetitions, userRepetitions];
+  List<Object?> get props => [id, title, audioFilePath, imagePath, media, duration, defaultRepetitions, userRepetitions];
 }

@@ -50,9 +50,12 @@ SUPABASE_KEY = (
 )
 
 STORAGE_BUCKET = "tracks"
+# Bucket for movement photos / poster images.
+MEDIA_BUCKET = "movement-media"
 # Set True after making the bucket public in Supabase Dashboard.
 # False → generate a 10-year signed URL on upload.
 BUCKET_PUBLIC = False
+MEDIA_BUCKET_PUBLIC = False
 SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
 
 # ── DB / Storage client ───────────────────────────────────────────────────────
@@ -84,10 +87,28 @@ def load_items() -> pd.DataFrame:
     )
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
+@st.cache_data(ttl=60)
+def load_movements() -> pd.DataFrame:
+    try:
+        rows = get_client().table("movement").select("*").order("id").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Could not load movement table ({e}). Run the DB migration first.")
+        return pd.DataFrame()
+
 def bust_cache():
     load_exercises.clear()
     load_sessions.clear()
     load_items.clear()
+    load_movements.clear()
+
+def make_media_url(storage_path: str) -> str:
+    if MEDIA_BUCKET_PUBLIC:
+        return f"{SUPABASE_URL}/storage/v1/object/public/{MEDIA_BUCKET}/{storage_path}"
+    r = get_client().storage.from_(MEDIA_BUCKET).create_signed_url(
+        storage_path, SIGNED_URL_EXPIRY
+    )
+    return r.get("signedURL") or r.get("signed_url") or ""
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -650,6 +671,159 @@ def tab_inspector():
     st.metric("Estimated total", f"{m}m {s}s" if s else f"{m}m")
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Movement Media
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_movement_media():
+    st.header("Movement Media")
+    st.caption(
+        "Assign a photo or video to each movement. "
+        "The player shows this in the stage card while the exercise is playing."
+    )
+
+    if st.button("↺ Reload", key="rel_mov"):
+        load_movements.clear()
+
+    movements = load_movements()
+    if movements.empty:
+        st.info(
+            "No movements found. Run the DB migration to create the `movement` table, "
+            "then refresh."
+        )
+        return
+
+    # ── Thumbnail grid ────────────────────────────────────────────────────────
+    st.subheader(f"All movements ({len(movements)})")
+    n_cols = 4
+    cols = st.columns(n_cols)
+    for i, (_, row) in enumerate(movements.iterrows()):
+        with cols[i % n_cols]:
+            media_type = row.get("media_type") or "none"
+            media_src  = row.get("media_src")  or ""
+            name       = row.get("name") or f"id {row['id']}"
+            if media_type == "photo" and media_src:
+                try:
+                    st.image(media_src, use_container_width=True)
+                except Exception:
+                    st.caption("⚠️ image failed")
+            elif media_type == "video" and media_src:
+                st.caption("🎬 video")
+            else:
+                st.markdown(
+                    "<div style='background:#2a2a2a;height:80px;border-radius:8px;"
+                    "display:flex;align-items:center;justify-content:center;"
+                    "color:#888;font-size:22px'>📷</div>",
+                    unsafe_allow_html=True,
+                )
+            st.caption(f"**{name}**")
+
+    st.divider()
+
+    # ── Edit form ─────────────────────────────────────────────────────────────
+    st.subheader("Upload or update media")
+
+    mov_opts = {
+        f"{r.get('name', '?')}  (id {mid})": mid
+        for mid, r in movements.set_index("id").iterrows()
+    }
+    chosen_label = st.selectbox("Movement", list(mov_opts.keys()), key="mm_sel")
+    movement_id  = mov_opts[chosen_label]
+    mov_row      = movements[movements["id"] == movement_id].iloc[0]
+
+    cur_type = mov_row.get("media_type") or "none"
+    cur_src  = mov_row.get("media_src")  or ""
+    cur_post = mov_row.get("media_poster") or ""
+
+    # Show current media
+    if cur_type == "photo" and cur_src:
+        st.image(cur_src, caption="Current photo", width=280)
+    elif cur_type == "video" and cur_src:
+        try:
+            st.video(cur_src)
+        except Exception:
+            st.caption(f"Video URL: {cur_src}")
+    else:
+        st.info("No media currently assigned to this movement.")
+
+    tab_upload, tab_url, tab_clear = st.tabs(["📤 Upload image", "🔗 Set URL", "🗑️ Clear"])
+
+    # ── Upload image ──────────────────────────────────────────────────────────
+    with tab_upload:
+        if not MEDIA_BUCKET_PUBLIC:
+            st.info(
+                "🔒 `movement-media` bucket is **private** — uploads will use "
+                "10-year signed URLs. Make it public in Supabase Dashboard and "
+                "set `MEDIA_BUCKET_PUBLIC = True` in admin.py for permanent links."
+            )
+        uploaded = st.file_uploader(
+            "Choose image (jpg / png / webp)",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="mm_uploader",
+        )
+        if uploaded:
+            st.image(uploaded, caption="Preview", width=280)
+            ext = Path(uploaded.name).suffix.lower()
+            mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                        ".png": "image/png", ".webp": "image/webp"}
+            mime = mime_map.get(ext, "image/jpeg")
+            storage_path = f"{movement_id}/{uploaded.name}"
+            st.caption(f"Will upload to: `{MEDIA_BUCKET}/{storage_path}`")
+
+            if st.button("Upload & save", type="primary", key="mm_up_btn"):
+                data = uploaded.getvalue()
+                try:
+                    with st.spinner("Uploading…"):
+                        get_client().storage.from_(MEDIA_BUCKET).upload(
+                            path=storage_path,
+                            file=data,
+                            file_options={"content-type": mime, "upsert": "true"},
+                        )
+                        url = make_media_url(storage_path)
+                        get_client().table("movement").update(
+                            {"media_type": "photo", "media_src": url, "media_poster": None}
+                        ).eq("id", movement_id).execute()
+                    st.success(
+                        f"✅ Photo uploaded and linked to **{mov_row.get('name')}**."
+                    )
+                    load_movements.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Upload failed: {e}")
+
+    # ── Set URL directly ──────────────────────────────────────────────────────
+    with tab_url:
+        url_type = st.radio(
+            "Media type", ["photo", "video"],
+            index=0 if cur_type != "video" else 1,
+            key="mm_url_type",
+        )
+        url_input    = st.text_input("Media URL", value=cur_src,  key="mm_url_in")
+        poster_input = st.text_input(
+            "Poster image URL (video only)", value=cur_post, key="mm_post_in"
+        )
+        if st.button("Save URL", type="primary", key="mm_url_btn"):
+            get_client().table("movement").update({
+                "media_type":   url_type,
+                "media_src":    url_input.strip() or None,
+                "media_poster": poster_input.strip() or None,
+            }).eq("id", movement_id).execute()
+            st.success("✅ Saved.")
+            load_movements.clear()
+            st.rerun()
+
+    # ── Clear ─────────────────────────────────────────────────────────────────
+    with tab_clear:
+        st.warning("This removes the media link from the movement (the file in Storage is kept).")
+        if st.button("Clear media", type="secondary", key="mm_clr_btn"):
+            get_client().table("movement").update(
+                {"media_type": "none", "media_src": None, "media_poster": None}
+            ).eq("id", movement_id).execute()
+            st.success("Cleared.")
+            load_movements.clear()
+            st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -659,18 +833,20 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5 = st.tabs([
+    t1, t2, t3, t4, t5, t6 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
         "🏗️  Session Builder",
         "🔍  Inspector",
+        "📸  Movement Media",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
     with t3: tab_batch_import()
     with t4: tab_session_builder()
     with t5: tab_inspector()
+    with t6: tab_movement_media()
 
 
 if __name__ == "__main__":
