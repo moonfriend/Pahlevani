@@ -281,7 +281,7 @@ class _RepCounterState extends State<_RepCounter>
         : colors.repDefault.withValues(alpha: 0.36);
 
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.only(top: 10),
       child: Center(
         child: ScaleTransition(
           scale: _scale,
@@ -289,10 +289,9 @@ class _RepCounterState extends State<_RepCounter>
             decoration: BoxDecoration(
               color: pillBg,
               borderRadius: BorderRadius.circular(99),
-              boxShadow: [BoxShadow(color: glow, blurRadius: 10, offset: const Offset(0, 2))],
+              boxShadow: [BoxShadow(color: glow, blurRadius: 8, offset: const Offset(0, 2))],
             ),
             child: Stack(alignment: Alignment.center, children: [
-              // Flash overlay
               AnimatedBuilder(
                 animation: _flash,
                 builder: (_, __) => Container(
@@ -303,26 +302,26 @@ class _RepCounterState extends State<_RepCounter>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 9, 20, 9),
+                padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(
-                    width: 30, height: 30,
+                    width: 22, height: 22,
                     decoration: BoxDecoration(color: pillFg, shape: BoxShape.circle),
                     alignment: Alignment.center,
                     child: Text('$rep',
                         style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w800,
-                            fontSize: 15, color: pillBg)),
+                            fontSize: 12, color: pillBg)),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   RichText(text: TextSpan(
-                    style: PTextStyles.of(context).repPill.copyWith(color: pillFg),
+                    style: PTextStyles.of(context).repPill.copyWith(color: pillFg, fontSize: 13),
                     children: [
                       TextSpan(text: 'Rep $rep '),
                       TextSpan(text: 'of $total',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                       if (isCustom)
                         const TextSpan(text: '  · custom',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10)),
                     ],
                   )),
                 ]),
