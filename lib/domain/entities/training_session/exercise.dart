@@ -12,6 +12,7 @@ class ExerciseMedia {
 
 class Exercise {
   final int id;
+  final int? movementId;
   final String name;
   final String? titleFa;
   final String? gloss;
@@ -24,6 +25,7 @@ class Exercise {
 
   const Exercise({
     required this.id,
+    this.movementId,
     required this.name,
     this.titleFa,
     this.gloss,

@@ -2,14 +2,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Abstract interface for remote training_session data operations.
 abstract class TrainingSessionRemoteDataSource {
-  /// Fetches all training_sessions from the remote source (Supabase).
   Future<List<Map<String, dynamic>>> fetchTrainingSessionsTable();
-
-  /// Fetches all Exercises from the remote source (Supabase).
   Future<List<Map<String, dynamic>>> fetchExerciseTable();
-
-  /// Fetches all training_session_items from the remote source (Supabase).
   Future<List<Map<String, dynamic>>> fetchTrainingSessionItemTable();
+  Future<List<Map<String, dynamic>>> fetchMovementTable();
 }
 
 /// Implementation of [TrainingSessionRemoteDataSource] using Supabase.
@@ -57,6 +53,22 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
         } catch (e) {
       print("Supabase fetch error (training_session_items): $e");
       throw Exception('Failed to fetch training_session_items table: $e');
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMovementTable() async {
+    try {
+      print("Fetching movement table from Supabase...");
+      final response = await _client.from('movement').select();
+      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
+      print("Fetched ${data.length} movements.");
+      return data;
+    } catch (e) {
+      print("Supabase fetch error (movement): $e");
+      // Movement table may not exist yet (pre-migration). Return empty list so
+      // the existing exercise-level media fields act as a fallback.
+      return [];
     }
   }
 }

@@ -64,7 +64,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 _AppBar(session: widget.trainingSession),
                 _Stage(state: state, accent: accent, cubit: _cubit),
                 _RepCounter(state: state),
-                _ProgressBlock(state: state),
+                _ProgressBlock(state: state, cubit: _cubit),
                 Expanded(child: _TrackList(
                     key: _trackListKey, state: state, accent: accent, cubit: _cubit)),
                 _Transport(state: state, cubit: _cubit),
@@ -153,6 +153,12 @@ class _Stage extends StatelessWidget {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
 
+    final track = state.currentTrack;
+    final hasPhoto = track != null &&
+        track.media.type == 'photo' &&
+        track.media.src != null &&
+        track.media.src!.isNotEmpty;
+
     return GestureDetector(
       onTap: cubit.togglePlay,
       child: Container(
@@ -165,12 +171,37 @@ class _Stage extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(children: [
-          Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
+          if (hasPhoto)
+            Positioned.fill(
+              child: Image.network(
+                track!.media.src!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110),
+              ),
+            )
+          else
+            Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
+          // Dark gradient at bottom so text stays legible over photos
+          if (hasPhoto)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
+                    stops: const [0.45, 1.0],
+                  ),
+                ),
+              ),
+            ),
           // Exercise name — bottom left
           Positioned(
             left: 16, bottom: 16, right: 80,
             child: Text(state.currentTrack?.title ?? '',
-                style: PTextStyles.of(context).playerExLatin.copyWith(color: cs.onSurface),
+                style: PTextStyles.of(context).playerExLatin.copyWith(
+                    color: hasPhoto ? Colors.white : cs.onSurface),
                 maxLines: 2),
           ),
           // Paused overlay
@@ -335,16 +366,24 @@ class _RepCounterState extends State<_RepCounter>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Progress block
+// Progress block (draggable seek bar)
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProgressBlock extends StatelessWidget {
-  const _ProgressBlock({required this.state});
+  const _ProgressBlock({required this.state, required this.cubit});
   final AudioPlayerState state;
+  final TrainingSessionPlayerCubit cubit;
 
   static String _clock(Duration d) {
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  void _seek(double dx, double maxWidth) {
+    final dur = state.logicalDuration;
+    if (dur.inMilliseconds <= 0 || maxWidth <= 0) return;
+    final ratio = (dx / maxWidth).clamp(0.0, 1.0);
+    cubit.seekTo(Duration(milliseconds: (ratio * dur.inMilliseconds).round()));
   }
 
   @override
@@ -376,12 +415,25 @@ class _ProgressBlock extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 7),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            value: progress, minHeight: 6,
-            backgroundColor: colors.surface3,
-            valueColor: AlwaysStoppedAnimation(colors.repDefault),
+        LayoutBuilder(
+          builder: (_, constraints) => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
+            onHorizontalDragUpdate: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
+            child: SizedBox(
+              height: 28,
+              child: Align(
+                alignment: Alignment.center,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    value: progress, minHeight: 6,
+                    backgroundColor: colors.surface3,
+                    valueColor: AlwaysStoppedAnimation(colors.repDefault),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ]),
