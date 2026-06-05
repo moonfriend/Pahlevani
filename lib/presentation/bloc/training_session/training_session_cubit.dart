@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
@@ -150,14 +151,32 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   }
 
   TrainingSessionsUiModel buildTrainingSessionsUiModel() {
-    final itemCounts = {
-      for (final entry in _currentTSSnapshot.itemsBySessionId.entries)
-        entry.key: entry.value.length
-    };
+    final itemCounts = <int, int>{};
+    final durations = <int, int>{};
+    for (final entry in _currentTSSnapshot.itemsBySessionId.entries) {
+      final sessionId = entry.key;
+      final items = entry.value;
+      itemCounts[sessionId] = items.length;
+      var total = 0;
+      var allKnown = true;
+      for (final item in items) {
+        final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
+        final trackDuration = exercise?.durationSeconds;
+        final defaultReps = exercise?.repetitionsDefault ?? 1;
+        if (trackDuration == null) { allKnown = false; continue; }
+        final repsToDo = item.prescription is RepsPresc
+            ? (item.prescription as RepsPresc).count
+            : defaultReps;
+        total += (trackDuration / defaultReps * repsToDo).round();
+      }
+      if (allKnown) durations[sessionId] = total;
+    }
     return TrainingSessionsUiModel(
-        trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
-        downloadStatuses: _currentDownloadStatus,
-        sessionItemCounts: itemCounts);
+      trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
+      downloadStatuses: _currentDownloadStatus,
+      sessionItemCounts: itemCounts,
+      sessionDurations: durations,
+    );
   }
 
   /// Returns the detailed item list for a session, built from the in-memory snapshot.
