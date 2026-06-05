@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -178,6 +179,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         id: item.id.toString(),
         title: exercise?.name ?? '',
         audioFilePath: exercise?.audioFileUrl ?? '',
+        media: exercise?.media ?? ExerciseMedia.none,
         defaultRepetitions: exercise?.repetitionsDefault,
         userRepetitions: repsToDo,
       );
@@ -382,9 +384,20 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Seek to a specific position in the current track
+  /// Seek to [position] in the logical timeline for the current track.
+  /// The audio is seeked to the correct offset within the repeating loop.
   Future<void> seekTo(Duration position) async {
-    // Disabled
+    if (_originalDuration == null || _logicalTargetDuration == null) return;
+    final clamped = Duration(
+      milliseconds:
+          position.inMilliseconds.clamp(0, _logicalTargetDuration!.inMilliseconds),
+    );
+    _logicalTimer?.cancel();
+    _logicalElapsed = clamped;
+    final seekMs = clamped.inMilliseconds % _originalDuration!.inMilliseconds;
+    await _audioPlayer.seek(Duration(milliseconds: seekMs));
+    emit(state.copyWith(logicalPosition: clamped));
+    if (state.isPlaying) _startLogicalTimer();
   }
 
   /// Calculate target duration based on repetitions
