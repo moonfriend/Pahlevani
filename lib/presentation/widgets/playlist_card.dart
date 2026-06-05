@@ -30,7 +30,7 @@ class TrainingSessionCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       elevation: 3,
-      color: training_session.isUserCreated ? Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5) : Theme.of(context).colorScheme.surface,
+      color: training_session.isUserCreated ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5) : Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
         onTap: onTap,
@@ -47,7 +47,7 @@ class TrainingSessionCard extends StatelessWidget {
                       padding: const EdgeInsets.only(right: 8.0),
                       child: Chip(
                         label: const Text('Yours', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        backgroundColor: Colors.green.withOpacity(0.15),
+                        backgroundColor: Colors.green.withValues(alpha: 0.15),
                         labelStyle: const TextStyle(color: Colors.green),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

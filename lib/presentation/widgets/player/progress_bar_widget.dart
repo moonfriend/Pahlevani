@@ -25,7 +25,7 @@ class ProgressBarWidget extends StatelessWidget {
             activeTrackColor: Colors.green,
             inactiveTrackColor: Colors.grey[300],
             thumbColor: Colors.green,
-            overlayColor: Colors.green.withOpacity(0.3),
+            overlayColor: Colors.green.withValues(alpha: 0.3),
           ),
           child: Slider(
             min: 0.0,

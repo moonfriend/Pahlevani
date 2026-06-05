@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
@@ -96,8 +97,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   // Dynamic duration management
   Duration? _originalDuration; // Original track duration
   Duration? _targetDuration; // Target duration based on repetitions
-  Timer? _dynamicDurationTimer;
-  bool _isLooping = false;
 
   Timer? _logicalTimer;
   Duration _logicalElapsed = Duration.zero;
@@ -124,9 +123,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     // Listen for duration changes
     _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
+      // GStreamer fires Duration(0) both before and after the real duration.
+      // Ignore those entirely — keep whatever real value we already have.
+      if (duration.inMilliseconds <= 0) return;
       _originalDuration = duration;
       _calculateTargetDuration();
       emit(state.copyWith(duration: _targetDuration ?? duration));
+      // Cancel + restart so a corrected late-arriving duration takes effect.
+      _logicalTimer?.cancel();
+      _startLogicalTimer();
     });
 
     // Listen for player state changes
@@ -149,7 +154,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   /// Loads a specific list of tracks, replacing existing ones.
   Future<void> loadTracks() async {
-    List<TrainingItemWithAudio> tracksToLoad = []; //tmp TODO
+    List<TrainingItemWithAudio> tracksToLoad = [];
 
     emit(state.copyWith(isLoading: true, errorMessage: null));
     // todo: is this stop necessary?
@@ -161,8 +166,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     items?.forEach((item) {
       final exercise = domainSnapshot.exercisesById[item.exerciseId];
+      final repsToDo = item.prescription is RepsPresc
+          ? (item.prescription as RepsPresc).count
+          : null;
       final itemWithAudio = TrainingItemWithAudio(
-          id: item.id.toString(), title: exercise?.name ?? '', audioFilePath: exercise?.audioFileUrl ?? '');
+        id: item.id.toString(),
+        title: exercise?.name ?? '',
+        audioFilePath: exercise?.audioFileUrl ?? '',
+        defaultRepetitions: exercise?.repetitionsDefault,
+        userRepetitions: repsToDo,
+      );
       tracksToLoad.add(itemWithAudio);
     });
 
@@ -258,10 +271,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     // Reset dynamic duration state for new track
     _originalDuration = null;
     _targetDuration = null;
-    _isLooping = false;
-    _dynamicDurationTimer?.cancel();
     _stopLogicalTimer();
-    _logicalElapsed = Duration.zero; // <-- Reset here for new track
+    _logicalElapsed = Duration.zero;
 
     // Add loading state indication if needed
     // emit(state.copyWith(isLoading: true));
@@ -299,7 +310,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // playback — more reliable than stop+setSource+resume on GStreamer.
         await _audioPlayer.play(audioSource);
         emit(state.copyWith(isPlaying: true, isLoading: false));
-        _startLogicalTimer();
+        // Timer starts from _durationSubscription once _originalDuration is known.
       } else {
         await _audioPlayer.stop();
         await _audioPlayer.setSource(audioSource);
@@ -356,62 +367,35 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     final defaultReps = currentTrack.defaultRepetitions ?? 1;
     final effectiveReps = currentTrack.effectiveRepetitions;
-
-    if (defaultReps == effectiveReps) {
-      // No change needed, use original duration
-      _targetDuration = _originalDuration;
-      _isLooping = false;
-    } else {
-      // Calculate target duration
-      final originalDurationMs = _originalDuration!.inMilliseconds;
-      final targetDurationMs =
-          (originalDurationMs / defaultReps * effectiveReps).round();
-      _targetDuration = Duration(milliseconds: targetDurationMs);
-      _isLooping = effectiveReps > defaultReps;
-
-      print(
-          "Dynamic duration: Original=${_originalDuration}, Target=${_targetDuration}, DefaultReps=$defaultReps, EffectiveReps=$effectiveReps");
-    }
+    final originalDurationMs = _originalDuration!.inMilliseconds;
+    final targetDurationMs =
+        (originalDurationMs / defaultReps * effectiveReps).round();
+    _targetDuration = Duration(milliseconds: targetDurationMs);
   }
 
-  /// Handle dynamic duration during playback
+  /// Seek the audio back to zero when the logical target is passed.
+  /// The logical timer is the sole authority on when to advance to the next track.
   void _handleDynamicDuration(Duration position) {
     if (_targetDuration == null || !state.isPlaying) return;
-
-    // If we've reached the target duration, stop or loop
     if (position >= _targetDuration!) {
-      if (_isLooping) {
-        // For longer durations, restart the track
-        _audioPlayer.seek(Duration.zero);
-      } else {
-        // For shorter durations, stop the track
-        _audioPlayer.stop();
-        emit(state.copyWith(isPlaying: false));
-      }
+      _audioPlayer.seek(Duration.zero);
     }
   }
 
-  /// Handle track completion
-  void _handleTrackCompletion() {
-    if (_logicalTargetDuration != null &&
-        _logicalElapsed < _logicalTargetDuration!) {
-      // Loop audio
-      _audioPlayer.seek(Duration.zero);
-      _audioPlayer.resume();
-    } else {
-      next();
-    }
-  }
+  /// No-op: ReleaseMode.loop keeps the audio going; the logical timer calls next().
+  void _handleTrackCompletion() {}
 
   void _startLogicalTimer() {
-    _logicalTimer?.cancel();
-    // Only start timer if isPlaying is true
     if (!state.isPlaying) return;
     final currentTrack = state.currentTrack;
     if (currentTrack == null || _originalDuration == null) return;
-    final defaultReps = currentTrack.defaultRepetitions ?? 1;
-    final effectiveReps = currentTrack.effectiveRepetitions;
     final originalDurationMs = _originalDuration!.inMilliseconds;
+    // GStreamer fires Duration(0) before the real value — ignore it.
+    if (originalDurationMs <= 0) return;
+    // repetitions=0 means "loop until user stops" — treat as infinite.
+    final defaultReps = currentTrack.defaultRepetitions ?? 1;
+    if (defaultReps <= 0) return;
+    final effectiveReps = currentTrack.effectiveRepetitions;
     final targetDurationMs =
         (originalDurationMs / defaultReps * effectiveReps).round();
     _logicalTargetDuration = Duration(milliseconds: targetDurationMs);
@@ -448,8 +432,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     await _durationSubscription?.cancel();
     await _playerStateSubscription?.cancel();
 
-    // Cancel timer
-    _dynamicDurationTimer?.cancel();
     _logicalTimer?.cancel();
 
     // Dispose the audio player
