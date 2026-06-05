@@ -588,7 +588,7 @@ class _CompactCard extends StatelessWidget {
               Text(session.description,
                   style: PTextStyles.of(context).cardDescription.copyWith(color: colors.onMuted, fontSize: 12.5),
                   maxLines: 2, overflow: TextOverflow.ellipsis),
-              const Spacer(),
+              const SizedBox(height: 8),
               Row(children: [
                 Expanded(child: _MetaRow(itemCount: itemCount, duration: duration, difficulty: session.difficulty)),
                 const SizedBox(width: 10),
