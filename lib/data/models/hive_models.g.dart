@@ -73,13 +73,14 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       url: fields[4] as String,
       position: fields[5] as int,
       repetitions: fields[6] as int?,
+      durationSeconds: fields[7] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -93,7 +94,9 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(5)
       ..write(obj.position)
       ..writeByte(6)
-      ..write(obj.repetitions);
+      ..write(obj.repetitions)
+      ..writeByte(7)
+      ..write(obj.durationSeconds);
   }
 
   @override

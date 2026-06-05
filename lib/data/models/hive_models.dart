@@ -104,6 +104,9 @@ class HiveExercise extends HiveObject {
   @HiveField(6)
   final int? repetitions;
 
+  @HiveField(7)
+  final int? durationSeconds;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -112,6 +115,7 @@ class HiveExercise extends HiveObject {
     required this.url,
     required this.position,
     this.repetitions,
+    this.durationSeconds,
   });
 
   factory HiveExercise.fromDomain(Exercise exercise) {
@@ -123,6 +127,7 @@ class HiveExercise extends HiveObject {
       url: exercise.audioFileUrl ?? '',
       position: 0,
       repetitions: exercise.repetitionsDefault,
+      durationSeconds: exercise.durationSeconds,
     );
   }
 
@@ -134,6 +139,7 @@ class HiveExercise extends HiveObject {
     url: json['url'] as String,
     position: json['position'] as int? ?? 0,
     repetitions: json['repetitions'] as int?,
+    durationSeconds: json['duration_seconds'] as int?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -144,6 +150,7 @@ class HiveExercise extends HiveObject {
     'url': url,
     'position': position,
     if (repetitions != null) 'repetitions': repetitions,
+    if (durationSeconds != null) 'duration_seconds': durationSeconds,
   };
 
   Exercise toDomain() {
@@ -154,6 +161,7 @@ class HiveExercise extends HiveObject {
       type: type,
       audioFileUrl: url,
       repetitionsDefault: repetitions ?? 1,
+      durationSeconds: durationSeconds,
     );
   }
 }

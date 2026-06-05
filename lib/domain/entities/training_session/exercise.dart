@@ -5,6 +5,7 @@ class Exercise {
   final String? type;
   final String? audioFileUrl;
   final int repetitionsDefault;
+  final int? durationSeconds;
   const Exercise({
     required this.id,
     required this.name,
@@ -12,5 +13,6 @@ class Exercise {
     this.type,
     this.audioFileUrl,
     this.repetitionsDefault = 1,
+    this.durationSeconds,
   });
 }

@@ -28,7 +28,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.colorScheme.background.withOpacity(0.98),
+      backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.98),
       appBar: AppBar(
         title: const Text('Select a TrainingSession', style: TextStyle(color: Colors.white)),
         backgroundColor: theme.colorScheme.primary,
@@ -50,20 +50,24 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             Map<int, DownloadStatus> downloadStatus = {};
             Map<int, double> downloadProgress = {};
             Map<int, int> itemCounts = {};
+            Map<int, int> sessionDurations = {};
 
             if (state is TrainingSessionLoading) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
               itemCounts = state.uiModel.sessionItemCounts;
+              sessionDurations = state.uiModel.sessionDurations;
             } else if (state is TrainingSessionLoaded) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
               itemCounts = state.uiModel.sessionItemCounts;
+              sessionDurations = state.uiModel.sessionDurations;
             } else if (state is TrainingSessionDownloading) {
               training_sessions = state.uiModel.trainingSessions;
               downloadStatus = state.uiModel.downloadStatuses;
               downloadProgress = state.downloadProgress;
               itemCounts = state.uiModel.sessionItemCounts;
+              sessionDurations = state.uiModel.sessionDurations;
             }
 
             if (training_sessions.isEmpty && state is! TrainingSessionLoading) {
@@ -77,6 +81,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                   downloadStatus,
                   downloadProgress,
                   itemCounts,
+                  sessionDurations,
                   theme,
                 ),
               );
@@ -94,12 +99,20 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
 
   // --- UI Building Helper Widgets ---
 
+  String _formatDuration(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    if (h > 0) return '${h}h ${m}m';
+    return '${m}m';
+  }
+
   Widget _buildTrainingSessionListView(
     BuildContext context,
     List<TrainingSession> training_sessions,
     Map<int, DownloadStatus> downloadStatus,
     Map<int, double> downloadProgress,
     Map<int, int> itemCounts,
+    Map<int, int> sessionDurations,
     ThemeData theme,
   ) {
     return ListView.builder(
@@ -109,10 +122,11 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         final status = downloadStatus[training_session.id] ?? DownloadStatus.notDownloaded;
         final progress = downloadProgress[training_session.id];
         final trackCount = itemCounts[training_session.id] ?? 0;
+        final durationSeconds = sessionDurations[training_session.id];
 
         return Card(
           key: ValueKey(training_session.id),
-          color: theme.colorScheme.surface.withOpacity(0.97),
+          color: theme.colorScheme.surface.withValues(alpha: 0.97),
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -122,7 +136,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
               alignment: Alignment.topRight,
               children: [
                 CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
                   child: Icon(Icons.queue_music_rounded, color: theme.colorScheme.primary, size: 28),
                 ),
                 if (training_session.isUserCreated)
@@ -159,8 +173,11 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                         const Icon(Icons.done, color: Colors.green, size: 20),
                       // const SizedBox(width: 4),
                       Icon(Icons.music_note_rounded, size: 16, color: theme.colorScheme.primary),
-                      // const SizedBox(width: 4),
                       Text('$trackCount tracks', style: theme.textTheme.bodySmall),
+                      if (durationSeconds != null) ...[
+                        Icon(Icons.timer_outlined, size: 16, color: theme.colorScheme.primary),
+                        Text(_formatDuration(durationSeconds), style: theme.textTheme.bodySmall),
+                      ],
                       // const SizedBox(width: 16),
                       Icon(Icons.bolt_rounded, size: 16, color: theme.colorScheme.secondary),
                       // const SizedBox(width: 4),
@@ -179,7 +196,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                     child: LinearProgressIndicator(
                       value: progress ?? 0,
                       minHeight: 5,
-                      backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
                       color: theme.colorScheme.primary,
                     ),
                   ),
@@ -256,10 +273,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     if (result != null && mounted) {
       final updatedSession = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
-      context.read<TrainingSessionCubit>().updateTrainingSession(
-            updatedSession,
-            items: items,
-          );
+      cubit.updateTrainingSession(updatedSession, items: items);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${updatedSession.title} updated'),
@@ -270,18 +284,19 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     }
   }
 
-  Future<void> _deleteTrainingSession(BuildContext context, TrainingSession training_session) async {
+  Future<void> _deleteTrainingSession(BuildContext context, TrainingSession trainingSession) async {
+    final cubit = context.read<TrainingSessionCubit>();
     try {
-      await context.read<TrainingSessionCubit>().deleteTrainingSession(training_session.id);
+      await cubit.deleteTrainingSession(trainingSession.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${training_session.title} deleted successfully')),
+          SnackBar(content: Text('${trainingSession.title} deleted successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete training_session: $e')),
+          SnackBar(content: Text('Failed to delete: $e')),
         );
       }
     }

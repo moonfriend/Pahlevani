@@ -15,6 +15,7 @@ Exercise mapExercise(ExerciseRow r) => Exercise(
   type: r.type,
   audioFileUrl: r.url,
   repetitionsDefault: r.repetitions,
+  durationSeconds: r.durationSeconds,
 );
 
 TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
