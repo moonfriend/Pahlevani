@@ -1,4 +1,5 @@
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/row_to_domain.dart';
@@ -38,14 +39,18 @@ class NullDomainSnapshot extends DomainSnapshot {
 }
 
 /// Build normalized domain maps from raw DB rows.
+/// [movementRows] is optional — pass an empty list before the movement
+/// table migration; the mapper falls back to fields still on the exercise row.
 DomainSnapshot buildDomainSnapshot({
   required List<TrainingSessionRow> sessionRows,
   required List<TrainingItemRow> itemRows,
   required List<ExerciseRow> exerciseRows,
+  List<MovementRow> movementRows = const [],
 }) {
   final sessionsById = {for (final s in sessionRows.map(mapSession)) s.id: s};
 
-  // group items by session, ordered by position
+  final movementsById = {for (final m in movementRows) m.id: m};
+
   final grouped = <int, List<TrainingItem>>{};
   for (final row in itemRows) {
     final item = mapItem(row);
@@ -56,8 +61,35 @@ DomainSnapshot buildDomainSnapshot({
   }
 
   final exercisesById = {
-    for (final e in exerciseRows.map(mapExercise)) e.id: e
+    for (final e in exerciseRows)
+      e.id: mapExercise(e, movement: e.movementId != null ? movementsById[e.movementId] : null)
   };
+
+  return DomainSnapshot(
+    sessionsById: sessionsById,
+    itemsBySessionId: grouped,
+    exercisesById: exercisesById,
+  );
+}
+
+/// Build a snapshot directly from already-mapped domain objects.
+/// Used by the Hive offline-fallback path where exercises are already
+/// denormalized (movement fields were embedded when the cache was written).
+DomainSnapshot buildDomainSnapshotFromDomain({
+  required List<TrainingSession> sessions,
+  required List<TrainingItem> items,
+  required List<Exercise> exercises,
+}) {
+  final sessionsById = {for (final s in sessions) s.id: s};
+  final exercisesById = {for (final e in exercises) e.id: e};
+
+  final grouped = <int, List<TrainingItem>>{};
+  for (final item in items) {
+    grouped.putIfAbsent(item.sessionId, () => []).add(item);
+  }
+  for (final list in grouped.values) {
+    list.sortBy<num>((i) => i.position);
+  }
 
   return DomainSnapshot(
     sessionsById: sessionsById,

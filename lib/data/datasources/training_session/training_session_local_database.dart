@@ -16,7 +16,7 @@ class TrainingSessionLocalDatabase {
   static const String _lastSyncKey = 'last_sync';
 
   // Increment this when the Hive schema changes to trigger a cache wipe.
-  static const int _cacheVersion = 1;
+  static const int _cacheVersion = 2;
   static const String _cacheVersionKey = 'cache_version';
 
   /// Initialize Hive and register adapters.

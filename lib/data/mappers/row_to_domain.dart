@@ -1,4 +1,5 @@
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -6,20 +7,24 @@ import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
-Exercise mapExercise(ExerciseRow r) => Exercise(
+/// Maps an exercise row, joined with its movement row when available.
+/// Falls back to any fields still present on the exercise row itself
+/// (pre-migration state where name/media still live in the exercise table).
+Exercise mapExercise(ExerciseRow r, {MovementRow? movement}) => Exercise(
   id: r.id,
-  name: r.name ?? 'Exercise ${r.id}',
-  titleFa: r.titleFa,
-  gloss: r.gloss,
+  movementId: r.movementId ?? movement?.id,
+  name: movement?.name ?? r.name ?? 'Exercise ${r.id}',
+  titleFa: movement?.titleFa ?? r.titleFa,
+  gloss: movement?.gloss ?? r.gloss,
   author: r.author,
-  type: r.type,
+  type: movement?.type ?? r.type,
   audioFileUrl: r.url,
   repetitionsDefault: r.repetitions,
   durationSeconds: r.durationSeconds,
   media: ExerciseMedia(
-    type: r.mediaType ?? 'none',
-    src: r.mediaSrc,
-    poster: r.mediaPoster,
+    type: movement?.mediaType ?? r.mediaType ?? 'none',
+    src: movement?.mediaSrc ?? r.mediaSrc,
+    poster: movement?.mediaPoster ?? r.mediaPoster,
   ),
 );
 
