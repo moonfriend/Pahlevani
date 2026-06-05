@@ -5,18 +5,30 @@ Run:
     cd scripts
     uv run streamlit run admin.py
 
-Credentials (pick any one):
-  1. Set env vars:  SUPABASE_URL  SUPABASE_KEY
-  2. Create .streamlit/secrets.toml with those two keys
-  3. Nothing — falls back to the public anon key from config.dart (read-only writes may fail)
+Credentials (any one):
+  • env vars:  SUPABASE_URL  SUPABASE_KEY
+  • .streamlit/secrets.toml with those two keys
+  • falls back to the public anon key from config.dart (reads fine; writes may be
+    blocked — supply a service-role key for uploads and session saves)
+
+Storage:
+  Set BUCKET_PUBLIC = True once you make the 'tracks' bucket public in Supabase
+  Dashboard (Storage → tracks → Make public).  Until then, new uploads generate
+  a 10-year signed URL and store that.
 """
 
+import io
 import os
+import re
+import tempfile
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
+from mutagen.mp3 import MP3
 from supabase import create_client, Client
 
-# ── Credentials ───────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 
 def _secret(key: str) -> str:
     try:
@@ -25,13 +37,11 @@ def _secret(key: str) -> str:
         return ""
 
 SUPABASE_URL = (
-    os.getenv("SUPABASE_URL")
-    or _secret("SUPABASE_URL")
+    os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
     or "https://eudjdgjkrhrwvjfkutcg.supabase.co"
 )
 SUPABASE_KEY = (
-    os.getenv("SUPABASE_KEY")
-    or _secret("SUPABASE_KEY")
+    os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
     or (
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
         ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1ZGpkZ2prcmhyd3ZqZmt1dGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MjI0ODEsImV4cCI6MjA1OTQ5ODQ4MX0"
@@ -39,7 +49,13 @@ SUPABASE_KEY = (
     )
 )
 
-# ── DB client ─────────────────────────────────────────────────────────────────
+STORAGE_BUCKET = "tracks"
+# Set True after making the bucket public in Supabase Dashboard.
+# False → generate a 10-year signed URL on upload.
+BUCKET_PUBLIC = False
+SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
+
+# ── DB / Storage client ───────────────────────────────────────────────────────
 
 @st.cache_resource
 def get_client() -> Client:
@@ -50,34 +66,69 @@ def get_client() -> Client:
 @st.cache_data(ttl=60)
 def load_exercises() -> pd.DataFrame:
     rows = get_client().table("exercise").select("*").order("id").execute().data
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def load_sessions() -> pd.DataFrame:
-    rows = get_client().table("training_session").select("*").order("id").execute().data
-    return pd.DataFrame(rows)
+    rows = (
+        get_client().table("training_session")
+        .select("*").order("id").execute().data
+    )
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def load_items() -> pd.DataFrame:
     rows = (
-        get_client()
-        .table("training_session_item")
-        .select("*")
-        .order("training_session_id,position")
-        .execute()
-        .data
+        get_client().table("training_session_item")
+        .select("*").order("training_session_id,position").execute().data
     )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 def bust_cache():
     load_exercises.clear()
     load_sessions.clear()
     load_items.clear()
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def duration_from_bytes(data: bytes) -> int | None:
+    try:
+        audio = MP3(io.BytesIO(data))
+        return round(audio.info.length)
+    except Exception:
+        return None
+
+def slugify(text: str) -> str:
+    """Lower-case, spaces to underscores, strip non-alphanumeric."""
+    return re.sub(r"[^a-z0-9_]", "", text.lower().replace(" ", "_"))
+
+def guess_movement_name(filename: str) -> str:
+    """Strip leading track numbers and extension from a filename."""
+    stem = Path(filename).stem
+    stem = re.sub(r"^[\d\s_\-]+", "", stem)   # strip leading numbers
+    stem = stem.replace("_", " ").strip()
+    return stem or filename
+
+def make_url(storage_path: str) -> str:
+    if BUCKET_PUBLIC:
+        return f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{storage_path}"
+    # Generate a signed URL
+    r = get_client().storage.from_(STORAGE_BUCKET).create_signed_url(
+        storage_path, SIGNED_URL_EXPIRY
+    )
+    return r.get("signedURL") or r.get("signed_url") or ""
+
+def exercise_label(row: pd.Series) -> str:
+    dur   = f"{int(row['duration_seconds'])}s" if pd.notna(row.get("duration_seconds")) else "—"
+    reps  = int(row["repetitions"]) if pd.notna(row.get("repetitions")) else "?"
+    auth  = row.get("author") or "unknown"
+    return f"{row['name']}  ·  {auth}  ·  {dur}  ·  {reps} reps"
+
 # ── Savers ────────────────────────────────────────────────────────────────────
 
-def _changed_rows(original: pd.DataFrame, edited: pd.DataFrame, editable_cols: list[str]) -> list[dict]:
-    """Return list of {id, col: new_val} dicts for rows that actually changed."""
+def _changed_rows(
+    original: pd.DataFrame, edited: pd.DataFrame, editable_cols: list[str]
+) -> list[dict]:
     patches = []
     for _, erow in edited.iterrows():
         orow = original[original["id"] == erow["id"]]
@@ -85,11 +136,11 @@ def _changed_rows(original: pd.DataFrame, edited: pd.DataFrame, editable_cols: l
             continue
         patch = {}
         for col in editable_cols:
-            new = erow[col] if pd.notna(erow[col]) and str(erow[col]).strip() != "" else None
-            old = orow.iloc[0][col] if col in orow.columns else None
-            old = old if pd.notna(old) and str(old).strip() != "" else None  # type: ignore[assignment]
-            if new != old:
-                patch[col] = new
+            nv = erow[col] if pd.notna(erow[col]) and str(erow[col]).strip() != "" else None
+            ov = orow.iloc[0][col] if col in orow.columns else None
+            ov = ov if pd.notna(ov) and str(ov).strip() != "" else None  # type: ignore[assignment]
+            if nv != ov:
+                patch[col] = nv
         if patch:
             patches.append({"id": int(erow["id"]), **patch})
     return patches
@@ -101,200 +152,525 @@ def save_rows(table: str, patches: list[dict]) -> int:
         db.table(table).update(p).eq("id", row_id).execute()
     return len(patches)
 
-# ── Tab: Exercises ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Exercises
+# ─────────────────────────────────────────────────────────────────────────────
 
 def tab_exercises():
     st.header("Exercises")
-    st.caption(
-        "Edit the Farsi title for each exercise. "
-        "Rows with no Farsi name yet show a blank — fill them in and click **Save changes**."
-    )
+    st.caption("Edit Farsi titles. Locked columns (grey) are read-only.")
 
-    col_reload, _ = st.columns([1, 8])
-    with col_reload:
-        if st.button("↺ Reload", key="reload_ex"):
-            bust_cache()
+    if st.button("↺ Reload", key="rel_ex"):
+        bust_cache()
 
     df = load_exercises()
+    if df.empty:
+        st.warning("No exercises found.")
+        return
 
-    # Columns to show, in display order
-    DISPLAY = ["id", "name", "author", "type", "repetitions", "duration_seconds", "url", "title_fa"]
-    display_cols = [c for c in DISPLAY if c in df.columns]
+    SHOW = ["id", "name", "author", "type", "repetitions", "duration_seconds", "url", "title_fa"]
+    show = [c for c in SHOW if c in df.columns]
 
-    column_config = {
-        "id":               st.column_config.NumberColumn("ID",             disabled=True, width=50),
-        "name":             st.column_config.TextColumn("Name",             disabled=True, width=180),
-        "author":           st.column_config.TextColumn("Author",           disabled=True, width=140),
-        "type":             st.column_config.TextColumn("Type",             disabled=True, width=100),
-        "repetitions":      st.column_config.NumberColumn("Default reps",   disabled=True, width=80),
-        "duration_seconds": st.column_config.NumberColumn("Duration (s)",   disabled=True, width=90),
-        "url":              st.column_config.TextColumn("Audio URL",        disabled=True, width=200),
-        "title_fa":         st.column_config.TextColumn("Farsi title ✏️",   width=180),
+    cfg = {
+        "id":               st.column_config.NumberColumn("ID",           disabled=True, width=55),
+        "name":             st.column_config.TextColumn("Name",           disabled=True, width=190),
+        "author":           st.column_config.TextColumn("Author",         disabled=True, width=130),
+        "type":             st.column_config.TextColumn("Type",           disabled=True, width=100),
+        "repetitions":      st.column_config.NumberColumn("Def. reps",    disabled=True, width=75),
+        "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=90),
+        "url":              st.column_config.LinkColumn("Audio URL",      disabled=True, width=200),
+        "title_fa":         st.column_config.TextColumn("Farsi title ✏️", width=190),
     }
 
     edited = st.data_editor(
-        df[display_cols].copy(),
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="ex_editor",
+        df[show].copy(), column_config=cfg,
+        use_container_width=True, hide_index=True,
+        num_rows="fixed", key="ex_ed",
     )
 
-    col_save, col_status = st.columns([1, 6])
-    with col_save:
-        if st.button("💾 Save", type="primary", key="save_ex"):
-            patches = _changed_rows(df, edited, editable_cols=["title_fa"])
+    c1, c2 = st.columns([1, 7])
+    with c1:
+        if st.button("💾 Save", type="primary", key="sv_ex"):
+            patches = _changed_rows(df, edited, ["title_fa"])
             if patches:
                 with st.spinner(f"Saving {len(patches)} row(s)…"):
-                    n = save_rows("exercise", patches)
-                col_status.success(f"Updated {n} exercise(s).")
+                    save_rows("exercise", patches)
+                c2.success(f"Updated {len(patches)} exercise(s).")
                 bust_cache()
             else:
-                col_status.info("No changes to save.")
+                c2.info("No changes.")
 
-    # Progress indicator
-    st.divider()
     filled = df["title_fa"].notna().sum() if "title_fa" in df.columns else 0
-    total  = len(df)
-    st.caption(f"Farsi titles: **{filled} / {total}** filled in")
-    st.progress(filled / total if total else 0)
+    st.caption(f"Farsi titles: **{filled} / {len(df)}**")
+    st.progress(filled / len(df) if len(df) else 0)
 
-# ── Tab: Sessions ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Sessions
+# ─────────────────────────────────────────────────────────────────────────────
 
 def tab_sessions():
     st.header("Training Sessions")
-    st.caption("Add a Farsi title to each session — shown on the card banner in the app.")
+    st.caption("Add Farsi titles shown on the card banners.")
 
-    col_reload, _ = st.columns([1, 8])
-    with col_reload:
-        if st.button("↺ Reload", key="reload_sess"):
-            bust_cache()
+    if st.button("↺ Reload", key="rel_sess"):
+        bust_cache()
 
     df = load_sessions()
+    if df.empty:
+        st.warning("No sessions found.")
+        return
 
-    DISPLAY = ["id", "title", "difficulty", "description", "title_fa"]
-    display_cols = [c for c in DISPLAY if c in df.columns]
+    SHOW = ["id", "title", "difficulty", "description", "title_fa"]
+    show = [c for c in SHOW if c in df.columns]
 
-    column_config = {
+    cfg = {
         "id":          st.column_config.NumberColumn("ID",           disabled=True, width=60),
         "title":       st.column_config.TextColumn("Title",          disabled=True, width=220),
         "difficulty":  st.column_config.NumberColumn("Difficulty",   disabled=True, width=80),
         "description": st.column_config.TextColumn("Description",    disabled=True, width=300),
-        "title_fa":    st.column_config.TextColumn("Farsi title ✏️", width=180),
+        "title_fa":    st.column_config.TextColumn("Farsi title ✏️", width=200),
     }
 
     edited = st.data_editor(
-        df[display_cols].copy(),
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="sess_editor",
+        df[show].copy(), column_config=cfg,
+        use_container_width=True, hide_index=True,
+        num_rows="fixed", key="sess_ed",
     )
 
-    col_save, col_status = st.columns([1, 6])
-    with col_save:
-        if st.button("💾 Save", type="primary", key="save_sess"):
-            patches = _changed_rows(df, edited, editable_cols=["title_fa"])
+    c1, c2 = st.columns([1, 7])
+    with c1:
+        if st.button("💾 Save", type="primary", key="sv_sess"):
+            patches = _changed_rows(df, edited, ["title_fa"])
             if patches:
                 with st.spinner(f"Saving {len(patches)} row(s)…"):
-                    n = save_rows("training_session", patches)
-                col_status.success(f"Updated {n} session(s).")
+                    save_rows("training_session", patches)
+                c2.success(f"Updated {len(patches)} session(s).")
                 bust_cache()
             else:
-                col_status.info("No changes to save.")
+                c2.info("No changes.")
 
     filled = df["title_fa"].notna().sum() if "title_fa" in df.columns else 0
-    total  = len(df)
-    st.caption(f"Farsi titles: **{filled} / {total}** filled in")
-    st.progress(filled / total if total else 0)
+    st.caption(f"Farsi titles: **{filled} / {len(df)}**")
+    st.progress(filled / len(df) if len(df) else 0)
 
-# ── Tab: Session Builder ──────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Batch Import
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_batch_import():
+    st.header("Batch Import — Audio Tracks")
+    st.caption(
+        "Upload multiple MP3 files. Duration is auto-detected. "
+        "Edit movement names and reps in the table before inserting."
+    )
+
+    if not BUCKET_PUBLIC:
+        st.info(
+            "🔒 Bucket is **private** — uploads will generate 10-year signed URLs. "
+            "To use permanent public URLs, make the `tracks` bucket public in "
+            "Supabase Dashboard and set `BUCKET_PUBLIC = True` in admin.py."
+        )
+
+    # ── Batch settings ────────────────────────────────────────────────────────
+    c1, c2, c3 = st.columns([2, 1, 2])
+    with c1:
+        batch_author = st.text_input(
+            "Morshed / Author (for whole batch)",
+            placeholder="e.g. Morshed Karimi",
+        )
+    with c2:
+        batch_reps = st.number_input("Default reps (batch)", min_value=1, max_value=99, value=1)
+    with c3:
+        subfolder = st.text_input(
+            "Storage subfolder",
+            value=slugify(batch_author) if batch_author else "",
+            placeholder="e.g. morshed_karimi",
+            help="Files will be stored as: tracks/{subfolder}/{filename}",
+        )
+
+    # ── File uploader ─────────────────────────────────────────────────────────
+    uploads = st.file_uploader(
+        "Drop MP3 files here",
+        type=["mp3"],
+        accept_multiple_files=True,
+        key="batch_uploader",
+    )
+
+    if not uploads:
+        st.caption("Upload files above to continue.")
+        return
+
+    # ── Build preview dataframe ───────────────────────────────────────────────
+    # Keep file bytes keyed by filename so we can upload later
+    file_map: dict[str, bytes] = {f.name: f.getvalue() for f in uploads}
+
+    if "batch_preview" not in st.session_state or set(
+        st.session_state.batch_preview["filename"]
+    ) != set(file_map.keys()):
+        rows = []
+        for fname, data in file_map.items():
+            dur = duration_from_bytes(data)
+            rows.append(
+                {
+                    "filename":         fname,
+                    "movement_name":    guess_movement_name(fname),
+                    "author":           batch_author,
+                    "default_reps":     batch_reps,
+                    "duration_seconds": dur,
+                    "storage_path":     f"{subfolder}/{fname}" if subfolder else fname,
+                }
+            )
+        st.session_state.batch_preview = pd.DataFrame(rows)
+
+    preview_df = st.session_state.batch_preview.copy()
+
+    # ── Editable preview ──────────────────────────────────────────────────────
+    st.subheader("Preview — edit before inserting")
+
+    cfg = {
+        "filename":         st.column_config.TextColumn("File",           disabled=True, width=200),
+        "movement_name":    st.column_config.TextColumn("Movement name ✏️", width=200),
+        "author":           st.column_config.TextColumn("Author ✏️",       width=150),
+        "default_reps":     st.column_config.NumberColumn("Default reps ✏️", min_value=1, max_value=99, width=100),
+        "duration_seconds": st.column_config.NumberColumn("Duration (s)",  disabled=True, width=100),
+        "storage_path":     st.column_config.TextColumn("Storage path ✏️", width=250),
+    }
+
+    edited = st.data_editor(
+        preview_df, column_config=cfg,
+        use_container_width=True, hide_index=True,
+        num_rows="fixed", key="batch_ed",
+    )
+
+    # Check for issues
+    missing_author   = edited["author"].isna() | (edited["author"] == "")
+    missing_movement = edited["movement_name"].isna() | (edited["movement_name"] == "")
+    if missing_author.any() or missing_movement.any():
+        st.warning("⚠️ Some rows are missing Author or Movement name — fill them in before inserting.")
+
+    # ── Upload & Insert ───────────────────────────────────────────────────────
+    if st.button("🚀 Upload to Storage + Insert exercises", type="primary", key="do_import"):
+        db = get_client()
+        progress = st.progress(0)
+        status   = st.empty()
+        errors   = []
+
+        for i, (_, row) in enumerate(edited.iterrows()):
+            fname   = row["filename"]
+            s_path  = row["storage_path"].strip("/")
+            data    = file_map.get(fname, b"")
+            status.text(f"Uploading {fname}…")
+
+            try:
+                # Upload to Supabase Storage
+                db.storage.from_(STORAGE_BUCKET).upload(
+                    path=s_path,
+                    file=data,
+                    file_options={"content-type": "audio/mpeg", "upsert": "true"},
+                )
+                url = make_url(s_path)
+
+                # Insert exercise row
+                payload = {
+                    "name":             row["movement_name"],
+                    "author":           row["author"] or None,
+                    "repetitions":      int(row["default_reps"]),
+                    "url":              url,
+                }
+                if pd.notna(row["duration_seconds"]):
+                    payload["duration_seconds"] = int(row["duration_seconds"])
+
+                db.table("exercise").insert(payload).execute()
+
+            except Exception as e:
+                errors.append(f"{fname}: {e}")
+
+            progress.progress((i + 1) / len(edited))
+
+        status.empty()
+        if errors:
+            st.error("Some files failed:\n" + "\n".join(errors))
+        else:
+            st.success(f"✅ Imported {len(edited)} exercise(s).")
+            bust_cache()
+            del st.session_state["batch_preview"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Session Builder
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SB_ITEMS  = "sb_items"   # list[{exercise_id, reps_to_do}]
+_SB_META   = "sb_meta"    # {title, title_fa, description, difficulty}
+_SB_MODE   = "sb_mode"    # "new" | "edit"
+_SB_SID    = "sb_sid"     # session id being edited
+
+def _sb_reset():
+    st.session_state[_SB_ITEMS] = []
+    st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
+    st.session_state[_SB_SID]   = None
 
 def tab_session_builder():
+    st.header("Session Builder")
+    st.caption("Compose a training session by choosing audio tracks for each exercise.")
+
+    exercises = load_exercises()
+    if exercises.empty:
+        st.warning("No exercises in the database yet.")
+        return
+
+    # ── Mode selector ─────────────────────────────────────────────────────────
+    mode = st.radio("", ["Create new session", "Edit existing session"], horizontal=True, key="sb_mode_radio")
+
+    sessions = load_sessions()
+
+    if mode == "Edit existing session":
+        if sessions.empty:
+            st.warning("No sessions yet.")
+            return
+        opts = {f"{r['title']}  (id {sid})": sid for sid, r in sessions.set_index("id").iterrows()}
+        chosen = st.selectbox("Select session to edit", list(opts.keys()), key="sb_sess_select")
+        sid = opts[chosen]
+
+        if st.session_state.get(_SB_SID) != sid:
+            # Load session into state
+            s_row = sessions[sessions["id"] == sid].iloc[0]
+            items_df = load_items()
+            session_items = items_df[items_df["training_session_id"] == sid].sort_values("position")
+            st.session_state[_SB_META] = {
+                "title":       s_row.get("title", ""),
+                "title_fa":    s_row.get("title_fa") or "",
+                "description": s_row.get("description", ""),
+                "difficulty":  int(s_row.get("difficulty", 2)),
+            }
+            st.session_state[_SB_ITEMS] = [
+                {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"])}
+                for _, r in session_items.iterrows()
+            ]
+            st.session_state[_SB_SID] = sid
+    else:
+        if st.session_state.get(_SB_SID) is not None:
+            _sb_reset()
+        if _SB_META not in st.session_state:
+            _sb_reset()
+
+    # ── Session metadata ──────────────────────────────────────────────────────
+    meta = st.session_state.get(_SB_META, {})
+    st.subheader("Session details")
+    c1, c2 = st.columns(2)
+    with c1:
+        title    = st.text_input("Title",       value=meta.get("title", ""),    key="sb_title")
+        title_fa = st.text_input("Farsi title", value=meta.get("title_fa", ""), key="sb_titlefa",
+                                 help="Displayed on the card banner in the app")
+    with c2:
+        desc       = st.text_area("Description", value=meta.get("description", ""), key="sb_desc", height=100)
+        difficulty = st.slider("Difficulty", 1, 5, value=meta.get("difficulty", 2), key="sb_diff")
+
+    st.session_state[_SB_META] = {
+        "title": title, "title_fa": title_fa,
+        "description": desc, "difficulty": difficulty,
+    }
+
+    # ── Exercise list ─────────────────────────────────────────────────────────
+    st.subheader("Exercises")
+    items: list[dict] = st.session_state.get(_SB_ITEMS, [])
+
+    # Build a lookup for display
+    ex_by_id: dict[int, pd.Series] = {
+        int(r["id"]): r for _, r in exercises.iterrows()
+    }
+
+    # Show current list
+    for i, item in enumerate(items):
+        ex = ex_by_id.get(item["exercise_id"])
+        label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
+        def_reps = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
+
+        c_name, c_reps, c_up, c_dn, c_rm = st.columns([5, 1.5, 0.5, 0.5, 0.5])
+        c_name.markdown(f"**{i+1}.** {label}")
+        new_reps = c_reps.number_input(
+            "Reps", min_value=1, max_value=99,
+            value=item["reps_to_do"],
+            key=f"reps_{i}",
+            label_visibility="collapsed",
+        )
+        items[i]["reps_to_do"] = new_reps
+
+        if c_up.button("↑", key=f"up_{i}", disabled=i == 0):
+            items[i], items[i - 1] = items[i - 1], items[i]
+            st.rerun()
+        if c_dn.button("↓", key=f"dn_{i}", disabled=i == len(items) - 1):
+            items[i], items[i + 1] = items[i + 1], items[i]
+            st.rerun()
+        if c_rm.button("✕", key=f"rm_{i}"):
+            items.pop(i)
+            st.rerun()
+
+    st.session_state[_SB_ITEMS] = items
+
+    # ── Add exercise ──────────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("**Add exercise**")
+    ex_opts = {exercise_label(r): int(r["id"]) for _, r in exercises.iterrows()}
+
+    c_sel, c_rep, c_add = st.columns([5, 1.5, 1])
+    chosen_label = c_sel.selectbox(
+        "Choose audio track",
+        list(ex_opts.keys()),
+        key="sb_ex_select",
+        label_visibility="collapsed",
+    )
+    chosen_id = ex_opts[chosen_label]
+    chosen_ex = ex_by_id.get(chosen_id)
+    chosen_def = int(chosen_ex["repetitions"]) if chosen_ex is not None and pd.notna(chosen_ex.get("repetitions")) else 1
+
+    add_reps = c_rep.number_input(
+        "Reps", min_value=1, max_value=99,
+        value=chosen_def, key="sb_add_reps",
+        label_visibility="collapsed",
+    )
+    if c_add.button("＋ Add", key="sb_add_btn"):
+        st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps})
+        st.rerun()
+
+    # ── Duration estimate ─────────────────────────────────────────────────────
+    if items:
+        total = 0
+        all_known = True
+        for item in items:
+            ex = ex_by_id.get(item["exercise_id"])
+            dur     = ex.get("duration_seconds") if ex is not None else None
+            def_rep = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
+            if dur and def_rep:
+                total += round(float(dur) / def_rep * item["reps_to_do"])
+            else:
+                all_known = False
+        label = f"{total // 60}m {total % 60}s" if all_known else f"~{total // 60}m (some durations unknown)"
+        st.metric("Estimated session length", label)
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+    st.divider()
+    can_save = bool(title.strip()) and len(items) > 0
+    if not can_save:
+        st.caption("⚠️ Add a title and at least one exercise to save.")
+
+    if st.button("💾 Save session", type="primary", disabled=not can_save, key="sb_save"):
+        db = get_client()
+        with st.spinner("Saving…"):
+            meta_payload = {
+                "title":       title.strip(),
+                "title_fa":    title_fa.strip() or None,
+                "description": desc.strip(),
+                "difficulty":  difficulty,
+            }
+
+            sid = st.session_state.get(_SB_SID)
+            if mode == "Edit existing session" and sid:
+                # Update session metadata
+                db.table("training_session").update(meta_payload).eq("id", sid).execute()
+                # Replace all items
+                db.table("training_session_item").delete().eq("training_session_id", sid).execute()
+            else:
+                # Insert new session
+                result = db.table("training_session").insert(meta_payload).execute()
+                sid = result.data[0]["id"]
+
+            # Insert items
+            item_rows = [
+                {
+                    "training_session_id": sid,
+                    "exercise_id":         item["exercise_id"],
+                    "position":            pos,
+                    "reps_to_do":          item["reps_to_do"],
+                }
+                for pos, item in enumerate(items)
+            ]
+            db.table("training_session_item").insert(item_rows).execute()
+
+        st.success(f"✅ Session **{title}** saved (id {sid}).")
+        bust_cache()
+        _sb_reset()
+        st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Session Inspector
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_inspector():
     st.header("Session Inspector")
-    st.caption("See the ordered exercises for each session with rep prescriptions and track durations.")
+    st.caption("Read-only view — check rep prescriptions and track durations for any session.")
 
     exercises = load_exercises().set_index("id")
     sessions  = load_sessions()
     items     = load_items()
 
     if sessions.empty:
-        st.warning("No sessions found.")
+        st.warning("No sessions.")
         return
 
-    options = {f"{row['title']}  (id {sid})": sid for sid, row in sessions.set_index("id").iterrows()}
-    choice  = st.selectbox("Session", list(options.keys()))
-    if not choice:
-        return
-
-    sid   = options[choice]
-    s_row = sessions[sessions["id"] == sid].iloc[0]
+    opts = {f"{r['title']}  (id {sid})": sid for sid, r in sessions.set_index("id").iterrows()}
+    chosen = st.selectbox("Session", list(opts.keys()), key="insp_sel")
+    sid    = opts[chosen]
+    s_row  = sessions[sessions["id"] == sid].iloc[0]
     s_items = items[items["training_session_id"] == sid].sort_values("position")
 
-    # Session metadata
     c1, c2, c3 = st.columns(3)
     c1.metric("Exercises", len(s_items))
     c2.metric("Difficulty", s_row.get("difficulty", "—"))
-    fa = s_row.get("title_fa") or "—"
-    c3.metric("Farsi title", fa)
+    c3.metric("Farsi title", s_row.get("title_fa") or "—")
 
     if s_items.empty:
-        st.warning("No items found for this session.")
+        st.warning("No items.")
         return
 
-    rows = []
-    total_seconds = 0
+    rows, total = [], 0
     for _, item in s_items.iterrows():
         eid = item["exercise_id"]
         ex  = exercises.loc[eid] if eid in exercises.index else None
-
-        name       = ex["name"]             if ex is not None else f"exercise {eid}"
-        title_fa   = (ex.get("title_fa") or "—") if ex is not None else "—"
-        dur        = ex.get("duration_seconds") if ex is not None else None
-        def_reps   = int(ex["repetitions"])  if ex is not None else 1
-        reps_to_do = int(item["reps_to_do"])
-
-        if dur and def_reps:
-            track_sec = round(float(dur) / def_reps * reps_to_do)
-            total_seconds += track_sec
-            dur_str = f"{track_sec}s"
+        name    = ex["name"] if ex is not None else f"ex {eid}"
+        fa      = ex.get("title_fa") or "—" if ex is not None else "—"
+        dur     = ex.get("duration_seconds") if ex is not None else None
+        def_rep = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
+        reps    = int(item["reps_to_do"])
+        if dur and def_rep:
+            t = round(float(dur) / def_rep * reps)
+            total += t
+            dur_str = f"{t}s"
         else:
             dur_str = "—"
-
         rows.append({
-            "#":              int(item["position"]),
-            "Exercise":       name,
-            "فارسی":          title_fa,
-            "Default reps":   def_reps,
-            "Prescribed":     reps_to_do,
-            "Custom":         "🟠" if reps_to_do != def_reps else "🟢",
-            "Track duration": dur_str,
+            "#": int(item["position"]),
+            "Exercise": name, "فارسی": fa,
+            "Default": def_rep, "Prescribed": reps,
+            "Custom": "🟠" if reps != def_rep else "🟢",
+            "Track time": dur_str,
         })
 
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    m, s = divmod(total, 60)
+    st.metric("Estimated total", f"{m}m {s}s" if s else f"{m}m")
 
-    m, s = divmod(total_seconds, 60)
-    st.metric("Estimated session length", f"{m}m {s}s" if s else f"{m}m")
-
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    st.set_page_config(
-        page_title="Pahlevani Admin",
-        page_icon="🏛️",
-        layout="wide",
-    )
-
+    st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
     st.title("🏛️  Pahlevani Admin")
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
-    st.caption(f"Supabase project: `{project_id}`")
+    st.caption(f"Supabase · `{project_id}`")
 
-    t_ex, t_sess, t_builder = st.tabs(["⚙️ Exercises", "📋 Sessions", "🔍 Session Inspector"])
-    with t_ex:      tab_exercises()
-    with t_sess:    tab_sessions()
-    with t_builder: tab_session_builder()
+    t1, t2, t3, t4, t5 = st.tabs([
+        "⚙️  Exercises",
+        "📋  Sessions",
+        "📥  Batch Import",
+        "🏗️  Session Builder",
+        "🔍  Inspector",
+    ])
+    with t1: tab_exercises()
+    with t2: tab_sessions()
+    with t3: tab_batch_import()
+    with t4: tab_session_builder()
+    with t5: tab_inspector()
 
 
 if __name__ == "__main__":
