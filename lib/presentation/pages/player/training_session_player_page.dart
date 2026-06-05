@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,14 +59,23 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               return Center(child: Text(state.errorMessage!,
                   style: TextStyle(color: Theme.of(context).colorScheme.error)));
             }
-            return Column(children: [
-              _AppBar(session: widget.trainingSession),
-              _Stage(state: state, accent: accent, cubit: _cubit),
-              _RepCounter(state: state),
-              _ProgressBlock(state: state),
-              Expanded(child: _TrackList(
-                  key: _trackListKey, state: state, accent: accent, cubit: _cubit)),
-              _Transport(state: state, cubit: _cubit),
+            return Stack(children: [
+              Column(children: [
+                _AppBar(session: widget.trainingSession),
+                _Stage(state: state, accent: accent, cubit: _cubit),
+                _RepCounter(state: state),
+                _ProgressBlock(state: state),
+                Expanded(child: _TrackList(
+                    key: _trackListKey, state: state, accent: accent, cubit: _cubit)),
+                _Transport(state: state, cubit: _cubit),
+              ]),
+              if (state.isFinished)
+                _CompletionSheet(
+                  session: widget.trainingSession,
+                  trackCount: state.tracks.length,
+                  onReplay: _cubit.replay,
+                  onDone: () => Navigator.pop(context),
+                ),
             ]);
           },
         ),
@@ -78,6 +90,27 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 class _AppBar extends StatelessWidget {
   const _AppBar({required this.session});
   final TrainingSession session;
+
+  Future<void> _openEdit(BuildContext context) async {
+    final sessionCubit = context.read<TrainingSessionCubit>();
+    final detail = sessionCubit.getSessionDetail(session.id);
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => EditTrainingSessionPage(
+        trainingSession: session,
+        items: detail?.items ?? const [],
+      )),
+    );
+    if (result != null && context.mounted) {
+      final updated = result['session'] as TrainingSession;
+      final items = result['items'] as List<ItemDetail>?;
+      sessionCubit.updateTrainingSession(updated, items: items);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${updated.title} saved'),
+        duration: const Duration(milliseconds: 2200),
+      ));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +131,8 @@ class _AppBar extends StatelessWidget {
                 style: PTextStyles.of(context).appBarTitle.copyWith(color: cs.onSurface),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
           ])),
+          _RoundBtn(icon: Icons.edit_outlined, color: colors.onMuted,
+              onTap: () => _openEdit(context)),
         ]),
       ),
     );
@@ -505,7 +540,9 @@ class _Transport extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Icon(
-              state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              state.isFinished
+                  ? Icons.replay_rounded
+                  : (state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
               size: 30, color: cs.onPrimary,
             ),
           ),
@@ -546,6 +583,146 @@ class _TransportBtn extends StatelessWidget {
           alignment: Alignment.center,
           child: Icon(icon, size: 24, color: enabled ? cs.onSurface : colors.onFaint),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Completion sheet
+// ─────────────────────────────────────────────────────────────────────────────
+class _CompletionSheet extends StatelessWidget {
+  const _CompletionSheet({
+    required this.session,
+    required this.trackCount,
+    required this.onReplay,
+    required this.onDone,
+  });
+
+  final TrainingSession session;
+  final int trackCount;
+  final VoidCallback onReplay;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+
+    return Positioned.fill(
+      child: Material(
+        color: Colors.transparent,
+        child: Stack(children: [
+          // Scrim
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: onDone,
+              child: AnimatedOpacity(
+                opacity: 1,
+                duration: const Duration(milliseconds: 250),
+                child: ColoredBox(color: colors.scrim),
+              ),
+            ),
+          ),
+          // Sheet slides up from bottom
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Drag handle
+                Container(
+                  width: 36, height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(color: colors.border, borderRadius: BorderRadius.circular(9)),
+                ),
+                // Gold banner with pattern
+                Container(
+                  height: 84,
+                  decoration: BoxDecoration(
+                    color: colors.primaryBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(alignment: Alignment.center, children: [
+                    Positioned.fill(child: PersianPattern(color: cs.primary, opacity: 0.5, tileSize: 84)),
+                    Text('خسته نباشی',
+                        style: PTextStyles.of(context).sheetFarsi.copyWith(color: cs.primary),
+                        textDirection: TextDirection.rtl),
+                  ]),
+                ),
+                const SizedBox(height: 18),
+                Text('Session complete',
+                    style: PTextStyles.of(context).dialogTitle.copyWith(color: cs.onSurface),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                        text: 'You moved through all $trackCount exercises of ',
+                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, color: colors.onMuted, height: 1.5),
+                      ),
+                      TextSpan(
+                        text: session.title,
+                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface),
+                      ),
+                      TextSpan(
+                        text: '. Khaste nabâshi — may you never tire.',
+                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, color: colors.onMuted, height: 1.5),
+                      ),
+                    ]),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onDone,
+                      child: Container(
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: colors.surface2,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colors.borderSoft),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('Done',
+                            style: PTextStyles.of(context).buttonLabel.copyWith(color: cs.onSurface)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onReplay,
+                      child: Container(
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: cs.primary,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.replay_rounded, size: 20, color: cs.onPrimary),
+                          const SizedBox(width: 8),
+                          Text('Again',
+                              style: PTextStyles.of(context).buttonLabel.copyWith(color: cs.onPrimary)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ]),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }
