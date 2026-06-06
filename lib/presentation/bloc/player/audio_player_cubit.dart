@@ -205,7 +205,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _loadSourceAtIndex(0, shouldPlay: true);
       }
     } catch (e) {
-      print("Error in loadSpecificTracks: $e");
       emit(state.copyWith(
           isLoading: false,
           errorMessage: 'Failed to load selected tracks: $e'));
@@ -306,27 +305,17 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     try {
       Source? audioSource;
-      print("Attempting to load source: $sourcePath"); // Debugging print
 
       // Determine the source type based on the path format
       if (sourcePath.startsWith('http://') ||
           sourcePath.startsWith('https://')) {
-        print("Detected URL source");
         audioSource = UrlSource(sourcePath);
       } else if (sourcePath.startsWith('/')) {
-        // Absolute local path
-        print("Detected Device File source");
         audioSource = DeviceFileSource(sourcePath);
       } else if (sourcePath.startsWith('assets/')) {
-        // Bundled asset
-        print("Detected Asset source");
-        // AssetSource often needs path relative to pubspec definition
         final assetPath = sourcePath.replaceFirst('assets/', '');
         audioSource = AssetSource(assetPath);
       } else if (sourcePath.isNotEmpty) {
-        // Assume it *might* be a relative asset path if not empty or absolute/URL
-        // This might need adjustment based on your structure
-        print("Assuming Asset source for relative path: $sourcePath");
         audioSource = AssetSource(sourcePath);
       } else {
         throw Exception("Audio source path is empty");
@@ -343,9 +332,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _audioPlayer.setSource(audioSource);
         emit(state.copyWith(isPlaying: false, isLoading: false));
       }
-      print("Source set: ${track.displayName} (play=$shouldPlay)");
     } catch (e) {
-      print("Error setting source for $sourcePath: $e");
       emit(state.copyWith(
           errorMessage: "Error loading track: ${track.displayName}"));
       // emit(state.copyWith(isLoading: false)); // Ensure loading is removed on error
