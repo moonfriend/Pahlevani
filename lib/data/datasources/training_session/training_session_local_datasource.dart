@@ -92,14 +92,12 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
     final directory = Directory(dirPath);
     if (await directory.exists()) {
       await directory.delete(recursive: true);
-      print("Deleted directory: $dirPath");
     }
   }
 
   @override
   Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress) async {
     try {
-      print("Starting download from $url to $savePath");
 
       // Create parent directory if it doesn't exist
       final file = File(savePath);
@@ -146,18 +144,14 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
         throw Exception('Downloaded file is empty');
       }
 
-      print("Download complete for $savePath (${fileSize} bytes)");
     } catch (e) {
-      print("Download error for $url: $e");
       // Clean up partial file
       try {
         final partialFile = File(savePath);
         if (await partialFile.exists()) {
           await partialFile.delete();
         }
-      } catch (deleteError) {
-        print("Error deleting partial file $savePath: $deleteError");
-      }
+      } catch (_) {}
       rethrow;
     }
   }
