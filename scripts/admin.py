@@ -68,8 +68,14 @@ def get_client() -> Client:
 
 @st.cache_data(ttl=60)
 def load_exercises() -> pd.DataFrame:
-    rows = get_client().table("exercise").select("*").order("id").execute().data
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+    rows = get_client().table("exercise").select("*, movement(name)").order("id").execute().data
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if "movement" in df.columns:
+        df["name"] = df["movement"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
+        df = df.drop(columns=["movement"])
+    return df
 
 @st.cache_data(ttl=60)
 def load_sessions() -> pd.DataFrame:

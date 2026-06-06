@@ -49,8 +49,17 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       child: Scaffold(
         backgroundColor: colors.bg,
         body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
-          listenWhen: (prev, cur) => prev.playingIndex != cur.playingIndex,
-          listener: (_, state) => _trackListKey.currentState?.scrollToActive(state.playingIndex),
+          listenWhen: (prev, cur) =>
+              prev.playingIndex != cur.playingIndex ||
+              (prev.tracks.isEmpty && cur.tracks.isNotEmpty),
+          listener: (context, state) {
+            _trackListKey.currentState?.scrollToActive(state.playingIndex);
+            for (final track in state.tracks) {
+              if (track.media.type == 'photo' && track.media.src?.isNotEmpty == true) {
+                precacheImage(NetworkImage(track.media.src!), context);
+              }
+            }
+          },
           builder: (context, state) {
             if (state.isLoading && state.tracks.isEmpty) {
               return const Center(child: CircularProgressIndicator());
@@ -166,22 +175,25 @@ class _Stage extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
         decoration: BoxDecoration(
           color: accent.bg,
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(8),
+            bottom: Radius.circular(26),
+          ),
           border: Border.all(color: colors.borderSoft),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(children: [
+          // Pattern is always the background — visible during load and on error
+          Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
           if (hasPhoto)
             Positioned.fill(
               child: Image.network(
-                track!.media.src!,
+                track.media.src!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110),
+                alignment: Alignment.topCenter,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
-            )
-          else
-            Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
+            ),
           // Dark gradient at bottom so text stays legible over photos
           if (hasPhoto)
             Positioned.fill(
