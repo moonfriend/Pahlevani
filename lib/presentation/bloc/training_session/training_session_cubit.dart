@@ -55,12 +55,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
             // downloadStatus: _currentDownloadStatus,
           ));
         }
-    } catch (e) {
-      // Handle error getting statuses, maybe emit error state?
-      print("Error loading initial statuses: $e");
-      // Don't necessarily block training_session loading if status load fails
-      // emit(TrainingSessionError(message: "Failed to load download status", training_sessions: _currentTrainingSessions, downloadStatus: _currentDownloadStatus));
-    }
+    } catch (_) {}
   }
 
   /// Fetches training_sessions from the repository.
@@ -83,7 +78,6 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         // downloadStatus: _currentDownloadStatus,
       ));
     } catch (e) {
-      print("Error fetching training_sessions: $e");
       emit(TrainingSessionError(
         message: "Failed to load training_sessions: ${e.toString()}",
         uiModel: buildTrainingSessionsUiModel(),

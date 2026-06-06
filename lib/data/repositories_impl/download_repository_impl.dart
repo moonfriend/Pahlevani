@@ -22,14 +22,11 @@ class DownloadRepositoryImpl implements DownloadRepository {
           if (await localDataSource.training_sessionDirectoryExists(id)) {
             statuses[id] = DownloadStatus.downloaded;
           } else {
-            print("Directory missing for supposedly downloaded session $id");
             statuses[id] = DownloadStatus.error;
           }
         }
       }
-    } catch (e) {
-      print("Error getting initial download statuses: $e");
-    }
+    } catch (_) {}
     return statuses;
   }
 
@@ -85,7 +82,6 @@ class DownloadRepositoryImpl implements DownloadRepository {
           controller.add((done / total).clamp(0.0, 1.0));
           await Future.delayed(const Duration(milliseconds: 100));
         } catch (e) {
-          print("Error downloading ${item.exercise.name}: $e");
           controller.addError(Exception('Failed to download ${item.exercise.name}: $e'));
           await _saveDownloadStatus(sessionId, DownloadStatus.error);
           await controller.close();
@@ -107,7 +103,6 @@ class DownloadRepositoryImpl implements DownloadRepository {
       }
       await controller.close();
     } catch (e) {
-      print("Error during download for session $sessionId: $e");
       await _saveDownloadStatus(sessionId, DownloadStatus.error);
       controller.addError(e);
       await controller.close();
@@ -141,9 +136,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
         changed = list.remove(idStr);
       }
       if (changed) await localDataSource.saveDownloadedTrainingSessionIds(list);
-    } catch (e) {
-      print("Error saving download status: $e");
-    }
+    } catch (_) {}
   }
 
   String _safeFilename(ItemDetail item) {

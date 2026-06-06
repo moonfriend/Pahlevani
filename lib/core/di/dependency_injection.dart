@@ -54,7 +54,6 @@ class DependencyInjection {
       ),
     );
 
-    print("Dependency Injection setup complete.");
   }
 
   Future<void> ensureInitialized() async {
@@ -65,7 +64,6 @@ class DependencyInjection {
     }
     await getIt.allReady();
     _initialized = true;
-    print("Dependency Injection Initialized and Ready.");
   }
 
   Future<void> dispose() async {
