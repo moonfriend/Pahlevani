@@ -38,7 +38,6 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   Future<DomainSnapshot> fetchTrainingSessions() async {
-    print("getTrainingSessions invoked");
     try {
       final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
@@ -64,9 +63,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         await localDatabase.saveTrainingSessions(
           snap.sessionsById.values.toList(),
         );
-      } catch (cacheError) {
-        print("Warning: failed to write Hive cache: $cacheError");
-      }
+      } catch (_) {}
 
       // Merge user-created sessions from Hive into the snapshot so they
       // appear alongside server sessions in the UI.
@@ -88,15 +85,11 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
               .toList()
             ..sort((a, b) => a.position.compareTo(b.position));
         }
-      } catch (mergeError) {
-        print("Warning: failed to merge user sessions: $mergeError");
-      }
+      } catch (_) {}
 
       _domainSnapshot = snap;
       return snap;
     } catch (e) {
-      print("Error fetching from remote: $e");
-
       // Fall back to Hive cache. Exercises are already denormalized
       // (movement data was embedded when the cache was last written).
       try {
@@ -117,8 +110,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         );
         _domainSnapshot = snap;
         return snap;
-      } catch (localError) {
-        print("Error reading from local cache: $localError");
+      } catch (_) {
         throw Exception('Could not fetch training sessions: $e');
       }
     }
