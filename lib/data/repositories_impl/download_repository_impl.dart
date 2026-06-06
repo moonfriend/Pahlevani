@@ -100,7 +100,18 @@ class DownloadRepositoryImpl implements DownloadRepository {
       } else {
         await _saveDownloadStatus(sessionId, DownloadStatus.error);
         controller.addError(Exception('Download incomplete — some files missing.'));
+        await controller.close();
+        return;
       }
+
+      // Download images after audio — non-fatal, doesn't affect download status.
+      for (final item in session.items) {
+        if (item.exercise.media.type == 'photo' &&
+            (item.exercise.media.src ?? '').isNotEmpty) {
+          await cacheImage(sessionId, item.item.id, item.exercise.media.src!);
+        }
+      }
+
       await controller.close();
     } catch (e) {
       await _saveDownloadStatus(sessionId, DownloadStatus.error);
@@ -122,6 +133,50 @@ class DownloadRepositoryImpl implements DownloadRepository {
     final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
     final path = '$dir/${_safeFilename(song)}';
     return File(path).exists().then((exists) => exists ? path : null);
+  }
+
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async {
+    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final path = '$dir/${_safeFilename(item)}';
+    return File(path).exists().then((e) => e ? path : null);
+  }
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId) async {
+    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final path = '$dir/img_$itemId';
+    return File(path).exists().then((e) => e ? path : null);
+  }
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async {
+    try {
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      await Directory(dir).create(recursive: true);
+      final path = '$dir/${_safeFilename(item)}';
+      if (await File(path).exists()) return path;
+      final url = item.exercise.audioFileUrl;
+      if (url == null || url.isEmpty) return null;
+      await localDataSource.downloadFile(url, path, (_, __) {});
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async {
+    try {
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      await Directory(dir).create(recursive: true);
+      final path = '$dir/img_$itemId';
+      if (await File(path).exists()) return path;
+      await localDataSource.downloadFile(url, path, (_, __) {});
+      return path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _saveDownloadStatus(int sessionId, DownloadStatus status) async {
@@ -154,6 +209,6 @@ class DownloadRepositoryImpl implements DownloadRepository {
         }
       }
     } catch (_) {}
-    return '${item.item.id}_${safeName}$ext';
+    return '${item.item.id}_$safeName$ext';
   }
 }
