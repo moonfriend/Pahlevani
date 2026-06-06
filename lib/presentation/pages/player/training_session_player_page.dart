@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -168,6 +170,17 @@ class _Stage extends StatelessWidget {
         track.media.src != null &&
         track.media.src!.isNotEmpty;
 
+    Widget buildImage(String src) {
+      const fit = BoxFit.cover;
+      const align = Alignment.topCenter;
+      if (src.startsWith('/')) {
+        return Image.file(File(src), fit: fit, alignment: align,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink());
+      }
+      return Image.network(src, fit: fit, alignment: align,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    }
+
     return GestureDetector(
       onTap: cubit.togglePlay,
       child: Container(
@@ -186,14 +199,7 @@ class _Stage extends StatelessWidget {
           // Pattern is always the background — visible during load and on error
           Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
           if (hasPhoto)
-            Positioned.fill(
-              child: Image.network(
-                track.media.src!,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
+            Positioned.fill(child: buildImage(track.media.src!)),
           // Dark gradient at bottom so text stays legible over photos
           if (hasPhoto)
             Positioned.fill(

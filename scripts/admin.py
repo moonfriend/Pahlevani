@@ -68,12 +68,13 @@ def get_client() -> Client:
 
 @st.cache_data(ttl=60)
 def load_exercises() -> pd.DataFrame:
-    rows = get_client().table("exercise").select("*, movement(name)").order("id").execute().data
+    rows = get_client().table("exercise").select("*, movement(name, title_fa)").order("id").execute().data
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
     if "movement" in df.columns:
-        df["name"] = df["movement"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
+        df["name"]     = df["movement"].apply(lambda m: m.get("name")     if isinstance(m, dict) else None)
+        df["title_fa"] = df["movement"].apply(lambda m: m.get("title_fa") if isinstance(m, dict) else None)
         df = df.drop(columns=["movement"])
     return df
 
@@ -151,6 +152,13 @@ def exercise_label(row: pd.Series) -> str:
     auth  = row.get("author") or "unknown"
     return f"{row['name']}  ·  {auth}  ·  {dur}  ·  {reps} reps"
 
+def recording_label(row: pd.Series) -> str:
+    """Label for a specific exercise recording (author + duration + reps, no movement name)."""
+    dur  = f"{int(row['duration_seconds'])}s" if pd.notna(row.get("duration_seconds")) else "—"
+    reps = int(row["repetitions"]) if pd.notna(row.get("repetitions")) else "?"
+    auth = row.get("author") or "unknown"
+    return f"{auth}  ·  {dur}  ·  {reps} reps"
+
 # ── Savers ────────────────────────────────────────────────────────────────────
 
 def _changed_rows(
@@ -218,11 +226,31 @@ def tab_exercises():
     c1, c2 = st.columns([1, 7])
     with c1:
         if st.button("💾 Save", type="primary", key="sv_ex"):
-            patches = _changed_rows(df, edited, ["title_fa"])
-            if patches:
-                with st.spinner(f"Saving {len(patches)} row(s)…"):
-                    save_rows("exercise", patches)
-                c2.success(f"Updated {len(patches)} exercise(s).")
+            # title_fa now lives on the movement table — map each changed exercise
+            # row to its movement_id and update there instead of the exercise table.
+            ex_to_mov = {
+                int(r["id"]): int(r["movement_id"])
+                for _, r in df.iterrows()
+                if pd.notna(r.get("movement_id"))
+            }
+            mov_patches = []
+            for _, erow in edited.iterrows():
+                ex_id   = int(erow["id"])
+                orig    = df[df["id"] == ex_id]
+                if orig.empty:
+                    continue
+                orig_fa = orig.iloc[0].get("title_fa")
+                orig_fa = orig_fa if pd.notna(orig_fa) and str(orig_fa).strip() else None
+                new_fa  = erow.get("title_fa")
+                new_fa  = new_fa  if pd.notna(new_fa)  and str(new_fa).strip()  else None
+                if new_fa != orig_fa:
+                    mov_id = ex_to_mov.get(ex_id)
+                    if mov_id:
+                        mov_patches.append({"id": mov_id, "title_fa": new_fa})
+            if mov_patches:
+                with st.spinner(f"Saving {len(mov_patches)} row(s)…"):
+                    save_rows("movement", mov_patches)
+                c2.success(f"Updated {len(mov_patches)} Farsi title(s).")
                 bust_cache()
             else:
                 c2.info("No changes.")
@@ -534,30 +562,57 @@ def tab_session_builder():
 
     st.session_state[_SB_ITEMS] = items
 
-    # ── Add exercise ──────────────────────────────────────────────────────────
+    # ── Add exercise (movement → recording) ───────────────────────────────────
     st.divider()
     st.markdown("**Add exercise**")
-    ex_opts = {exercise_label(r): int(r["id"]) for _, r in exercises.iterrows()}
 
-    c_sel, c_rep, c_add = st.columns([5, 1.5, 1])
-    chosen_label = c_sel.selectbox(
-        "Choose audio track",
-        list(ex_opts.keys()),
-        key="sb_ex_select",
-        label_visibility="collapsed",
-    )
-    chosen_id = ex_opts[chosen_label]
-    chosen_ex = ex_by_id.get(chosen_id)
-    chosen_def = int(chosen_ex["repetitions"]) if chosen_ex is not None and pd.notna(chosen_ex.get("repetitions")) else 1
+    movements = load_movements()
+    if movements.empty:
+        st.info("No movements found — run the DB migration first.")
+    else:
+        # Only show movements that actually have exercises in the DB
+        mov_ids_with_ex = set(exercises["movement_id"].dropna().astype(int))
+        available_movs = (
+            movements[movements["id"].isin(mov_ids_with_ex)]
+            .sort_values("name")
+        )
+        mov_opts = {
+            str(r.get("name") or f"id {mid}"): mid
+            for mid, r in available_movs.set_index("id").iterrows()
+        }
 
-    add_reps = c_rep.number_input(
-        "Reps", min_value=1, max_value=99,
-        value=chosen_def, key="sb_add_reps",
-        label_visibility="collapsed",
-    )
-    if c_add.button("＋ Add", key="sb_add_btn"):
-        st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps})
-        st.rerun()
+        chosen_mov_label = st.selectbox(
+            "Movement", list(mov_opts.keys()), key="sb_mov_select"
+        )
+        chosen_mov_id = mov_opts[chosen_mov_label]
+
+        # Filter exercises to this movement
+        mov_exercises = exercises[exercises["movement_id"] == chosen_mov_id]
+
+        if mov_exercises.empty:
+            st.warning("No recordings for this movement.")
+        else:
+            c_rec, c_rep, c_add = st.columns([5, 1.5, 1])
+            rec_opts = {
+                recording_label(r): int(r["id"])
+                for _, r in mov_exercises.iterrows()
+            }
+            chosen_rec_label = c_rec.selectbox(
+                "Recording", list(rec_opts.keys()),
+                key="sb_rec_select", label_visibility="collapsed",
+            )
+            chosen_id = rec_opts[chosen_rec_label]
+            chosen_ex = ex_by_id.get(chosen_id)
+            chosen_def = int(chosen_ex["repetitions"]) if chosen_ex is not None and pd.notna(chosen_ex.get("repetitions")) else 1
+
+            add_reps = c_rep.number_input(
+                "Reps", min_value=1, max_value=99,
+                value=chosen_def, key="sb_add_reps",
+                label_visibility="collapsed",
+            )
+            if c_add.button("＋ Add", key="sb_add_btn"):
+                st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps})
+                st.rerun()
 
     # ── Duration estimate ─────────────────────────────────────────────────────
     if items:
