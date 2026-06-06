@@ -17,13 +17,9 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
   @override
   Future<List<Map<String, dynamic>>> fetchTrainingSessionsTable() async {
     try {
-      print("Fetching training_sessions table from Supabase...");
       final response = await _client.from('training_session').select();
-      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
-      print("Fetched  [32m${data.length} [0m training_sessions.");
-      return data;
-        } catch (e) {
-      print("Supabase fetch error (training_session): $e");
+      return List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
+    } catch (e) {
       throw Exception('Failed to fetch training_sessions table: $e');
     }
   }
@@ -31,13 +27,9 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
   @override
   Future<List<Map<String, dynamic>>> fetchExerciseTable() async {
     try {
-      print("Fetching Exercise table from Supabase...");
       final response = await _client.from('exercise').select();
-      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
-      print("Fetched  [32m${data.length} [0m Exercise.");
-      return data;
-        } catch (e) {
-      print("Supabase fetch error (Exercise): $e");
+      return List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
+    } catch (e) {
       throw Exception('Failed to fetch Exercise table: $e');
     }
   }
@@ -45,13 +37,9 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
   @override
   Future<List<Map<String, dynamic>>> fetchTrainingSessionItemTable() async {
     try {
-      print("Fetching training_session_items table from Supabase...");
       final response = await _client.from('training_session_item').select();
-      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
-      print("Fetched  [32m${data.length} [0m training_session_items.");
-      return data;
-        } catch (e) {
-      print("Supabase fetch error (training_session_items): $e");
+      return List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
+    } catch (e) {
       throw Exception('Failed to fetch training_session_items table: $e');
     }
   }
@@ -59,13 +47,9 @@ class TrainingSessionRemoteDataSourceImpl implements TrainingSessionRemoteDataSo
   @override
   Future<List<Map<String, dynamic>>> fetchMovementTable() async {
     try {
-      print("Fetching movement table from Supabase...");
       final response = await _client.from('movement').select();
-      final data = List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
-      print("Fetched ${data.length} movements.");
-      return data;
+      return List<Map<String, dynamic>>.from(response.cast<Map<String, dynamic>>());
     } catch (e) {
-      print("Supabase fetch error (movement): $e");
       // Movement table may not exist yet (pre-migration). Return empty list so
       // the existing exercise-level media fields act as a fallback.
       return [];
