@@ -75,7 +75,9 @@ class _FakeDownloadRepository implements DownloadRepository {
       null;
 
   @override
-  Future<String?> getLocalImagePath(int sessionId, int itemId) async => null;
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+          {String? imageUrl}) async =>
+      null;
 
   @override
   Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
