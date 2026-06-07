@@ -334,7 +334,7 @@ def tab_batch_import():
             placeholder="e.g. Morshed Karimi",
         )
     with c2:
-        batch_reps = st.number_input("Default reps (batch)", min_value=1, max_value=99, value=1)
+        batch_reps = st.number_input("Default reps (batch)", min_value=1, max_value=999, value=1)
     with c3:
         subfolder = st.text_input(
             "Storage subfolder",
@@ -386,7 +386,7 @@ def tab_batch_import():
         "filename":         st.column_config.TextColumn("File",           disabled=True, width=200),
         "movement_name":    st.column_config.TextColumn("Movement name ✏️", width=200),
         "author":           st.column_config.TextColumn("Author ✏️",       width=150),
-        "default_reps":     st.column_config.NumberColumn("Default reps ✏️", min_value=1, max_value=99, width=100),
+        "default_reps":     st.column_config.NumberColumn("Default reps ✏️", min_value=1, max_value=999, width=100),
         "duration_seconds": st.column_config.NumberColumn("Duration (s)",  disabled=True, width=100),
         "storage_path":     st.column_config.TextColumn("Storage path ✏️", width=250),
     }
@@ -463,6 +463,12 @@ def _sb_reset():
     st.session_state[_SB_ITEMS] = []
     st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
     st.session_state[_SB_SID]   = None
+    _clear_rep_keys()
+
+def _clear_rep_keys():
+    for key in list(st.session_state.keys()):
+        if key.startswith("reps_"):
+            del st.session_state[key]
 
 def tab_session_builder():
     st.header("Session Builder")
@@ -487,7 +493,7 @@ def tab_session_builder():
         sid = opts[chosen]
 
         if st.session_state.get(_SB_SID) != sid:
-            # Load session into state
+            _clear_rep_keys()  # stale reps from previous session would override value=
             s_row = sessions[sessions["id"] == sid].iloc[0]
             items_df = load_items()
             session_items = items_df[items_df["training_session_id"] == sid].sort_values("position")
@@ -534,29 +540,32 @@ def tab_session_builder():
         int(r["id"]): r for _, r in exercises.iterrows()
     }
 
+    # Namespace widget keys by session id so switching sessions uses fresh keys
+    # (browser-side widget state is keyed by widget key, not session state).
+    _kns = st.session_state.get(_SB_SID, "new")
+
     # Show current list
     for i, item in enumerate(items):
         ex = ex_by_id.get(item["exercise_id"])
         label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
-        def_reps = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
 
         c_name, c_reps, c_up, c_dn, c_rm = st.columns([5, 1.5, 0.5, 0.5, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
         new_reps = c_reps.number_input(
-            "Reps", min_value=1, max_value=99,
+            "Reps", min_value=1, max_value=999,
             value=item["reps_to_do"],
-            key=f"reps_{i}",
+            key=f"reps_{_kns}_{i}",
             label_visibility="collapsed",
         )
         items[i]["reps_to_do"] = new_reps
 
-        if c_up.button("↑", key=f"up_{i}", disabled=i == 0):
+        if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
             items[i], items[i - 1] = items[i - 1], items[i]
             st.rerun()
-        if c_dn.button("↓", key=f"dn_{i}", disabled=i == len(items) - 1):
+        if c_dn.button("↓", key=f"dn_{_kns}_{i}", disabled=i == len(items) - 1):
             items[i], items[i + 1] = items[i + 1], items[i]
             st.rerun()
-        if c_rm.button("✕", key=f"rm_{i}"):
+        if c_rm.button("✕", key=f"rm_{_kns}_{i}"):
             items.pop(i)
             st.rerun()
 
@@ -606,7 +615,7 @@ def tab_session_builder():
             chosen_def = int(chosen_ex["repetitions"]) if chosen_ex is not None and pd.notna(chosen_ex.get("repetitions")) else 1
 
             add_reps = c_rep.number_input(
-                "Reps", min_value=1, max_value=99,
+                "Reps", min_value=1, max_value=999,
                 value=chosen_def, key="sb_add_reps",
                 label_visibility="collapsed",
             )
@@ -652,8 +661,10 @@ def tab_session_builder():
                 # Replace all items
                 db.table("training_session_item").delete().eq("training_session_id", sid).execute()
             else:
-                # Insert new session
-                result = db.table("training_session").insert(meta_payload).execute()
+                # id column has no sequence — compute next id manually.
+                max_row = db.table("training_session").select("id").order("id", desc=True).limit(1).execute()
+                next_id = (max_row.data[0]["id"] + 1) if max_row.data else 1
+                result = db.table("training_session").insert({**meta_payload, "id": next_id}).execute()
                 sid = result.data[0]["id"]
 
             # Insert items
