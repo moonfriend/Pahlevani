@@ -115,7 +115,9 @@ class _AppBar extends StatelessWidget {
     if (result != null && context.mounted) {
       final updated = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
-      sessionCubit.updateTrainingSession(updated, items: items);
+      await sessionCubit.updateTrainingSession(updated, items: items);
+      if (!context.mounted) return;
+      context.read<TrainingSessionPlayerCubit>().loadTracks();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${updated.title} saved'),
         duration: const Duration(milliseconds: 2200),
@@ -171,8 +173,11 @@ class _Stage extends StatelessWidget {
         track.media.src!.isNotEmpty;
 
     Widget buildImage(String src) {
-      const fit = BoxFit.cover;
-      const align = Alignment.topCenter;
+      // fitHeight: image always fills the stage height; on wide containers
+      // the sides are left transparent so the Persian pattern shows through
+      // instead of cropping/zooming the image to fill the full width.
+      const fit = BoxFit.fitHeight;
+      const align = Alignment.center;
       if (src.startsWith('/')) {
         return Image.file(File(src), fit: fit, alignment: align,
             errorBuilder: (_, __, ___) => const SizedBox.shrink());

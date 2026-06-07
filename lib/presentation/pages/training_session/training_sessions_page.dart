@@ -62,7 +62,8 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     if (result != null && mounted) {
       final updated = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
-      cubit.updateTrainingSession(updated, items: items);
+      await cubit.updateTrainingSession(updated, items: items);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${updated.title} saved'),
         duration: const Duration(milliseconds: 2200),
