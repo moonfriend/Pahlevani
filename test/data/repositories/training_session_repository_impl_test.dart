@@ -473,8 +473,47 @@ void main() {
     });
   });
 
-  // ── 3. User-created sessions are preserved after remote fetch ─────────────────
-  group('fetchTrainingSessions — user-created session upsert', () {
+  // ── 3. Hive-first launch behaviour ───────────────────────────────────────────
+  group('fetchTrainingSessions — Hive-first', () {
+    test('returns Hive snapshot immediately when Hive has sessions', () async {
+      final remote = _FakeRemoteDataSource(
+        sessions: [_sessionRow(1, 'Remote')],
+        exercises: [_exerciseRow(10, 'E')],
+        items: [_itemRow(1, 10, 0)],
+      );
+      final cachedSession = TrainingSession(
+          id: 99, title: 'Cached', description: '', difficulty: 1);
+
+      final snap = await _makeRepo(
+        remote: remote,
+        db: _FakeLocalDatabase(sessions: [cachedSession]),
+      ).fetchTrainingSessions();
+
+      expect(snap.sessionsById.containsKey(99), isTrue,
+          reason: 'Hive session should be returned');
+      expect(snap.sessionsById.containsKey(1), isFalse,
+          reason: 'remote was not called — server session should not be present');
+      expect(remote.fetchCount, 0,
+          reason: 'Hive-first: remote must not be contacted');
+    });
+
+    test('falls through to remote on first launch (empty Hive)', () async {
+      final remote = _FakeRemoteDataSource(
+        sessions: [_sessionRow(1, 'Remote')],
+        exercises: [_exerciseRow(10, 'E')],
+        items: [_itemRow(1, 10, 0)],
+      );
+
+      final snap = await _makeRepo(remote: remote).fetchTrainingSessions();
+
+      expect(snap.sessionsById.containsKey(1), isTrue);
+      expect(remote.fetchCount, 1,
+          reason: 'empty Hive → must fetch from remote');
+    });
+  });
+
+  // ── 4. syncFromRemote merges server + user-created sessions ──────────────────
+  group('syncFromRemote — user-created session upsert', () {
     test(
         'user-created session from local DB is merged alongside server sessions',
         () async {
@@ -503,7 +542,7 @@ void main() {
           exercises: [HiveExercise(id: 10, name: 'Lunge', repetitions: 4)],
           items: [userItem],
         ),
-      ).fetchTrainingSessions();
+      ).syncFromRemote();
 
       expect(snap.sessionsById.containsKey(1), isTrue,
           reason: 'server session must be present');
@@ -541,7 +580,7 @@ void main() {
           ],
           items: [userItem],
         ),
-      ).fetchTrainingSessions();
+      ).syncFromRemote();
 
       expect(snap.itemsBySessionId[999], isNotNull,
           reason: 'items for user session must be merged into snapshot');

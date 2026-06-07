@@ -377,12 +377,17 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         emit(state.copyWith(isPlaying: false, isLoading: false));
       }
 
-      // Cache current + next 2 tracks in the background if using network source.
-      if (!sourcePath.startsWith('/')) {
-        _cacheInBackground(index);
-        _cacheInBackground(index + 1);
-        _cacheInBackground(index + 2);
-      }
+      // Always cache current + next 3 tracks in the background.
+      // _cacheInBackground skips any track already on disk, so this is safe
+      // to call unconditionally — it won't re-download cached files.
+      _cacheInBackground(index);
+      _cacheInBackground(index + 1);
+      _cacheInBackground(index + 2);
+      _cacheInBackground(index + 3);
+      // Check whether the whole session is now cached and update the badge.
+      _downloadRepo
+          .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
+          .catchError((_) {});
     } catch (e) {
       emit(state.copyWith(
           errorMessage: "Error loading track: ${track.displayName}"));

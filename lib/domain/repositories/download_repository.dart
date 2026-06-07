@@ -25,4 +25,9 @@ abstract class DownloadRepository {
 
   /// Download a single image and return its local path. No-op if already cached.
   Future<String?> cacheImage(int sessionId, int itemId, String url);
+
+  /// Returns true if every exercise audio in [items] is cached locally.
+  /// If all are cached, also marks the session as downloaded in persistent storage
+  /// so the badge appears on the sessions list without requiring an explicit download.
+  Future<bool> checkAllCachedAndMark(int sessionId, List<ItemDetail> items);
 }

@@ -50,6 +50,9 @@ class _SpyRepository implements TrainingSessionRepository {
       exercisesById: {..._snapshot.exercisesById},
     );
   }
+
+  @override
+  Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 }
 
 class _FakeDownloadRepository implements DownloadRepository {
@@ -80,6 +83,11 @@ class _FakeDownloadRepository implements DownloadRepository {
   @override
   Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
       null;
+
+  @override
+  Future<bool> checkAllCachedAndMark(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
 }
 
 TrainingSessionCubit _makeCubit(_SpyRepository repo) => TrainingSessionCubit(

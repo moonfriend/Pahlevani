@@ -33,6 +33,9 @@ class _StubRepository implements TrainingSessionRepository {
 
   @override
   Future<void> deleteTrainingSession(int sessionId) async {}
+
+  @override
+  Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 }
 
 class _StubDownloadRepository implements DownloadRepository {
@@ -63,6 +66,11 @@ class _StubDownloadRepository implements DownloadRepository {
   @override
   Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
       null;
+
+  @override
+  Future<bool> checkAllCachedAndMark(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
