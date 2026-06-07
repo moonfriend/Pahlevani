@@ -189,8 +189,6 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     List<ItemDetail>? items,
   }) async {
     try {
-      // User sessions with a matching id → update in-place.
-      // Copies of server sessions (new timestamp id) → save as new.
       final existsAsUserSession =
           _currentTSSnapshot.sessionsById[session.id]?.isUserCreated ?? false;
       if (existsAsUserSession) {
@@ -198,7 +196,16 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       } else {
         await _training_sessionRepository.saveTrainingSession(session, items: items);
       }
-      await fetchTrainingSessions(forceRefresh: true);
+      // Repository patched _domainSnapshot in-memory after the Hive write,
+      // so refresh:false returns the already-updated snapshot — no network wait.
+      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions(refresh: false);
+      emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+
+      // Remote sync in the background — keeps the list in sync without blocking.
+      _training_sessionRepository.getTrainingSessions(refresh: true).then((snap) {
+        _currentTSSnapshot = snap;
+        if (!isClosed) emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      }).catchError((_) {});
     } catch (e) {
       emit(TrainingSessionError(
         message: 'Failed to update session: $e',

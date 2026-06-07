@@ -139,6 +139,9 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         ids.remove(trainingSessionId.toString());
         await localDataSource.saveDownloadedTrainingSessionIds(ids);
       }
+
+      _domainSnapshot?.sessionsById.remove(trainingSessionId);
+      _domainSnapshot?.itemsBySessionId.remove(trainingSessionId);
     } catch (e) {
       throw Exception('Failed to delete session: $e');
     }
@@ -160,6 +163,15 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       await localDatabase.saveTrainingSessions([saved]);
       if (items != null) {
         await _saveItemDetails(saved.id, items);
+      }
+      // Patch the in-memory snapshot immediately so the UI doesn't need a
+      // network round-trip to reflect the new session.
+      if (_domainSnapshot != null) {
+        _domainSnapshot!.sessionsById[saved.id] = saved;
+        if (items != null) {
+          _domainSnapshot!.itemsBySessionId[saved.id] =
+              items.map((d) => d.item).toList();
+        }
       }
       return saved;
     } catch (e) {
@@ -186,6 +198,14 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       }
       if (items != null) {
         await _saveItemDetails(trainingSession.id, items);
+      }
+      // Patch the in-memory snapshot immediately.
+      if (_domainSnapshot != null) {
+        _domainSnapshot!.sessionsById[trainingSession.id] = trainingSession;
+        if (items != null) {
+          _domainSnapshot!.itemsBySessionId[trainingSession.id] =
+              items.map((d) => d.item).toList();
+        }
       }
     } catch (e) {
       throw Exception('Failed to update session: $e');
