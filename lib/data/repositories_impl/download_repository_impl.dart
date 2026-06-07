@@ -179,6 +179,25 @@ class DownloadRepositoryImpl implements DownloadRepository {
     }
   }
 
+  @override
+  Future<bool> checkAllCachedAndMark(int sessionId, List<ItemDetail> items) async {
+    try {
+      final validItems = items
+          .where((i) => (i.exercise.audioFileUrl ?? '').isNotEmpty)
+          .toList();
+      if (validItems.isEmpty) return false;
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      final results = await Future.wait(
+        validItems.map((i) => File('$dir/${_safeFilename(i)}').exists()),
+      );
+      final allCached = results.every((e) => e);
+      if (allCached) await _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
+      return allCached;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _saveDownloadStatus(int sessionId, DownloadStatus status) async {
     try {
       final list = await localDataSource.getDownloadedTrainingSessionIds();

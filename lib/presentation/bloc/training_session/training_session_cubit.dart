@@ -34,9 +34,20 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         super(TrainingSessionInitial());
 
   /// Loads initial download statuses and fetches the training_session list.
+  /// Returns fast from Hive on subsequent launches, then syncs remote in background.
   Future<void> initialize() async {
     await loadInitialStatuses();
     await fetchTrainingSessions();
+    // Fire-and-forget: refresh from Supabase; re-emits when done.
+    _training_sessionRepository.syncFromRemote().then((snap) {
+      if (isClosed) return;
+      _currentTSSnapshot = snap;
+      _downloadRepository.getInitialDownloadStatuses().then((statuses) {
+        if (isClosed) return;
+        _currentDownloadStatus = statuses;
+        emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      });
+    }).catchError((_) {}); // silent: Hive data already shown
   }
 
   /// Loads download statuses from the repository.

@@ -30,14 +30,32 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
 
   @override
   Future<DomainSnapshot> getTrainingSessions({bool refresh = false}) async {
-    if (_domainSnapshot != null && !refresh) {
-      return Future.value(_domainSnapshot!);
-    }
-    // If refresh is true or snapshot is null, fetch from remote
+    if (_domainSnapshot != null && !refresh) return _domainSnapshot!;
+    if (refresh) return syncFromRemote(); // explicit refresh always goes remote
     return fetchTrainingSessions();
   }
 
+  /// Hive-first: returns cached data immediately on subsequent launches.
+  /// First launch (empty Hive) falls through to remote.
   Future<DomainSnapshot> fetchTrainingSessions() async {
+    try {
+      final box = await localDatabase.getTrainingSessionBox();
+      if (box.isNotEmpty) {
+        final snap = await _buildSnapshotFromHive();
+        _domainSnapshot = snap;
+        return snap;
+      }
+    } catch (_) {}
+    // First launch or Hive unreadable — must go remote.
+    return _fetchFromRemote();
+  }
+
+  /// Always fetches fresh data from Supabase, updates Hive, and returns the
+  /// new snapshot. Call this in the background after the initial Hive load.
+  @override
+  Future<DomainSnapshot> syncFromRemote() => _fetchFromRemote();
+
+  Future<DomainSnapshot> _fetchFromRemote() async {
     try {
       final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
@@ -51,7 +69,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         movementRows: movementMaps.map((e) => MovementRow.fromJson(e)).toList(),
       );
 
-      // Cache to Hive using domain objects so movement data is denormalized in.
+      // Cache to Hive — movement data denormalized in by buildDomainSnapshot.
       try {
         await localDatabase.saveExercises(
           snap.exercisesById.values.map(HiveExercise.fromDomain).toList(),
@@ -65,8 +83,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         );
       } catch (_) {}
 
-      // Merge user-created sessions from Hive into the snapshot so they
-      // appear alongside server sessions in the UI.
+      // Merge user-created sessions from Hive (remote fetch never returns them).
       try {
         final box = await localDatabase.getTrainingSessionBox();
         final allItems = await localDatabase.getTrainingSessionItems();
@@ -90,30 +107,32 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       _domainSnapshot = snap;
       return snap;
     } catch (e) {
-      // Fall back to Hive cache. Exercises are already denormalized
-      // (movement data was embedded when the cache was last written).
-      try {
-        final hiveExercises = await localDatabase.getTracks();
-        final hiveItems = await localDatabase.getTrainingSessionItems();
-        final hiveSessions = await localDatabase.getTrainingSessionBox();
-
-        final snap = buildDomainSnapshotFromDomain(
-          sessions: hiveSessions.values.map((s) => s.toDomain()).toList(),
-          exercises: hiveExercises.map((e) => e.toDomain()).toList(),
-          items: hiveItems.map((i) => TrainingItem(
-            id: i.trainingSessionId * 10000 + i.position,
-            sessionId: i.trainingSessionId,
-            exerciseId: i.itemId,
-            position: i.position,
-            prescription: RepsPresc(i.repsToDo),
-          )).toList(),
-        );
-        _domainSnapshot = snap;
-        return snap;
-      } catch (_) {
-        throw Exception('Could not fetch training sessions: $e');
-      }
+      // Remote failed — return in-memory snapshot if we have one, else Hive.
+      if (_domainSnapshot != null) return _domainSnapshot!;
+      return _buildSnapshotFromHive();
     }
+  }
+
+  Future<DomainSnapshot> _buildSnapshotFromHive() async {
+    final hiveExercises = await localDatabase.getTracks();
+    final hiveItems = await localDatabase.getTrainingSessionItems();
+    final hiveSessions = await localDatabase.getTrainingSessionBox();
+
+    final snap = buildDomainSnapshotFromDomain(
+      sessions: hiveSessions.values.map((s) => s.toDomain()).toList(),
+      exercises: hiveExercises.map((e) => e.toDomain()).toList(),
+      items: hiveItems
+          .map((i) => TrainingItem(
+                id: i.trainingSessionId * 10000 + i.position,
+                sessionId: i.trainingSessionId,
+                exerciseId: i.itemId,
+                position: i.position,
+                prescription: RepsPresc(i.repsToDo),
+              ))
+          .toList(),
+    );
+    _domainSnapshot = snap;
+    return snap;
   }
 
 
