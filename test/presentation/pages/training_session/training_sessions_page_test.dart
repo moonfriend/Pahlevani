@@ -49,6 +49,20 @@ class _StubDownloadRepository implements DownloadRepository {
   @override
   Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async =>
       null;
+
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async =>
+      null;
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId) async => null;
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
+      null;
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
