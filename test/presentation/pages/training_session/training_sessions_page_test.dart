@@ -33,6 +33,9 @@ class _StubRepository implements TrainingSessionRepository {
 
   @override
   Future<void> deleteTrainingSession(int sessionId) async {}
+
+  @override
+  Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 }
 
 class _StubDownloadRepository implements DownloadRepository {
@@ -49,6 +52,27 @@ class _StubDownloadRepository implements DownloadRepository {
   @override
   Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async =>
       null;
+
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async =>
+      null;
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+          {String? imageUrl}) async =>
+      null;
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
+      null;
+
+  @override
+  Future<bool> checkAllCachedAndMark(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

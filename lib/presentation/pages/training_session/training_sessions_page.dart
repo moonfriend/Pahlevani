@@ -43,10 +43,13 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     _refreshSpin.reset();
   }
 
-  void _openPlayer(TrainingSession session) {
-    Navigator.push(context, MaterialPageRoute(
+  Future<void> _openPlayer(TrainingSession session) async {
+    await Navigator.push(context, MaterialPageRoute(
       builder: (_) => AudioPlayerPage(trainingSession: session),
     ));
+    // Player may have cached tracks via lookahead — reload statuses so the
+    // "downloaded" badge appears if all tracks are now on disk.
+    if (mounted) context.read<TrainingSessionCubit>().loadInitialStatuses();
   }
 
   Future<void> _openEdit(TrainingSession session) async {
@@ -62,7 +65,8 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     if (result != null && mounted) {
       final updated = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
-      cubit.updateTrainingSession(updated, items: items);
+      await cubit.updateTrainingSession(updated, items: items);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${updated.title} saved'),
         duration: const Duration(milliseconds: 2200),

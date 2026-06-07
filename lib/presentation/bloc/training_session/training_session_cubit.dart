@@ -34,9 +34,20 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         super(TrainingSessionInitial());
 
   /// Loads initial download statuses and fetches the training_session list.
+  /// Returns fast from Hive on subsequent launches, then syncs remote in background.
   Future<void> initialize() async {
     await loadInitialStatuses();
     await fetchTrainingSessions();
+    // Fire-and-forget: refresh from Supabase; re-emits when done.
+    _training_sessionRepository.syncFromRemote().then((snap) {
+      if (isClosed) return;
+      _currentTSSnapshot = snap;
+      _downloadRepository.getInitialDownloadStatuses().then((statuses) {
+        if (isClosed) return;
+        _currentDownloadStatus = statuses;
+        emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      });
+    }).catchError((_) {}); // silent: Hive data already shown
   }
 
   /// Loads download statuses from the repository.
@@ -189,8 +200,6 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     List<ItemDetail>? items,
   }) async {
     try {
-      // User sessions with a matching id → update in-place.
-      // Copies of server sessions (new timestamp id) → save as new.
       final existsAsUserSession =
           _currentTSSnapshot.sessionsById[session.id]?.isUserCreated ?? false;
       if (existsAsUserSession) {
@@ -198,7 +207,16 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       } else {
         await _training_sessionRepository.saveTrainingSession(session, items: items);
       }
-      await fetchTrainingSessions(forceRefresh: true);
+      // Repository patched _domainSnapshot in-memory after the Hive write,
+      // so refresh:false returns the already-updated snapshot — no network wait.
+      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions(refresh: false);
+      emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+
+      // Remote sync in the background — keeps the list in sync without blocking.
+      _training_sessionRepository.getTrainingSessions(refresh: true).then((snap) {
+        _currentTSSnapshot = snap;
+        if (!isClosed) emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      }).catchError((_) {});
     } catch (e) {
       emit(TrainingSessionError(
         message: 'Failed to update session: $e',

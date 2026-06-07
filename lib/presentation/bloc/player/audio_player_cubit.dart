@@ -1,12 +1,13 @@
 import 'dart:async';
-
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
 /// State for the AudioPlayerCubit
@@ -94,6 +95,10 @@ class AudioPlayerState {
 class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   late AudioPlayer _audioPlayer;
   late TrainingSession _trainingSession;
+  late final DownloadRepository _downloadRepo;
+
+  // Parallel list of ItemDetail kept for background caching (same order as state.tracks).
+  final List<ItemDetail> _itemDetails = [];
 
   // Subscriptions to audio streams
   StreamSubscription<Duration>? _positionSubscription;
@@ -116,6 +121,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _trainingSession = trainingSession;
     _audioPlayer = AudioPlayer();
+    _downloadRepo = getIt<DownloadRepository>();
     _initAudioPlayerListeners();
   }
 
@@ -158,35 +164,56 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   //   return cubit;
   // }
 
-  /// Loads a specific list of tracks, replacing existing ones.
+  /// Loads tracks for the current session, resolving local cached files where available.
   Future<void> loadTracks() async {
-    List<TrainingItemWithAudio> tracksToLoad = [];
+    final List<TrainingItemWithAudio> tracksToLoad = [];
+    _itemDetails.clear();
 
     emit(state.copyWith(isLoading: true, errorMessage: null));
-    // todo: is this stop necessary?
-    await _audioPlayer.stop(); // Stop current playback
-
-    final repo = getIt<TrainingSessionRepository>();
-    final domainSnapshot = await repo.getTrainingSessions();
-    final items = domainSnapshot.itemsBySessionId[_trainingSession.id];
-
-    items?.forEach((item) {
-      final exercise = domainSnapshot.exercisesById[item.exerciseId];
-      final repsToDo = item.prescription is RepsPresc
-          ? (item.prescription as RepsPresc).count
-          : null;
-      final itemWithAudio = TrainingItemWithAudio(
-        id: item.id.toString(),
-        title: exercise?.name ?? '',
-        audioFilePath: exercise?.audioFileUrl ?? '',
-        media: exercise?.media ?? ExerciseMedia.none,
-        defaultRepetitions: exercise?.repetitionsDefault,
-        userRepetitions: repsToDo,
-      );
-      tracksToLoad.add(itemWithAudio);
-    });
+    await _audioPlayer.stop();
 
     try {
+      final repo = getIt<TrainingSessionRepository>();
+      final snap = await repo.getTrainingSessions();
+      final sessionId = _trainingSession.id;
+      final items = snap.itemsBySessionId[sessionId] ?? [];
+
+      for (final item in items) {
+        final exercise = snap.exercisesById[item.exerciseId];
+        if (exercise == null) continue;
+
+        final repsToDo = item.prescription is RepsPresc
+            ? (item.prescription as RepsPresc).count
+            : null;
+
+        final itemDetail = ItemDetail(item: item, exercise: exercise);
+        _itemDetails.add(itemDetail);
+
+        // Use local audio file if cached, otherwise fall back to remote URL.
+        final localAudio = await _downloadRepo.getLocalAudioPath(sessionId, itemDetail);
+        final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
+
+        // Use local image if cached, otherwise keep the remote URL.
+        String? localImage;
+        if (exercise.media.hasAsset) {
+          localImage = await _downloadRepo.getLocalImagePath(
+              sessionId, item.id,
+              imageUrl: exercise.media.src);
+        }
+        final resolvedMedia = localImage != null
+            ? ExerciseMedia(type: 'photo', src: localImage)
+            : exercise.media;
+
+        tracksToLoad.add(TrainingItemWithAudio(
+          id: item.id.toString(),
+          title: exercise.name,
+          audioFilePath: audioPath,
+          media: resolvedMedia,
+          defaultRepetitions: exercise.repetitionsDefault,
+          userRepetitions: repsToDo,
+        ));
+      }
+
       if (tracksToLoad.isEmpty) {
         emit(state.copyWith(
             isLoading: false,
@@ -286,10 +313,29 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
+  /// Fire-and-forget: cache audio (and image) for [index] if not already on disk.
+  void _cacheInBackground(int index) {
+    if (index < 0 || index >= state.tracks.length || index >= _itemDetails.length) return;
+    final track = state.tracks[index];
+    final detail = _itemDetails[index];
+    final sessionId = _trainingSession.id;
+
+    // Cache audio if still loading from network.
+    if (!track.audioFilePath.startsWith('/')) {
+      _downloadRepo.cacheAudio(sessionId, detail);
+    }
+
+    // Cache image if still loading from network.
+    if (track.media.type == 'photo' &&
+        track.media.src != null &&
+        !track.media.src!.startsWith('/')) {
+      _downloadRepo.cacheImage(sessionId, int.parse(track.id), track.media.src!);
+    }
+  }
+
   /// Helper to handle track changes
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
-    if (index < 0 || index >= state.tracks.length)
-      return; // Index out of bounds
+    if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
     final sourcePath = track.audioFilePath; // Get the path/URL from the track
@@ -332,6 +378,18 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _audioPlayer.setSource(audioSource);
         emit(state.copyWith(isPlaying: false, isLoading: false));
       }
+
+      // Always cache current + next 3 tracks in the background.
+      // _cacheInBackground skips any track already on disk, so this is safe
+      // to call unconditionally — it won't re-download cached files.
+      _cacheInBackground(index);
+      _cacheInBackground(index + 1);
+      _cacheInBackground(index + 2);
+      _cacheInBackground(index + 3);
+      // Check whether the whole session is now cached and update the badge.
+      _downloadRepo
+          .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
+          .catchError((_) {});
     } catch (e) {
       emit(state.copyWith(
           errorMessage: "Error loading track: ${track.displayName}"));

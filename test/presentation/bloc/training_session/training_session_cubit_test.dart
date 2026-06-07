@@ -50,6 +50,9 @@ class _SpyRepository implements TrainingSessionRepository {
       exercisesById: {..._snapshot.exercisesById},
     );
   }
+
+  @override
+  Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 }
 
 class _FakeDownloadRepository implements DownloadRepository {
@@ -66,6 +69,27 @@ class _FakeDownloadRepository implements DownloadRepository {
   @override
   Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async =>
       null;
+
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async =>
+      null;
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+          {String? imageUrl}) async =>
+      null;
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
+      null;
+
+  @override
+  Future<bool> checkAllCachedAndMark(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
 }
 
 TrainingSessionCubit _makeCubit(_SpyRepository repo) => TrainingSessionCubit(

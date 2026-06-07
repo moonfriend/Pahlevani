@@ -100,7 +100,18 @@ class DownloadRepositoryImpl implements DownloadRepository {
       } else {
         await _saveDownloadStatus(sessionId, DownloadStatus.error);
         controller.addError(Exception('Download incomplete — some files missing.'));
+        await controller.close();
+        return;
       }
+
+      // Download images after audio — non-fatal, doesn't affect download status.
+      for (final item in session.items) {
+        if (item.exercise.media.type == 'photo' &&
+            (item.exercise.media.src ?? '').isNotEmpty) {
+          await cacheImage(sessionId, item.item.id, item.exercise.media.src!);
+        }
+      }
+
       await controller.close();
     } catch (e) {
       await _saveDownloadStatus(sessionId, DownloadStatus.error);
@@ -124,6 +135,72 @@ class DownloadRepositoryImpl implements DownloadRepository {
     return File(path).exists().then((exists) => exists ? path : null);
   }
 
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async {
+    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final path = '$dir/${_safeFilename(item)}';
+    return File(path).exists().then((e) => e ? path : null);
+  }
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+      {String? imageUrl}) async {
+    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final path = imageUrl != null && imageUrl.isNotEmpty
+        ? '$dir/img_${itemId}_${_urlHash(imageUrl)}'
+        : '$dir/img_$itemId';
+    return File(path).exists().then((e) => e ? path : null);
+  }
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async {
+    try {
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      await Directory(dir).create(recursive: true);
+      final path = '$dir/${_safeFilename(item)}';
+      if (await File(path).exists()) return path;
+      final url = item.exercise.audioFileUrl;
+      if (url == null || url.isEmpty) return null;
+      await localDataSource.downloadFile(url, path, (_, __) {});
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async {
+    try {
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      await Directory(dir).create(recursive: true);
+      final path = '$dir/img_${itemId}_${_urlHash(url)}';
+      if (await File(path).exists()) return path;
+      await localDataSource.downloadFile(url, path, (_, __) {});
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> checkAllCachedAndMark(int sessionId, List<ItemDetail> items) async {
+    try {
+      final validItems = items
+          .where((i) => (i.exercise.audioFileUrl ?? '').isNotEmpty)
+          .toList();
+      if (validItems.isEmpty) return false;
+      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      final results = await Future.wait(
+        validItems.map((i) => File('$dir/${_safeFilename(i)}').exists()),
+      );
+      final allCached = results.every((e) => e);
+      if (allCached) await _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
+      return allCached;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _saveDownloadStatus(int sessionId, DownloadStatus status) async {
     try {
       final list = await localDataSource.getDownloadedTrainingSessionIds();
@@ -143,9 +220,10 @@ class DownloadRepositoryImpl implements DownloadRepository {
     final safeName = item.exercise.name
         .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
         .replaceAll(' ', '_');
+    final url = item.exercise.audioFileUrl ?? '';
     String ext = '.mp3';
     try {
-      final uri = Uri.parse(item.exercise.audioFileUrl ?? '');
+      final uri = Uri.parse(url);
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
         final candidate =
             uri.pathSegments.last.substring(uri.pathSegments.last.lastIndexOf('.'));
@@ -154,6 +232,17 @@ class DownloadRepositoryImpl implements DownloadRepository {
         }
       }
     } catch (_) {}
-    return '${item.item.id}_${safeName}$ext';
+    return '${item.item.id}_${safeName}_${_urlHash(url)}$ext';
+  }
+
+  String _urlHash(String url) =>
+      _djb2(url).toRadixString(16).padLeft(8, '0');
+
+  int _djb2(String s) {
+    var hash = 5381;
+    for (final c in s.codeUnits) {
+      hash = ((hash << 5) + hash) ^ c;
+    }
+    return hash.toUnsigned(32);
   }
 }
