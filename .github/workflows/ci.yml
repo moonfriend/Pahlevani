@@ -1,0 +1,78 @@
+# CI pipeline for Pahlevani Flutter app.
+#
+# What runs on every push/PR to main:
+#   1. flutter pub get        — install dependencies
+#   2. flutter analyze        — static analysis (flutter_lints)
+#   3. flutter test           — unit + widget tests (no Supabase needed)
+#   4. flutter build apk      — ensure the Android build compiles
+#
+# What does NOT run here:
+#   - Integration tests (integration_test/app_test.dart) require a live
+#     Supabase instance and an Android emulator.  Run those locally with:
+#
+#       PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+#         flutter test integration_test/app_test.dart -d linux --update-goldens
+#
+#     Or on a real device / emulator:
+#
+#       flutter test integration_test/app_test.dart -d <device-id>
+#
+# Required GitHub Actions secrets (Settings → Secrets → Actions):
+#   SUPABASE_URL      — not used in CI tests but kept for future integration
+#   SUPABASE_ANON_KEY — same note as above
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Analyze, Test, Build
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Flutter setup ────────────────────────────────────────────────────────
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # ── Pub cache ───────────────────────────────────────────────────────────
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      # ── Install dependencies ─────────────────────────────────────────────────
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ── Static analysis ──────────────────────────────────────────────────────
+      - name: Analyze (flutter_lints)
+        run: flutter analyze
+
+      # ── Unit + widget tests ──────────────────────────────────────────────────
+      # Integration tests that require Supabase/emulator are excluded here.
+      # They live in integration_test/ and are run manually (see notes above).
+      - name: Run tests
+        run: flutter test
+
+      # ── Android build ────────────────────────────────────────────────────────
+      # Builds a debug APK to verify the Android toolchain compiles cleanly.
+      # A release APK would require signing keys (not set up yet).
+      - name: Build Android APK (debug)
+        run: flutter build apk --debug
