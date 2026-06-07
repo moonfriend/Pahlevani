@@ -196,7 +196,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // Use local image if cached, otherwise keep the remote URL.
         String? localImage;
         if (exercise.media.hasAsset) {
-          localImage = await _downloadRepo.getLocalImagePath(sessionId, item.id);
+          localImage = await _downloadRepo.getLocalImagePath(
+              sessionId, item.id,
+              imageUrl: exercise.media.src);
         }
         final resolvedMedia = localImage != null
             ? ExerciseMedia(type: 'photo', src: localImage)
