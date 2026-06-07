@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -49,8 +51,17 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       child: Scaffold(
         backgroundColor: colors.bg,
         body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
-          listenWhen: (prev, cur) => prev.playingIndex != cur.playingIndex,
-          listener: (_, state) => _trackListKey.currentState?.scrollToActive(state.playingIndex),
+          listenWhen: (prev, cur) =>
+              prev.playingIndex != cur.playingIndex ||
+              (prev.tracks.isEmpty && cur.tracks.isNotEmpty),
+          listener: (context, state) {
+            _trackListKey.currentState?.scrollToActive(state.playingIndex);
+            for (final track in state.tracks) {
+              if (track.media.type == 'photo' && track.media.src?.isNotEmpty == true) {
+                precacheImage(NetworkImage(track.media.src!), context);
+              }
+            }
+          },
           builder: (context, state) {
             if (state.isLoading && state.tracks.isEmpty) {
               return const Center(child: CircularProgressIndicator());
@@ -104,7 +115,9 @@ class _AppBar extends StatelessWidget {
     if (result != null && context.mounted) {
       final updated = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
-      sessionCubit.updateTrainingSession(updated, items: items);
+      await sessionCubit.updateTrainingSession(updated, items: items);
+      if (!context.mounted) return;
+      context.read<TrainingSessionPlayerCubit>().loadTracks();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${updated.title} saved'),
         duration: const Duration(milliseconds: 2200),
@@ -159,6 +172,20 @@ class _Stage extends StatelessWidget {
         track.media.src != null &&
         track.media.src!.isNotEmpty;
 
+    Widget buildImage(String src) {
+      // fitHeight: image always fills the stage height; on wide containers
+      // the sides are left transparent so the Persian pattern shows through
+      // instead of cropping/zooming the image to fill the full width.
+      const fit = BoxFit.fitHeight;
+      const align = Alignment.center;
+      if (src.startsWith('/')) {
+        return Image.file(File(src), fit: fit, alignment: align,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink());
+      }
+      return Image.network(src, fit: fit, alignment: align,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink());
+    }
+
     return GestureDetector(
       onTap: cubit.togglePlay,
       child: Container(
@@ -166,22 +193,18 @@ class _Stage extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
         decoration: BoxDecoration(
           color: accent.bg,
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(8),
+            bottom: Radius.circular(26),
+          ),
           border: Border.all(color: colors.borderSoft),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(children: [
+          // Pattern is always the background — visible during load and on error
+          Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
           if (hasPhoto)
-            Positioned.fill(
-              child: Image.network(
-                track!.media.src!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110),
-              ),
-            )
-          else
-            Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
+            Positioned.fill(child: buildImage(track.media.src!)),
           // Dark gradient at bottom so text stays legible over photos
           if (hasPhoto)
             Positioned.fill(
