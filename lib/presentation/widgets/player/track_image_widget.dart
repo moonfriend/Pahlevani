@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../domain/entities/audio/training_item_with_audio.dart';
+import '../exercise_image_provider.dart';
 
 /// A widget to display the current track's image with play/pause controls
 class TrackImageWidget extends StatelessWidget {
@@ -24,13 +25,11 @@ class TrackImageWidget extends StatelessWidget {
           width: double.infinity,
           color: const Color(0xFFEEEEEE),
           child: Center(
-            child: track?.imagePath != null
-                ? Image.asset(
-                    'assets/images/${track!.imagePath}',
+            child: track?.media.hasAsset == true
+                ? Image(
+                    image: ExerciseImageProvider(track!.media.src!),
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildPlaceholder();
-                    },
+                    errorBuilder: (_, __, ___) => _buildPlaceholder(),
                   )
                 : _buildPlaceholder(),
           ),
