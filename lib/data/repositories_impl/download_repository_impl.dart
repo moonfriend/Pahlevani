@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:pahlevani/core/utils/image_transform.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
@@ -173,9 +174,11 @@ class DownloadRepositoryImpl implements DownloadRepository {
     try {
       final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
       await Directory(dir).create(recursive: true);
+      // Hash keyed on original URL so getLocalImagePath lookup stays stable.
       final path = '$dir/img_${itemId}_${_urlHash(url)}';
       if (await File(path).exists()) return path;
-      await localDataSource.downloadFile(url, path, (_, __) {});
+      // Download the Supabase-resized version (500×500, quality 80) to save disk space.
+      await localDataSource.downloadFile(supabaseImageTransformUrl(url), path, (_, __) {});
       return path;
     } catch (_) {
       return null;
