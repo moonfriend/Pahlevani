@@ -459,11 +459,18 @@ _SB_META   = "sb_meta"    # {title, title_fa, description, difficulty}
 _SB_MODE   = "sb_mode"    # "new" | "edit"
 _SB_SID    = "sb_sid"     # session id being edited
 
+_META_WIDGET_KEYS = ["sb_title", "sb_titlefa", "sb_desc", "sb_diff"]
+
 def _sb_reset():
+    _clear_meta_widget_keys()
+    _clear_rep_keys()
     st.session_state[_SB_ITEMS] = []
     st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
     st.session_state[_SB_SID]   = None
-    _clear_rep_keys()
+
+def _clear_meta_widget_keys():
+    for key in _META_WIDGET_KEYS:
+        st.session_state.pop(key, None)
 
 def _clear_rep_keys():
     for key in list(st.session_state.keys()):
@@ -493,6 +500,7 @@ def tab_session_builder():
         sid = opts[chosen]
 
         if st.session_state.get(_SB_SID) != sid:
+            _clear_meta_widget_keys()  # force metadata fields to re-render with new session values
             _clear_rep_keys()  # stale reps from previous session would override value=
             s_row = sessions[sessions["id"] == sid].iloc[0]
             items_df = load_items()
@@ -560,10 +568,20 @@ def tab_session_builder():
         items[i]["reps_to_do"] = new_reps
 
         if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
+            ka, kb = f"reps_{_kns}_{i}", f"reps_{_kns}_{i - 1}"
+            va = st.session_state.get(ka, items[i]["reps_to_do"])
+            vb = st.session_state.get(kb, items[i - 1]["reps_to_do"])
+            st.session_state[ka], st.session_state[kb] = vb, va
             items[i], items[i - 1] = items[i - 1], items[i]
+            st.session_state[_SB_ITEMS] = items
             st.rerun()
         if c_dn.button("↓", key=f"dn_{_kns}_{i}", disabled=i == len(items) - 1):
+            ka, kb = f"reps_{_kns}_{i}", f"reps_{_kns}_{i + 1}"
+            va = st.session_state.get(ka, items[i]["reps_to_do"])
+            vb = st.session_state.get(kb, items[i + 1]["reps_to_do"])
+            st.session_state[ka], st.session_state[kb] = vb, va
             items[i], items[i + 1] = items[i + 1], items[i]
+            st.session_state[_SB_ITEMS] = items
             st.rerun()
         if c_rm.button("✕", key=f"rm_{_kns}_{i}"):
             items.pop(i)
@@ -616,7 +634,7 @@ def tab_session_builder():
 
             add_reps = c_rep.number_input(
                 "Reps", min_value=1, max_value=999,
-                value=chosen_def, key="sb_add_reps",
+                value=chosen_def, key=f"sb_add_reps_{chosen_id}",
                 label_visibility="collapsed",
             )
             if c_add.button("＋ Add", key="sb_add_btn"):
