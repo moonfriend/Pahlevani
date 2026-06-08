@@ -459,18 +459,16 @@ _SB_META   = "sb_meta"    # {title, title_fa, description, difficulty}
 _SB_MODE   = "sb_mode"    # "new" | "edit"
 _SB_SID    = "sb_sid"     # session id being edited
 
-_META_WIDGET_KEYS = ["sb_title", "sb_titlefa", "sb_desc", "sb_diff"]
-
 def _sb_reset():
-    _clear_meta_widget_keys()
+    # Directly set widget state so the fields visibly clear on the next render.
+    st.session_state["sb_title"]   = ""
+    st.session_state["sb_titlefa"] = ""
+    st.session_state["sb_desc"]    = ""
+    st.session_state["sb_diff"]    = 2
     _clear_rep_keys()
     st.session_state[_SB_ITEMS] = []
     st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
     st.session_state[_SB_SID]   = None
-
-def _clear_meta_widget_keys():
-    for key in _META_WIDGET_KEYS:
-        st.session_state.pop(key, None)
 
 def _clear_rep_keys():
     for key in list(st.session_state.keys()):
@@ -500,16 +498,23 @@ def tab_session_builder():
         sid = opts[chosen]
 
         if st.session_state.get(_SB_SID) != sid:
-            _clear_meta_widget_keys()  # force metadata fields to re-render with new session values
-            _clear_rep_keys()  # stale reps from previous session would override value=
+            _clear_rep_keys()
             s_row = sessions[sessions["id"] == sid].iloc[0]
             items_df = load_items()
             session_items = items_df[items_df["training_session_id"] == sid].sort_values("position")
+            _title  = s_row.get("title")       or ""
+            _titlefa = s_row.get("title_fa")   or ""
+            _desc   = s_row.get("description") or ""
+            _diff   = int(s_row.get("difficulty") or 2)
+            # Directly set widget state BEFORE the widgets render so the fields
+            # reflect the newly selected session without needing an extra rerun.
+            st.session_state["sb_title"]   = _title
+            st.session_state["sb_titlefa"] = _titlefa
+            st.session_state["sb_desc"]    = _desc
+            st.session_state["sb_diff"]    = _diff
             st.session_state[_SB_META] = {
-                "title":       s_row.get("title", ""),
-                "title_fa":    s_row.get("title_fa") or "",
-                "description": s_row.get("description", ""),
-                "difficulty":  int(s_row.get("difficulty", 2)),
+                "title": _title, "title_fa": _titlefa,
+                "description": _desc, "difficulty": _diff,
             }
             st.session_state[_SB_ITEMS] = [
                 {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"])}
@@ -649,7 +654,7 @@ def tab_session_builder():
             ex = ex_by_id.get(item["exercise_id"])
             dur     = ex.get("duration_seconds") if ex is not None else None
             def_rep = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
-            if dur and def_rep:
+            if pd.notna(dur) and dur and def_rep:
                 total += round(float(dur) / def_rep * item["reps_to_do"])
             else:
                 all_known = False
