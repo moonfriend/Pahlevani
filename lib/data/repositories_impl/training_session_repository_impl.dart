@@ -1,3 +1,4 @@
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_database.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
@@ -111,8 +112,9 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
 
       _domainSnapshot = snap;
       return snap;
-    } catch (e) {
-      // Remote failed — return in-memory snapshot if we have one, else Hive.
+    } catch (e, st) {
+      AppLogger.w('Remote fetch failed — falling back to cache',
+          error: e, stackTrace: st);
       if (_domainSnapshot != null) return _domainSnapshot!;
       return _buildSnapshotFromHive();
     }
