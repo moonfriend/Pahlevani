@@ -71,9 +71,9 @@ class TrackImageWidget extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.pause, color: Colors.white, size: 24),
                     SizedBox(width: 8),
                     Text(
@@ -95,7 +95,8 @@ class TrackImageWidget extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.sports_martial_arts, size: 120, color: Colors.black54),
+          const Icon(Icons.sports_martial_arts,
+              size: 120, color: Colors.black54),
           const SizedBox(height: 16),
           Text(
             track?.title ?? 'No track selected',

@@ -18,7 +18,8 @@ class EditTrainingSessionPage extends StatefulWidget {
   final List<ItemDetail> items;
 
   @override
-  State<EditTrainingSessionPage> createState() => _EditTrainingSessionPageState();
+  State<EditTrainingSessionPage> createState() =>
+      _EditTrainingSessionPageState();
 }
 
 class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
@@ -126,14 +127,25 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
             child: Row(children: [
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: SizedBox(width: 44, height: 44,
-                    child: Icon(Icons.close_rounded, size: 22, color: cs.onSurface)),
+                child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.close_rounded,
+                        size: 22, color: cs.onSurface)),
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text(
-                isNew ? 'New session' : fromServer ? 'Edit a copy' : 'Edit session',
-                style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-                    fontSize: 17, color: cs.onSurface),
+              Expanded(
+                  child: Text(
+                isNew
+                    ? 'New session'
+                    : fromServer
+                        ? 'Edit a copy'
+                        : 'Edit session',
+                style: TextStyle(
+                    fontFamily: PFonts.ui,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17,
+                    color: cs.onSurface),
               )),
               // Save pill button
               GestureDetector(
@@ -149,7 +161,9 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                   alignment: Alignment.center,
                   child: Text('Save',
                       style: TextStyle(
-                          fontFamily: PFonts.ui, fontWeight: FontWeight.w700, fontSize: 14.5,
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14.5,
                           color: _canSave ? cs.onPrimary : colors.onFaint)),
                 ),
               ),
@@ -169,33 +183,51 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                       color: colors.tealBg,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Icon(Icons.info_outline_rounded, size: 18, color: colors.teal),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(
-                        'This is a built-in session. Saving creates your own editable copy — it won\'t change the original.',
-                        style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w600,
-                            fontSize: 12.5, color: colors.teal, height: 1.45),
-                      )),
-                    ]),
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 18, color: colors.teal),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: Text(
+                            'This is a built-in session. Saving creates your own editable copy — it won\'t change the original.',
+                            style: TextStyle(
+                                fontFamily: PFonts.ui,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12.5,
+                                color: colors.teal,
+                                height: 1.45),
+                          )),
+                        ]),
                   ),
                   const SizedBox(height: 18),
                 ],
 
                 // Title
-                _Field(label: 'Title', child: TextField(
-                  controller: _titleCtrl,
-                  style: PTextStyles.of(context).editFieldValue.copyWith(color: cs.onSurface),
-                  decoration: const InputDecoration(hintText: 'Session name'),
-                )),
+                _Field(
+                    label: 'Title',
+                    child: TextField(
+                      controller: _titleCtrl,
+                      style: PTextStyles.of(context)
+                          .editFieldValue
+                          .copyWith(color: cs.onSurface),
+                      decoration:
+                          const InputDecoration(hintText: 'Session name'),
+                    )),
 
                 // Description
-                _Field(label: 'Description', child: TextField(
-                  controller: _descCtrl,
-                  style: PTextStyles.of(context).editFieldValue.copyWith(color: cs.onSurface),
-                  decoration: const InputDecoration(hintText: 'What is this session for?'),
-                  maxLines: 3,
-                )),
+                _Field(
+                    label: 'Description',
+                    child: TextField(
+                      controller: _descCtrl,
+                      style: PTextStyles.of(context)
+                          .editFieldValue
+                          .copyWith(color: cs.onSurface),
+                      decoration: const InputDecoration(
+                          hintText: 'What is this session for?'),
+                      maxLines: 3,
+                    )),
 
                 // Difficulty
                 _Field(
@@ -207,8 +239,11 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                     ),
                     const SizedBox(width: 12),
                     Text('$_difficulty / 5',
-                        style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-                            fontSize: 13, color: colors.onMuted)),
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: colors.onMuted)),
                   ]),
                 ),
 
@@ -219,10 +254,15 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('EXERCISES · ${_items.length}'.toUpperCase(),
-                          style: PTextStyles.of(context).sectionLabel.copyWith(color: colors.onFaint)),
+                          style: PTextStyles.of(context)
+                              .sectionLabel
+                              .copyWith(color: colors.onFaint)),
                       Text('drag to reorder',
-                          style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w600,
-                              fontSize: 12, color: colors.onFaint)),
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              color: colors.onFaint)),
                     ],
                   ),
                 ),
@@ -241,8 +281,10 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                     final reps = _repsMap[exerciseId] ?? 1;
                     final defaultReps = ex.repetitionsDefault;
                     final isCustom = reps != defaultReps;
-                    final stepFg = isCustom ? colors.repCustom   : colors.repDefault;
-                    final stepBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+                    final stepFg =
+                        isCustom ? colors.repCustom : colors.repDefault;
+                    final stepBg =
+                        isCustom ? colors.repCustomBg : colors.repDefaultBg;
 
                     return Container(
                       key: ValueKey('ex-$exerciseId-$i'),
@@ -259,51 +301,74 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                           index: i,
                           child: SizedBox(
                             width: 40,
-                            child: Center(child: _DragGrip(color: colors.onFaint)),
+                            child:
+                                Center(child: _DragGrip(color: colors.onFaint)),
                           ),
                         ),
                         // Name + Farsi + gloss
-                        Expanded(child: Column(
+                        Expanded(
+                            child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Row(children: [
-                              Flexible(child: Text(ex.name,
-                                  style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-                                      fontSize: 14.5, color: cs.onSurface),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              Flexible(
+                                  child: Text(ex.name,
+                                      style: TextStyle(
+                                          fontFamily: PFonts.ui,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14.5,
+                                          color: cs.onSurface),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis)),
                               if (ex.titleFa != null) ...[
                                 const SizedBox(width: 7),
                                 Text(ex.titleFa!,
-                                    style: TextStyle(fontFamily: PFonts.farsi, fontWeight: FontWeight.w600,
-                                        fontSize: 13, color: colors.onFaint),
+                                    style: TextStyle(
+                                        fontFamily: PFonts.farsi,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: colors.onFaint),
                                     textDirection: TextDirection.rtl),
                               ],
                             ]),
                             if (ex.gloss != null)
                               Text(ex.gloss!,
-                                  style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w500,
-                                      fontSize: 11.5, color: colors.onFaint)),
+                                  style: TextStyle(
+                                      fontFamily: PFonts.ui,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 11.5,
+                                      color: colors.onFaint)),
                           ],
                         )),
                         const SizedBox(width: 8),
                         // Rep stepper
                         Container(
                           padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(color: stepBg, borderRadius: BorderRadius.circular(99)),
+                          decoration: BoxDecoration(
+                              color: stepBg,
+                              borderRadius: BorderRadius.circular(99)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            _StepBtn(label: '−', color: stepFg,
+                            _StepBtn(
+                                label: '−',
+                                color: stepFg,
                                 onTap: () => _setReps(exerciseId, -1)),
                             GestureDetector(
-                              onTap: isCustom ? () => _resetReps(exerciseId, defaultReps) : null,
+                              onTap: isCustom
+                                  ? () => _resetReps(exerciseId, defaultReps)
+                                  : null,
                               child: SizedBox(
                                 width: 34,
                                 child: Text('$reps',
                                     textAlign: TextAlign.center,
-                                    style: PTextStyles.of(context).stepperNumber.copyWith(color: stepFg)),
+                                    style: PTextStyles.of(context)
+                                        .stepperNumber
+                                        .copyWith(color: stepFg)),
                               ),
                             ),
-                            _StepBtn(label: '+', color: stepFg,
+                            _StepBtn(
+                                label: '+',
+                                color: stepFg,
                                 onTap: () => _setReps(exerciseId, 1)),
                           ]),
                         ),
@@ -317,13 +382,26 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(2, 4, 2, 0),
                   child: Text.rich(TextSpan(
-                    style: TextStyle(fontFamily: PFonts.ui, fontSize: 11.5,
-                        color: colors.onFaint, height: 1.5),
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontSize: 11.5,
+                        color: colors.onFaint,
+                        height: 1.5),
                     children: [
-                      TextSpan(text: 'Green ', style: TextStyle(color: colors.repDefault, fontWeight: FontWeight.w700)),
+                      TextSpan(
+                          text: 'Green ',
+                          style: TextStyle(
+                              color: colors.repDefault,
+                              fontWeight: FontWeight.w700)),
                       const TextSpan(text: 'reps are the exercise default · '),
-                      TextSpan(text: 'orange ', style: TextStyle(color: colors.repCustom, fontWeight: FontWeight.w700)),
-                      const TextSpan(text: 'means you\'ve customised it. Tap a custom number to reset.'),
+                      TextSpan(
+                          text: 'orange ',
+                          style: TextStyle(
+                              color: colors.repCustom,
+                              fontWeight: FontWeight.w700)),
+                      const TextSpan(
+                          text:
+                              'means you\'ve customised it. Tap a custom number to reset.'),
                     ],
                   )),
                 ),
@@ -353,7 +431,9 @@ class _Field extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(bottom: 7),
           child: Text(label,
-              style: PTextStyles.of(context).editFieldLabel.copyWith(color: colors.onMuted)),
+              style: PTextStyles.of(context)
+                  .editFieldLabel
+                  .copyWith(color: colors.onMuted)),
         ),
         child,
       ]),
@@ -362,7 +442,8 @@ class _Field extends StatelessWidget {
 }
 
 class _StepBtn extends StatelessWidget {
-  const _StepBtn({required this.label, required this.color, required this.onTap});
+  const _StepBtn(
+      {required this.label, required this.color, required this.onTap});
   final String label;
   final Color color;
   final VoidCallback onTap;
@@ -373,11 +454,17 @@ class _StepBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30, height: 30,
+        width: 30,
+        height: 30,
         decoration: BoxDecoration(color: cs.surface, shape: BoxShape.circle),
         alignment: Alignment.center,
-        child: Text(label, style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-            fontSize: 19, color: color, height: 1)),
+        child: Text(label,
+            style: TextStyle(
+                fontFamily: PFonts.ui,
+                fontWeight: FontWeight.w700,
+                fontSize: 19,
+                color: color,
+                height: 1)),
       ),
     );
   }
@@ -389,9 +476,9 @@ class _DragGrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-    size: const Size(18, 18),
-    painter: _DotGridPainter(color: color),
-  );
+        size: const Size(18, 18),
+        painter: _DotGridPainter(color: color),
+      );
 }
 
 class _DotGridPainter extends CustomPainter {

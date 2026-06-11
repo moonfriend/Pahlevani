@@ -30,7 +30,8 @@ class DownloadRing extends StatelessWidget {
           size: 34,
           bg: colors.repDefaultBg,
           onTap: onTap,
-          child: Icon(Icons.check_rounded, size: 19, color: colors.repDefault, weight: 700),
+          child: Icon(Icons.check_rounded,
+              size: 19, color: colors.repDefault, weight: 700),
         );
 
       case DownloadStatus.downloading:
@@ -61,7 +62,8 @@ class DownloadRing extends StatelessWidget {
           size: 34,
           bg: colors.surface3,
           onTap: onTap,
-          child: Icon(Icons.error_outline_rounded, size: 19, color: colors.repCustom),
+          child: Icon(Icons.error_outline_rounded,
+              size: 19, color: colors.repCustom),
         );
 
       case DownloadStatus.notDownloaded:
@@ -76,7 +78,8 @@ class DownloadRing extends StatelessWidget {
 }
 
 class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.size, required this.bg, required this.child, this.onTap});
+  const _CircleButton(
+      {required this.size, required this.bg, required this.child, this.onTap});
 
   final double size;
   final Color bg;
@@ -133,5 +136,6 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.progress != progress || old.color != color;
+  bool shouldRepaint(_RingPainter old) =>
+      old.progress != progress || old.color != color;
 }

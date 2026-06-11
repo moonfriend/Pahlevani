@@ -69,17 +69,20 @@ class TrackListItemWidget extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 16,
                       color: isSelected ? Colors.black : Colors.grey[600],
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   // Show repetition info if different from default
-                  if (track.effectiveRepetitions != (track.defaultRepetitions ?? 1))
+                  if (track.effectiveRepetitions !=
+                      (track.defaultRepetitions ?? 1))
                     Padding(
                       padding: const EdgeInsets.only(top: 2.0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.orange.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
@@ -105,7 +108,8 @@ class TrackListItemWidget extends StatelessWidget {
                 child: IconButton(
                   icon: isPlaying
                       ? const Icon(Icons.pause, color: Colors.green, size: 30)
-                      : const Icon(Icons.play_arrow, color: Colors.green, size: 30),
+                      : const Icon(Icons.play_arrow,
+                          color: Colors.green, size: 30),
                   onPressed: onPlayTap,
                 ),
               ),

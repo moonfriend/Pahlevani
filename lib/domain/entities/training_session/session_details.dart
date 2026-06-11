@@ -1,7 +1,3 @@
-
-
-
-
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';

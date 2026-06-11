@@ -15,7 +15,8 @@ String supabaseImageTransformUrl(
   const marker = '/storage/v1/object/public/';
   if (url.isEmpty || !url.contains(marker)) return url;
 
-  final transformed = url.replaceFirst(marker, '/storage/v1/render/image/public/');
+  final transformed =
+      url.replaceFirst(marker, '/storage/v1/render/image/public/');
   final sep = transformed.contains('?') ? '&' : '?';
-  return '${transformed}${sep}width=$width&height=$height&resize=$resize&quality=$quality';
+  return '$transformed${sep}width=$width&height=$height&resize=$resize&quality=$quality';
 }

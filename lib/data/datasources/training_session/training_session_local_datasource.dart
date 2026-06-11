@@ -15,7 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Abstract interface for local training_session data operations (status, files).
 abstract class TrainingSessionLocalDataSource {
-  static const String _downloadedTrainingSessionsKey = 'downloaded_training_sessions';
+  static const String _downloadedTrainingSessionsKey =
+      'downloaded_training_sessions';
 
   /// Retrieves the list of IDs for training_sessions marked as downloaded.
   Future<List<String>> getDownloadedTrainingSessionIds();
@@ -24,16 +25,17 @@ abstract class TrainingSessionLocalDataSource {
   Future<void> saveDownloadedTrainingSessionIds(List<String> ids);
 
   /// Gets the expected local directory path for a given training_session ID.
-  Future<String> getTrainingSessionDirectoryPath(int training_sessionId);
+  Future<String> getTrainingSessionDirectoryPath(int trainingSessionid);
 
   /// Checks if the directory for a given training_session ID exists.
-  Future<bool> training_sessionDirectoryExists(int training_sessionId);
+  Future<bool> trainingSessionDirectoryExists(int trainingSessionid);
 
   /// Deletes the local directory and files for a given training_session ID.
-  Future<void> deleteTrainingSessionDirectory(int training_sessionId);
+  Future<void> deleteTrainingSessionDirectory(int trainingSessionid);
 
   /// Downloads a file from a URL to a specific local path, reporting progress.
-  Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress);
+  Future<void> downloadFile(
+      String url, String savePath, Function(int, int) onReceiveProgress);
 
   /// gets all Training Sessions from the local storage
   Future<List<Map<String, dynamic>>> getTrainingSessionsTable();
@@ -43,11 +45,11 @@ abstract class TrainingSessionLocalDataSource {
 
   /// Fetches all training_session_items from the local storage
   Future<List<Map<String, dynamic>>> getTrainingSessionItemTable();
-
 }
 
 /// Implementation of [TrainingSessionLocalDataSource] using SharedPreferences, path_provider, and Dio.
-class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSource {
+class TrainingSessionLocalDataSourceImpl
+    implements TrainingSessionLocalDataSource {
   final Dio dio;
   SharedPreferences? _prefs;
   String? _localDirectoryPath;
@@ -59,36 +61,40 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
   }
 
   Future<String> _getBaseDirectory() async {
-    return _localDirectoryPath ??= (await getApplicationDocumentsDirectory()).path;
+    return _localDirectoryPath ??=
+        (await getApplicationDocumentsDirectory()).path;
   }
 
   @override
   Future<List<String>> getDownloadedTrainingSessionIds() async {
     final prefs = await _getPrefs();
-    return prefs.getStringList(TrainingSessionLocalDataSource._downloadedTrainingSessionsKey) ?? [];
+    return prefs.getStringList(
+            TrainingSessionLocalDataSource._downloadedTrainingSessionsKey) ??
+        [];
   }
 
   @override
   Future<void> saveDownloadedTrainingSessionIds(List<String> ids) async {
     final prefs = await _getPrefs();
-    await prefs.setStringList(TrainingSessionLocalDataSource._downloadedTrainingSessionsKey, ids);
+    await prefs.setStringList(
+        TrainingSessionLocalDataSource._downloadedTrainingSessionsKey, ids);
   }
 
   @override
-  Future<String> getTrainingSessionDirectoryPath(int training_sessionId) async {
+  Future<String> getTrainingSessionDirectoryPath(int trainingSessionid) async {
     final baseDir = await _getBaseDirectory();
-    return '$baseDir/training_session_$training_sessionId';
+    return '$baseDir/training_session_$trainingSessionid';
   }
 
   @override
-  Future<bool> training_sessionDirectoryExists(int training_sessionId) async {
-    final dirPath = await getTrainingSessionDirectoryPath(training_sessionId);
+  Future<bool> trainingSessionDirectoryExists(int trainingSessionid) async {
+    final dirPath = await getTrainingSessionDirectoryPath(trainingSessionid);
     return await Directory(dirPath).exists();
   }
 
   @override
-  Future<void> deleteTrainingSessionDirectory(int training_sessionId) async {
-    final dirPath = await getTrainingSessionDirectoryPath(training_sessionId);
+  Future<void> deleteTrainingSessionDirectory(int trainingSessionid) async {
+    final dirPath = await getTrainingSessionDirectoryPath(trainingSessionid);
     final directory = Directory(dirPath);
     if (await directory.exists()) {
       await directory.delete(recursive: true);
@@ -96,9 +102,9 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
   }
 
   @override
-  Future<void> downloadFile(String url, String savePath, Function(int, int) onReceiveProgress) async {
+  Future<void> downloadFile(
+      String url, String savePath, Function(int, int) onReceiveProgress) async {
     try {
-
       // Create parent directory if it doesn't exist
       final file = File(savePath);
       if (!await file.parent.exists()) {
@@ -143,7 +149,6 @@ class TrainingSessionLocalDataSourceImpl implements TrainingSessionLocalDataSour
         await downloadedFile.delete();
         throw Exception('Downloaded file is empty');
       }
-
     } catch (e) {
       // Clean up partial file
       try {

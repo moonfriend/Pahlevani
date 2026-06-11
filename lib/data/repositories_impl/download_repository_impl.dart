@@ -16,11 +16,12 @@ class DownloadRepositoryImpl implements DownloadRepository {
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async {
     final statuses = <int, DownloadStatus>{};
     try {
-      final downloadedIds = await localDataSource.getDownloadedTrainingSessionIds();
+      final downloadedIds =
+          await localDataSource.getDownloadedTrainingSessionIds();
       for (final idStr in downloadedIds) {
         final id = int.tryParse(idStr);
         if (id != null) {
-          if (await localDataSource.training_sessionDirectoryExists(id)) {
+          if (await localDataSource.trainingSessionDirectoryExists(id)) {
             statuses[id] = DownloadStatus.downloaded;
           } else {
             statuses[id] = DownloadStatus.error;
@@ -83,7 +84,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
           controller.add((done / total).clamp(0.0, 1.0));
           await Future.delayed(const Duration(milliseconds: 100));
         } catch (e) {
-          controller.addError(Exception('Failed to download ${item.exercise.name}: $e'));
+          controller.addError(
+              Exception('Failed to download ${item.exercise.name}: $e'));
           await _saveDownloadStatus(sessionId, DownloadStatus.error);
           await controller.close();
           return;
@@ -100,7 +102,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
         controller.add(1.0);
       } else {
         await _saveDownloadStatus(sessionId, DownloadStatus.error);
-        controller.addError(Exception('Download incomplete — some files missing.'));
+        controller
+            .addError(Exception('Download incomplete — some files missing.'));
         await controller.close();
         return;
       }
@@ -125,20 +128,22 @@ class DownloadRepositoryImpl implements DownloadRepository {
   Future<bool> isTrainingSessionDownloaded(int sessionId) async {
     final ids = await localDataSource.getDownloadedTrainingSessionIds();
     if (!ids.contains(sessionId.toString())) return false;
-    return localDataSource.training_sessionDirectoryExists(sessionId);
+    return localDataSource.trainingSessionDirectoryExists(sessionId);
   }
 
   @override
   Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async {
     if (!await isTrainingSessionDownloaded(sessionId)) return null;
-    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final dir =
+        await localDataSource.getTrainingSessionDirectoryPath(sessionId);
     final path = '$dir/${_safeFilename(song)}';
     return File(path).exists().then((exists) => exists ? path : null);
   }
 
   @override
   Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async {
-    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final dir =
+        await localDataSource.getTrainingSessionDirectoryPath(sessionId);
     final path = '$dir/${_safeFilename(item)}';
     return File(path).exists().then((e) => e ? path : null);
   }
@@ -146,7 +151,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
   @override
   Future<String?> getLocalImagePath(int sessionId, int itemId,
       {String? imageUrl}) async {
-    final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+    final dir =
+        await localDataSource.getTrainingSessionDirectoryPath(sessionId);
     final path = imageUrl != null && imageUrl.isNotEmpty
         ? '$dir/img_${itemId}_${_urlHash(imageUrl)}'
         : '$dir/img_$itemId';
@@ -156,7 +162,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
   @override
   Future<String?> cacheAudio(int sessionId, ItemDetail item) async {
     try {
-      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      final dir =
+          await localDataSource.getTrainingSessionDirectoryPath(sessionId);
       await Directory(dir).create(recursive: true);
       final path = '$dir/${_safeFilename(item)}';
       if (await File(path).exists()) return path;
@@ -172,13 +179,15 @@ class DownloadRepositoryImpl implements DownloadRepository {
   @override
   Future<String?> cacheImage(int sessionId, int itemId, String url) async {
     try {
-      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      final dir =
+          await localDataSource.getTrainingSessionDirectoryPath(sessionId);
       await Directory(dir).create(recursive: true);
       // Hash keyed on original URL so getLocalImagePath lookup stays stable.
       final path = '$dir/img_${itemId}_${_urlHash(url)}';
       if (await File(path).exists()) return path;
       // Download the Supabase-resized version (500×500, quality 80) to save disk space.
-      await localDataSource.downloadFile(supabaseImageTransformUrl(url), path, (_, __) {});
+      await localDataSource.downloadFile(
+          supabaseImageTransformUrl(url), path, (_, __) {});
       return path;
     } catch (_) {
       return null;
@@ -186,18 +195,22 @@ class DownloadRepositoryImpl implements DownloadRepository {
   }
 
   @override
-  Future<bool> checkAllCachedAndMark(int sessionId, List<ItemDetail> items) async {
+  Future<bool> checkAllCachedAndMark(
+      int sessionId, List<ItemDetail> items) async {
     try {
       final validItems = items
           .where((i) => (i.exercise.audioFileUrl ?? '').isNotEmpty)
           .toList();
       if (validItems.isEmpty) return false;
-      final dir = await localDataSource.getTrainingSessionDirectoryPath(sessionId);
+      final dir =
+          await localDataSource.getTrainingSessionDirectoryPath(sessionId);
       final results = await Future.wait(
         validItems.map((i) => File('$dir/${_safeFilename(i)}').exists()),
       );
       final allCached = results.every((e) => e);
-      if (allCached) await _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
+      if (allCached) {
+        await _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
+      }
       return allCached;
     } catch (_) {
       return false;
@@ -228,9 +241,10 @@ class DownloadRepositoryImpl implements DownloadRepository {
     try {
       final uri = Uri.parse(url);
       if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
-        final candidate =
-            uri.pathSegments.last.substring(uri.pathSegments.last.lastIndexOf('.'));
-        if (['.mp3', '.m4a', '.wav', '.ogg'].contains(candidate.toLowerCase())) {
+        final candidate = uri.pathSegments.last
+            .substring(uri.pathSegments.last.lastIndexOf('.'));
+        if (['.mp3', '.m4a', '.wav', '.ogg']
+            .contains(candidate.toLowerCase())) {
           ext = candidate;
         }
       }
@@ -238,8 +252,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
     return '${item.item.id}_${safeName}_${_urlHash(url)}$ext';
   }
 
-  String _urlHash(String url) =>
-      _djb2(url).toRadixString(16).padLeft(8, '0');
+  String _urlHash(String url) => _djb2(url).toRadixString(16).padLeft(8, '0');
 
   int _djb2(String s) {
     var hash = 5381;

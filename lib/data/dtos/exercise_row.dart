@@ -1,17 +1,17 @@
 class ExerciseRow {
   final int id;
   final int? movementId;
-  final String? name;       // present before migration; null after
-  final String? titleFa;    // present before migration; null after
-  final String? gloss;      // present before migration; null after
+  final String? name; // present before migration; null after
+  final String? titleFa; // present before migration; null after
+  final String? gloss; // present before migration; null after
   final String? author;
-  final String? type;       // present before migration; null after
+  final String? type; // present before migration; null after
   final String? url;
   final int repetitions;
   final int? durationSeconds;
-  final String? mediaType;  // present before migration; null after
-  final String? mediaSrc;   // present before migration; null after
-  final String? mediaPoster;// present before migration; null after
+  final String? mediaType; // present before migration; null after
+  final String? mediaSrc; // present before migration; null after
+  final String? mediaPoster; // present before migration; null after
 
   ExerciseRow({
     required this.id,

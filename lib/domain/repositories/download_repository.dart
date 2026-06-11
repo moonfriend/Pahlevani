@@ -19,7 +19,8 @@ abstract class DownloadRepository {
 
   /// Local image path for [itemId] if the file exists on disk.
   /// Pass [imageUrl] so the hash-based filename can be resolved correctly.
-  Future<String?> getLocalImagePath(int sessionId, int itemId, {String? imageUrl});
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+      {String? imageUrl});
 
   /// Download a single audio track and return its local path. No-op if already cached.
   Future<String?> cacheAudio(int sessionId, ItemDetail item);

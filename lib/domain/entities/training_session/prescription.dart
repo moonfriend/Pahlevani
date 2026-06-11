@@ -1,5 +1,3 @@
-
-
 sealed class Prescription {
   const Prescription();
 }
@@ -13,8 +11,3 @@ class RepsPresc extends Prescription {
   final int count;
   const RepsPresc(this.count);
 }
-
-
-
-
-

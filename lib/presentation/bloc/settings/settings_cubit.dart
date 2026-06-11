@@ -14,29 +14,30 @@ class SettingsState {
 
   SettingsState copyWith({ThemeMode? themeMode, ListDensity? listDensity}) =>
       SettingsState(
-        themeMode:   themeMode   ?? this.themeMode,
+        themeMode: themeMode ?? this.themeMode,
         listDensity: listDensity ?? this.listDensity,
       );
 }
 
 class SettingsCubit extends Cubit<SettingsState> {
-  static const _keyTheme   = 'settings.themeMode';
+  static const _keyTheme = 'settings.themeMode';
   static const _keyDensity = 'settings.listDensity';
 
   SettingsCubit() : super(const SettingsState());
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final themeIndex   = prefs.getInt(_keyTheme)   ?? ThemeMode.dark.index;
+    final themeIndex = prefs.getInt(_keyTheme) ?? ThemeMode.dark.index;
     final densityIndex = prefs.getInt(_keyDensity) ?? ListDensity.banner.index;
     emit(SettingsState(
-      themeMode:   ThemeMode.values[themeIndex],
+      themeMode: ThemeMode.values[themeIndex],
       listDensity: ListDensity.values[densityIndex],
     ));
   }
 
   Future<void> toggleTheme() async {
-    final next = state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    final next =
+        state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     emit(state.copyWith(themeMode: next));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyTheme, next.index);

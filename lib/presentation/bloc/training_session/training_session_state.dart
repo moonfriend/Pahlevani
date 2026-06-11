@@ -1,6 +1,5 @@
 part of 'training_session_cubit.dart';
 
-
 sealed class TrainingSessionState extends Equatable {
   const TrainingSessionState();
   @override
@@ -44,7 +43,8 @@ class TrainingSessionDownloading extends TrainingSessionState {
   });
 
   @override
-  List<Object?> get props => [uiModel, downloadProgress, downloadingTrainingSessionId];
+  List<Object?> get props =>
+      [uiModel, downloadProgress, downloadingTrainingSessionId];
 }
 
 // Represents an error state (fetching or downloading)

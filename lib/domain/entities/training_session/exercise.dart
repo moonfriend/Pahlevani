@@ -7,7 +7,8 @@ class ExerciseMedia {
 
   static const none = ExerciseMedia(type: 'none');
 
-  bool get hasAsset => (type == 'video' || type == 'photo') && src != null && src!.isNotEmpty;
+  bool get hasAsset =>
+      (type == 'video' || type == 'photo') && src != null && src!.isNotEmpty;
 }
 
 class Exercise {
