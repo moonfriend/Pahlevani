@@ -343,6 +343,77 @@ void main() {
     });
   });
 
+  // ── cacheImage ────────────────────────────────────────────────────────────
+
+  group('cacheImage', () {
+    test('downloads Supabase image at 500×500 quality-80 transform URL',
+        () async {
+      when(() => mockDs.getTrainingSessionDirectoryPath(1))
+          .thenAnswer((_) async => tmpDir.path);
+
+      String? downloadedUrl;
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        downloadedUrl = inv.positionalArguments[0] as String;
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+
+      const url =
+          'https://abcdef.supabase.co/storage/v1/object/public/movement-media/kick.jpg';
+      await repo.cacheImage(1, 101, url);
+
+      expect(downloadedUrl, isNotNull);
+      expect(downloadedUrl, contains('/storage/v1/render/image/public/'));
+      expect(downloadedUrl, contains('width=500'));
+      expect(downloadedUrl, contains('height=500'));
+      expect(downloadedUrl, contains('quality=80'));
+    });
+
+    test('passes non-Supabase image URL to downloadFile unchanged', () async {
+      when(() => mockDs.getTrainingSessionDirectoryPath(1))
+          .thenAnswer((_) async => tmpDir.path);
+
+      String? downloadedUrl;
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        downloadedUrl = inv.positionalArguments[0] as String;
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+
+      const url = 'https://cdn.example.com/image.jpg';
+      await repo.cacheImage(1, 101, url);
+
+      expect(downloadedUrl, url);
+    });
+
+    test('returns cached path without re-downloading if file already exists',
+        () async {
+      when(() => mockDs.getTrainingSessionDirectoryPath(1))
+          .thenAnswer((_) async => tmpDir.path);
+
+      const url = 'https://example.com/img.jpg';
+      final path = '${tmpDir.path}/img_101_${_urlHash(url)}';
+      File(path).createSync();
+
+      final result = await repo.cacheImage(1, 101, url);
+
+      expect(result, path);
+      verifyNever(() => mockDs.downloadFile(any(), any(), any()));
+    });
+
+    test('returns null when download throws', () async {
+      when(() => mockDs.getTrainingSessionDirectoryPath(1))
+          .thenAnswer((_) async => tmpDir.path);
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenThrow(Exception('network error'));
+
+      expect(
+          await repo.cacheImage(1, 101, 'https://example.com/img.jpg'), isNull);
+    });
+  });
+
   // ── downloadTrainingSession ────────────────────────────────────────────────
 
   group('downloadTrainingSession', () {
