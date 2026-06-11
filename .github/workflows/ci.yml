@@ -1,25 +1,16 @@
 # CI pipeline for Pahlevani Flutter app.
 #
-# What runs on every push/PR to main:
-#   1. flutter pub get        — install dependencies
-#   2. flutter analyze        — static analysis (flutter_lints)
-#   3. flutter test           — unit + widget tests (no Supabase needed)
-#   4. flutter build apk      — ensure the Android build compiles
+# Jobs on every push/PR to main:
+#   test        — format check + analyze + unit/widget tests + coverage gate (≥50%)
+#   build       — debug + release APK builds (depends on test)
+#   integration — fake-repo integration tests on Linux desktop (depends on test)
 #
-# What does NOT run here:
-#   - Integration tests (integration_test/app_test.dart) require a live
-#     Supabase instance and an Android emulator.  Run those locally with:
+# NOT in CI:
+#   smoke_test.dart — hits real Supabase; run manually:
+#     flutter test integration_test/smoke_test.dart -d linux --update-goldens
 #
-#       PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
-#         flutter test integration_test/app_test.dart -d linux --update-goldens
-#
-#     Or on a real device / emulator:
-#
-#       flutter test integration_test/app_test.dart -d <device-id>
-#
-# Required GitHub Actions secrets (Settings → Secrets → Actions):
-#   SUPABASE_URL      — not used in CI tests but kept for future integration
-#   SUPABASE_ANON_KEY — same note as above
+# GitHub Actions secrets (Settings → Secrets → Actions):
+#   SUPABASE_URL / SUPABASE_ANON_KEY — used only for manual smoke runs
 
 name: CI
 
@@ -32,23 +23,21 @@ on:
       - main
 
 jobs:
+  # ── Unit + widget tests ────────────────────────────────────────────────────
   test:
-    name: Analyze, Test, Build
+    name: Format, Analyze, Test
     runs-on: ubuntu-latest
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Flutter setup ────────────────────────────────────────────────────────
       - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # ── Pub cache ───────────────────────────────────────────────────────────
       - name: Cache pub dependencies
         uses: actions/cache@v4
         with:
@@ -57,22 +46,113 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pub-
 
-      # ── Install dependencies ─────────────────────────────────────────────────
       - name: Install dependencies
         run: flutter pub get
 
-      # ── Static analysis ──────────────────────────────────────────────────────
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+
       - name: Analyze (flutter_lints)
         run: flutter analyze
 
-      # ── Unit + widget tests ──────────────────────────────────────────────────
-      # Integration tests that require Supabase/emulator are excluded here.
-      # They live in integration_test/ and are run manually (see notes above).
-      - name: Run tests
-        run: flutter test
+      - name: Guard INTERNET permission in main AndroidManifest
+        run: |
+          grep -q 'android.permission.INTERNET' \
+            android/app/src/main/AndroidManifest.xml || \
+            { echo "FAIL: INTERNET permission missing from main AndroidManifest.xml"; exit 1; }
 
-      # ── Android build ────────────────────────────────────────────────────────
-      # Builds a debug APK to verify the Android toolchain compiles cleanly.
-      # A release APK would require signing keys (not set up yet).
+      - name: Run unit + widget tests with coverage
+        run: flutter test --coverage
+
+      - name: Check coverage threshold (≥50%)
+        run: |
+          COVERED=$(grep "^DA:" coverage/lcov.info | grep -v ",0$" | wc -l)
+          TOTAL=$(grep -c "^DA:" coverage/lcov.info)
+          PCT=$((COVERED * 100 / TOTAL))
+          echo "Coverage: ${PCT}% (${COVERED}/${TOTAL} lines)"
+          if [ "$PCT" -lt 50 ]; then
+            echo "FAIL: coverage ${PCT}% is below the 50% threshold."
+            exit 1
+          fi
+
+  # ── Build (debug + release) ────────────────────────────────────────────────
+  build:
+    name: Build APKs
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Install dependencies
+        run: flutter pub get
+
       - name: Build Android APK (debug)
         run: flutter build apk --debug
+
+      # Release build uses debug signing in CI (key.properties absent).
+      # Purpose: catch R8/ProGuard/compilation issues that only appear in release mode.
+      - name: Build Android APK (release)
+        run: flutter build apk --release
+
+  # ── Integration tests (Linux desktop, fake repos) ─────────────────────────
+  integration:
+    name: Integration Tests (Linux)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      # Flutter Linux desktop build dependencies
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            xvfb
+
+      - name: Enable Flutter Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # xvfb-run provides a virtual X11 display so Flutter can open a window.
+      # Software Mesa handles GPU rendering on the headless runner.
+      - name: Run integration tests (fake-repo journeys)
+        run: |
+          PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+          xvfb-run --auto-servernum \
+            flutter test integration_test/app_test.dart -d linux
