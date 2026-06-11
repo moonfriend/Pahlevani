@@ -1,4 +1,3 @@
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/dtos/exercise_row.dart';
 
@@ -65,11 +64,11 @@ void main() {
 
     test('throws if id is missing or not numeric', () {
       expect(
-            () => ExerciseRow.fromJson({'repetitions': 5}),
+        () => ExerciseRow.fromJson({'repetitions': 5}),
         throwsA(isA<TypeError>()),
       );
       expect(
-            () => ExerciseRow.fromJson({'id': 'abc', 'repetitions': 5}),
+        () => ExerciseRow.fromJson({'id': 'abc', 'repetitions': 5}),
         throwsA(isA<TypeError>()),
       );
     });

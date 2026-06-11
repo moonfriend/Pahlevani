@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -55,6 +57,53 @@ class _SpyRepository implements TrainingSessionRepository {
   Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 }
 
+class _DownloadRepoWithStream implements DownloadRepository {
+  final Stream<double> Function(SessionDetail) streamFactory;
+  bool downloadCalled = false;
+  bool isDownloaded = false;
+
+  _DownloadRepoWithStream(
+      {required this.streamFactory, this.isDownloaded = false});
+
+  @override
+  Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async =>
+      {1: DownloadStatus.downloaded};
+
+  @override
+  Stream<double> downloadTrainingSession(SessionDetail session) {
+    downloadCalled = true;
+    return streamFactory(session);
+  }
+
+  @override
+  Future<bool> isTrainingSessionDownloaded(int sessionId) async => isDownloaded;
+
+  @override
+  Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async =>
+      null;
+
+  @override
+  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async =>
+      null;
+
+  @override
+  Future<String?> getLocalImagePath(int sessionId, int itemId,
+          {String? imageUrl}) async =>
+      null;
+
+  @override
+  Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
+
+  @override
+  Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
+      null;
+
+  @override
+  Future<bool> checkAllCachedAndMark(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
+}
+
 class _FakeDownloadRepository implements DownloadRepository {
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
@@ -97,6 +146,22 @@ TrainingSessionCubit _makeCubit(_SpyRepository repo) => TrainingSessionCubit(
       downloadRepository: _FakeDownloadRepository(),
     );
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+TrainingSession _session(int id) => TrainingSession(
+      id: id,
+      title: 'Session $id',
+      description: '',
+      difficulty: 1,
+      isUserCreated: true,
+    );
+
+DomainSnapshot _snapshotWith(List<TrainingSession> sessions) => DomainSnapshot(
+      sessionsById: {for (final s in sessions) s.id: s},
+      itemsBySessionId: {},
+      exercisesById: {},
+    );
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -114,7 +179,8 @@ void main() {
               'in-memory snapshot and re-reads Hive + remote');
     });
 
-    test('does not hit repository a second time when already loaded and not forced',
+    test(
+        'does not hit repository a second time when already loaded and not forced',
         () async {
       final repo = _SpyRepository(NullDomainSnapshot());
       final cubit = _makeCubit(repo);
@@ -123,14 +189,17 @@ void main() {
       await cubit.fetchTrainingSessions(); // first fetch
       final countAfterFirst = repo.getCallCount;
 
-      await cubit.fetchTrainingSessions(forceRefresh: false); // should short-circuit
+      await cubit.fetchTrainingSessions(
+          forceRefresh: false); // should short-circuit
       expect(repo.getCallCount, equals(countAfterFirst),
           reason: 'no-op fetch must not hit repository again');
     });
   });
 
-  group('updateTrainingSession — new user session (copy of server session)', () {
-    test('saved copy appears in state without needing an app restart', () async {
+  group('updateTrainingSession — new user session (copy of server session)',
+      () {
+    test('saved copy appears in state without needing an app restart',
+        () async {
       final repo = _SpyRepository(NullDomainSnapshot());
       final cubit = _makeCubit(repo);
       addTearDown(cubit.close);
@@ -179,8 +248,7 @@ void main() {
       addTearDown(cubit.close);
 
       await cubit.fetchTrainingSessions(forceRefresh: true);
-      expect(
-          (cubit.state as TrainingSessionLoaded).uiModel.trainingSessions,
+      expect((cubit.state as TrainingSessionLoaded).uiModel.trainingSessions,
           hasLength(1));
 
       await cubit.deleteTrainingSession(session.id);
@@ -191,6 +259,168 @@ void main() {
         isFalse,
         reason: 'deleted session must not appear in state',
       );
+    });
+  });
+
+  group('initialize()', () {
+    test('emits Loaded state after fetch completes', () async {
+      final session = _session(1);
+      final repo = _SpyRepository(_snapshotWith([session]));
+      final cubit = TrainingSessionCubit(
+        sessionRepository: repo,
+        downloadRepository: _FakeDownloadRepository(),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.initialize();
+
+      expect(cubit.state, isA<TrainingSessionLoaded>());
+    });
+
+    test('download statuses from repository appear in initial loaded state',
+        () async {
+      final session = _session(1);
+      final repo = _SpyRepository(_snapshotWith([session]));
+      final downloadRepo = _DownloadRepoWithStream(
+        streamFactory: (_) => const Stream.empty(),
+        isDownloaded: false,
+      );
+      final cubit = TrainingSessionCubit(
+        sessionRepository: repo,
+        downloadRepository: downloadRepo,
+      );
+      addTearDown(cubit.close);
+
+      // _DownloadRepoWithStream.getInitialDownloadStatuses returns {1: downloaded}
+      await cubit.initialize();
+
+      final loaded = cubit.state as TrainingSessionLoaded;
+      expect(loaded.uiModel.downloadStatuses[1], DownloadStatus.downloaded);
+    });
+  });
+
+  group('getSessionDetail()', () {
+    test('returns null when snapshot is empty', () {
+      final repo = _SpyRepository(NullDomainSnapshot());
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      expect(cubit.getSessionDetail(99), isNull);
+    });
+
+    test('returns SessionDetail after fetch populates snapshot', () async {
+      final session = _session(5);
+      final repo = _SpyRepository(_snapshotWith([session]));
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      await cubit.fetchTrainingSessions(forceRefresh: true);
+
+      final detail = cubit.getSessionDetail(5);
+      expect(detail, isNotNull);
+      expect(detail!.session.id, 5);
+    });
+
+    test('returns null for unknown session id', () async {
+      final session = _session(5);
+      final repo = _SpyRepository(_snapshotWith([session]));
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      await cubit.fetchTrainingSessions(forceRefresh: true);
+
+      expect(cubit.getSessionDetail(999), isNull);
+    });
+  });
+
+  group('downloadTrainingSession()', () {
+    test('emits Downloading state with progress 0 when download starts',
+        () async {
+      final session = _session(1);
+      final repo = _SpyRepository(_snapshotWith([session]));
+
+      final controller = StreamController<double>();
+      final downloadRepo = _DownloadRepoWithStream(
+        streamFactory: (_) => controller.stream,
+      );
+      final cubit = TrainingSessionCubit(
+        sessionRepository: repo,
+        downloadRepository: downloadRepo,
+      );
+      // Close cubit first so its subscription is cancelled before controller close
+      addTearDown(() async {
+        await cubit.close();
+        await controller.close();
+      });
+
+      await cubit.fetchTrainingSessions(forceRefresh: true);
+      unawaited(cubit.downloadTrainingSession(1));
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(cubit.state, isA<TrainingSessionDownloading>());
+      final downloading = cubit.state as TrainingSessionDownloading;
+      expect(downloading.downloadingTrainingSessionId, 1);
+    });
+
+    test('progress events are reflected in state', () async {
+      final session = _session(1);
+      final repo = _SpyRepository(_snapshotWith([session]));
+
+      final controller = StreamController<double>();
+      final downloadRepo = _DownloadRepoWithStream(
+        streamFactory: (_) => controller.stream,
+      );
+      final cubit = TrainingSessionCubit(
+        sessionRepository: repo,
+        downloadRepository: downloadRepo,
+      );
+      addTearDown(() async {
+        await cubit.close();
+        await controller.close();
+      });
+
+      await cubit.fetchTrainingSessions(forceRefresh: true);
+      unawaited(cubit.downloadTrainingSession(1));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      controller.add(0.5);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final mid = cubit.state as TrainingSessionDownloading;
+      expect(mid.downloadProgress[1], 0.5);
+    });
+
+    test('emits Loaded with downloaded status after stream completes',
+        () async {
+      final session = _session(1);
+      final repo = _SpyRepository(_snapshotWith([session]));
+      final downloadRepo = _DownloadRepoWithStream(
+        streamFactory: (_) => Stream.fromIterable([0.5, 1.0]),
+        isDownloaded: true,
+      );
+      final cubit = TrainingSessionCubit(
+        sessionRepository: repo,
+        downloadRepository: downloadRepo,
+      );
+      addTearDown(cubit.close);
+
+      await cubit.fetchTrainingSessions(forceRefresh: true);
+      await cubit.downloadTrainingSession(1);
+      // Give async onDone callback time to complete
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(cubit.state, isA<TrainingSessionLoaded>());
+      final loaded = cubit.state as TrainingSessionLoaded;
+      expect(loaded.uiModel.downloadStatuses[1], DownloadStatus.downloaded);
+    });
+
+    test('emits Error when session not found in snapshot', () async {
+      final repo = _SpyRepository(NullDomainSnapshot());
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      await cubit.downloadTrainingSession(999);
+
+      expect(cubit.state, isA<TrainingSessionError>());
     });
   });
 }

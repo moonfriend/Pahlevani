@@ -33,19 +33,22 @@ void main() {
 
     test('throws if required numerics are missing or not numeric', () {
       expect(
-            () => TrainingItemRow.fromJson({'exercise_id': 1, 'position': 0}),
+        () => TrainingItemRow.fromJson({'exercise_id': 1, 'position': 0}),
         throwsA(isA<TypeError>()), // missing training_session_id
       );
       expect(
-            () => TrainingItemRow.fromJson({'training_session_id': 's', 'exercise_id': 1, 'position': 0}),
+        () => TrainingItemRow.fromJson(
+            {'training_session_id': 's', 'exercise_id': 1, 'position': 0}),
         throwsA(isA<TypeError>()),
       );
       expect(
-            () => TrainingItemRow.fromJson({'training_session_id': 1, 'exercise_id': 'x', 'position': 0}),
+        () => TrainingItemRow.fromJson(
+            {'training_session_id': 1, 'exercise_id': 'x', 'position': 0}),
         throwsA(isA<TypeError>()),
       );
       expect(
-            () => TrainingItemRow.fromJson({'training_session_id': 1, 'exercise_id': 1, 'position': 'p'}),
+        () => TrainingItemRow.fromJson(
+            {'training_session_id': 1, 'exercise_id': 1, 'position': 'p'}),
         throwsA(isA<TypeError>()),
       );
     });

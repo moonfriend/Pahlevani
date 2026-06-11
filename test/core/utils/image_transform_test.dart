@@ -17,7 +17,8 @@ void main() {
 
     test('applies custom dimensions and quality', () {
       const url = '$project/storage/v1/object/public/bucket/img.png';
-      final result = supabaseImageTransformUrl(url, width: 300, height: 300, quality: 90);
+      final result =
+          supabaseImageTransformUrl(url, width: 300, height: 300, quality: 90);
       expect(result, contains('width=300&height=300'));
       expect(result, contains('quality=90'));
     });
