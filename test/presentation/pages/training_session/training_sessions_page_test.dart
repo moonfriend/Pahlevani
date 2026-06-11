@@ -25,7 +25,8 @@ class _StubRepository implements TrainingSessionRepository {
 
   @override
   Future<TrainingSession> saveTrainingSession(TrainingSession session,
-      {List<ItemDetail>? items}) async => session;
+          {List<ItemDetail>? items}) async =>
+      session;
 
   @override
   Future<void> updateTrainingSession(TrainingSession session,
@@ -92,8 +93,7 @@ final _snapshot = DomainSnapshot(
   exercisesById: {},
 );
 
-Widget _buildHarness(
-    TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
+Widget _buildHarness(TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
   return MultiBlocProvider(
     providers: [
       BlocProvider.value(value: cubit),
@@ -111,7 +111,8 @@ Widget _buildHarness(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('compact density renders without layout exception', (tester) async {
+  testWidgets('compact density renders without layout exception',
+      (tester) async {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),

@@ -18,7 +18,8 @@ TrainingItemWithAudio _track({ExerciseMedia media = ExerciseMedia.none}) =>
 
 void main() {
   group('TrackImageWidget', () {
-    testWidgets('null track shows placeholder with fallback text', (tester) async {
+    testWidgets('null track shows placeholder with fallback text',
+        (tester) async {
       await tester.pumpWidget(_wrap(TrackImageWidget(
         track: null,
         isPlaying: false,
@@ -28,7 +29,8 @@ void main() {
       expect(find.byIcon(Icons.sports_martial_arts), findsOneWidget);
     });
 
-    testWidgets('track with no media shows placeholder with track title', (tester) async {
+    testWidgets('track with no media shows placeholder with track title',
+        (tester) async {
       await tester.pumpWidget(_wrap(TrackImageWidget(
         track: _track(),
         isPlaying: false,
