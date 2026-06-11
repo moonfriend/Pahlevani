@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/utils/image_transform.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -83,7 +84,9 @@ class DownloadRepositoryImpl implements DownloadRepository {
           done++;
           controller.add((done / total).clamp(0.0, 1.0));
           await Future.delayed(const Duration(milliseconds: 100));
-        } catch (e) {
+        } catch (e, st) {
+          AppLogger.e('Audio download failed for ${item.exercise.name}',
+              error: e, stackTrace: st);
           controller.addError(
               Exception('Failed to download ${item.exercise.name}: $e'));
           await _saveDownloadStatus(sessionId, DownloadStatus.error);
@@ -117,7 +120,9 @@ class DownloadRepositoryImpl implements DownloadRepository {
       }
 
       await controller.close();
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.e('Session download failed (sessionId=$sessionId)',
+          error: e, stackTrace: st);
       await _saveDownloadStatus(sessionId, DownloadStatus.error);
       controller.addError(e);
       await controller.close();
@@ -171,7 +176,9 @@ class DownloadRepositoryImpl implements DownloadRepository {
       if (url == null || url.isEmpty) return null;
       await localDataSource.downloadFile(url, path, (_, __) {});
       return path;
-    } catch (_) {
+    } catch (e, st) {
+      AppLogger.w('cacheAudio failed for ${item.exercise.name}',
+          error: e, stackTrace: st);
       return null;
     }
   }
@@ -189,7 +196,9 @@ class DownloadRepositoryImpl implements DownloadRepository {
       await localDataSource.downloadFile(
           supabaseImageTransformUrl(url), path, (_, __) {});
       return path;
-    } catch (_) {
+    } catch (e, st) {
+      AppLogger.w('cacheImage failed (itemId=$itemId)',
+          error: e, stackTrace: st);
       return null;
     }
   }
