@@ -93,7 +93,7 @@ class _PersianPatternPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final T = tileSize;
-    final cols = (size.width  / T).ceil() + 2;
+    final cols = (size.width / T).ceil() + 2;
     final rows = (size.height / T).ceil() + 2;
 
     for (var row = -1; row < rows; row++) {
@@ -102,26 +102,29 @@ class _PersianPatternPainter extends CustomPainter {
         final oy = row * T;
 
         // Stars at corners and centre
-        canvas.drawPath(_star(ox,         oy),         paint);
-        canvas.drawPath(_star(ox + T,     oy),         paint);
-        canvas.drawPath(_star(ox,         oy + T),     paint);
-        canvas.drawPath(_star(ox + T,     oy + T),     paint);
+        canvas.drawPath(_star(ox, oy), paint);
+        canvas.drawPath(_star(ox + T, oy), paint);
+        canvas.drawPath(_star(ox, oy + T), paint);
+        canvas.drawPath(_star(ox + T, oy + T), paint);
         canvas.drawPath(_star(ox + T / 2, oy + T / 2), paint);
 
         // Diamonds on edges
-        canvas.drawPath(_diamond(ox + T / 2, oy),         paint);
-        canvas.drawPath(_diamond(ox,         oy + T / 2), paint);
-        canvas.drawPath(_diamond(ox + T,     oy + T / 2), paint);
-        canvas.drawPath(_diamond(ox + T / 2, oy + T),     paint);
+        canvas.drawPath(_diamond(ox + T / 2, oy), paint);
+        canvas.drawPath(_diamond(ox, oy + T / 2), paint);
+        canvas.drawPath(_diamond(ox + T, oy + T / 2), paint);
+        canvas.drawPath(_diamond(ox + T / 2, oy + T), paint);
 
         // Small diamond between stars
         final R = T * 0.345;
-        canvas.drawPath(_smallDiamond(ox + T / 2, oy + T / 2 - R - T * 0.125 * 0.2), paint);
+        canvas.drawPath(
+            _smallDiamond(ox + T / 2, oy + T / 2 - R - T * 0.125 * 0.2), paint);
       }
     }
   }
 
   @override
   bool shouldRepaint(_PersianPatternPainter old) =>
-      old.color != color || old.tileSize != tileSize || old.strokeWidth != strokeWidth;
+      old.color != color ||
+      old.tileSize != tileSize ||
+      old.strokeWidth != strokeWidth;
 }

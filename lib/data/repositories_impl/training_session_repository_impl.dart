@@ -27,7 +27,6 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     required this.localDatabase,
   });
 
-
   @override
   Future<DomainSnapshot> getTrainingSessions({bool refresh = false}) async {
     if (_domainSnapshot != null && !refresh) return _domainSnapshot!;
@@ -57,15 +56,19 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
 
   Future<DomainSnapshot> _fetchFromRemote() async {
     try {
-      final TSMaps = await remoteDataSource.fetchTrainingSessionsTable();
+      final sessionMaps = await remoteDataSource.fetchTrainingSessionsTable();
       final exercisesMaps = await remoteDataSource.fetchExerciseTable();
-      final TSItemMaps = await remoteDataSource.fetchTrainingSessionItemTable();
+      final sessionItemMaps =
+          await remoteDataSource.fetchTrainingSessionItemTable();
       final movementMaps = await remoteDataSource.fetchMovementTable();
 
       final snap = buildDomainSnapshot(
-        sessionRows: TSMaps.map((e) => TrainingSessionRow.fromJson(e)).toList(),
-        itemRows: TSItemMaps.map((e) => TrainingItemRow.fromJson(e)).toList(),
-        exerciseRows: exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
+        sessionRows:
+            sessionMaps.map((e) => TrainingSessionRow.fromJson(e)).toList(),
+        itemRows:
+            sessionItemMaps.map((e) => TrainingItemRow.fromJson(e)).toList(),
+        exerciseRows:
+            exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
         movementRows: movementMaps.map((e) => MovementRow.fromJson(e)).toList(),
       );
 
@@ -75,7 +78,9 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           snap.exercisesById.values.map(HiveExercise.fromDomain).toList(),
         );
         await localDatabase.saveTrainingSessionItems(
-          TSItemMaps.map((e) => HiveTrainingSessionItem.fromJson(e)).toList(),
+          sessionItemMaps
+              .map((e) => HiveTrainingSessionItem.fromJson(e))
+              .toList(),
           serverSessionIds: snap.sessionsById.keys.toSet(),
         );
         await localDatabase.saveTrainingSessions(
@@ -135,7 +140,6 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     return snap;
   }
 
-
   @override
   Future<void> deleteTrainingSession(int trainingSessionId) async {
     try {
@@ -152,7 +156,8 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           .toList();
       await itemBox.deleteAll(itemKeys);
 
-      if (await localDataSource.training_sessionDirectoryExists(trainingSessionId)) {
+      if (await localDataSource
+          .trainingSessionDirectoryExists(trainingSessionId)) {
         await localDataSource.deleteTrainingSessionDirectory(trainingSessionId);
         final ids = await localDataSource.getDownloadedTrainingSessionIds();
         ids.remove(trainingSessionId.toString());

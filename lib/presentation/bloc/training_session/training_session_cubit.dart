@@ -14,7 +14,7 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 part 'training_session_state.dart';
 
 class TrainingSessionCubit extends Cubit<TrainingSessionState> {
-  final TrainingSessionRepository _training_sessionRepository;
+  final TrainingSessionRepository _sessionRepository;
   final DownloadRepository _downloadRepository;
   StreamSubscription? _downloadSubscription;
 
@@ -22,14 +22,14 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   // todo: design issue: data should go in the state
   DomainSnapshot _currentTSSnapshot = NullDomainSnapshot();
   Map<int, DownloadStatus> _currentDownloadStatus = {};
-  Map<int, double> _currentDownloadProgress = {};
+  final Map<int, double> _currentDownloadProgress = {};
 
-  // Future<DomainSnapshot> get currentTSSnapshot => _training_sessionRepository.getTrainingSessions();
+  // Future<DomainSnapshot> get currentTSSnapshot => _sessionRepository.getTrainingSessions();
 
   TrainingSessionCubit({
     required TrainingSessionRepository sessionRepository,
     required DownloadRepository downloadRepository,
-  })  : _training_sessionRepository = sessionRepository,
+  })  : _sessionRepository = sessionRepository,
         _downloadRepository = downloadRepository,
         super(TrainingSessionInitial());
 
@@ -39,7 +39,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     await loadInitialStatuses();
     await fetchTrainingSessions();
     // Fire-and-forget: refresh from Supabase; re-emits when done.
-    _training_sessionRepository.syncFromRemote().then((snap) {
+    unawaited(_sessionRepository.syncFromRemote().then((snap) {
       if (isClosed) return;
       _currentTSSnapshot = snap;
       _downloadRepository.getInitialDownloadStatuses().then((statuses) {
@@ -47,25 +47,26 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         _currentDownloadStatus = statuses;
         emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
       });
-    }).catchError((_) {}); // silent: Hive data already shown
+    }).catchError((_) {})); // silent: Hive data already shown
   }
 
   /// Loads download statuses from the repository.
   Future<void> loadInitialStatuses() async {
     // No need for loading state here, happens quickly
     try {
-      _currentDownloadStatus = await _downloadRepository.getInitialDownloadStatuses();
+      _currentDownloadStatus =
+          await _downloadRepository.getInitialDownloadStatuses();
       // If training_sessions are already loaded, emit loaded state with statuses
       if (_currentTSSnapshot.isNotEmpty) {
-          emit(TrainingSessionLoaded(
-            uiModel: TrainingSessionsUiModel(
-                trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
-                downloadStatuses: _currentDownloadStatus,
-            ),
-            // domainSnapShot: _currentTSSnapshot,
-            // downloadStatus: _currentDownloadStatus,
-          ));
-        }
+        emit(TrainingSessionLoaded(
+          uiModel: TrainingSessionsUiModel(
+            trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
+            downloadStatuses: _currentDownloadStatus,
+          ),
+          // domainSnapShot: _currentTSSnapshot,
+          // downloadStatus: _currentDownloadStatus,
+        ));
+      }
     } catch (_) {}
   }
 
@@ -76,12 +77,12 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       return;
     }
     // Use TrainingSessionLoading state, preserving current lists/statuses
-    emit(TrainingSessionLoading(
-        uiModel: buildTrainingSessionsUiModel()));
+    emit(TrainingSessionLoading(uiModel: buildTrainingSessionsUiModel()));
 
-        // domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
+    // domainSnapShot: _currentTSSnapshot, downloadStatus: _currentDownloadStatus));
     try {
-      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions(refresh: forceRefresh);
+      _currentTSSnapshot =
+          await _sessionRepository.getTrainingSessions(refresh: forceRefresh);
       // Merge fetched training_sessions with current download statuses
       emit(TrainingSessionLoaded(
         uiModel: buildTrainingSessionsUiModel(),
@@ -142,7 +143,8 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
             _currentDownloadStatus[sessionId] =
                 ok ? DownloadStatus.downloaded : DownloadStatus.error;
             _currentDownloadProgress.remove(sessionId);
-            emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+            emit(
+                TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
           });
         },
       );
@@ -150,8 +152,8 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       _currentDownloadStatus[sessionId] = DownloadStatus.error;
       _currentDownloadProgress.remove(sessionId);
       emit(TrainingSessionError(
-        message: 'Failed to start download: $e',
-        uiModel: buildTrainingSessionsUiModel()));
+          message: 'Failed to start download: $e',
+          uiModel: buildTrainingSessionsUiModel()));
     }
   }
 
@@ -168,7 +170,10 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
         final trackDuration = exercise?.durationSeconds;
         final defaultReps = exercise?.repetitionsDefault ?? 1;
-        if (trackDuration == null) { allKnown = false; continue; }
+        if (trackDuration == null) {
+          allKnown = false;
+          continue;
+        }
         final repsToDo = item.prescription is RepsPresc
             ? (item.prescription as RepsPresc).count
             : defaultReps;
@@ -203,20 +208,24 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       final existsAsUserSession =
           _currentTSSnapshot.sessionsById[session.id]?.isUserCreated ?? false;
       if (existsAsUserSession) {
-        await _training_sessionRepository.updateTrainingSession(session, items: items);
+        await _sessionRepository.updateTrainingSession(session, items: items);
       } else {
-        await _training_sessionRepository.saveTrainingSession(session, items: items);
+        await _sessionRepository.saveTrainingSession(session, items: items);
       }
       // Repository patched _domainSnapshot in-memory after the Hive write,
       // so refresh:false returns the already-updated snapshot — no network wait.
-      _currentTSSnapshot = await _training_sessionRepository.getTrainingSessions(refresh: false);
+      _currentTSSnapshot =
+          await _sessionRepository.getTrainingSessions(refresh: false);
       emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
 
       // Remote sync in the background — keeps the list in sync without blocking.
-      _training_sessionRepository.getTrainingSessions(refresh: true).then((snap) {
+      unawaited(
+          _sessionRepository.getTrainingSessions(refresh: true).then((snap) {
         _currentTSSnapshot = snap;
-        if (!isClosed) emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
-      }).catchError((_) {});
+        if (!isClosed) {
+          emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+        }
+      }).catchError((_) {}));
     } catch (e) {
       emit(TrainingSessionError(
         message: 'Failed to update session: $e',
@@ -227,7 +236,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
 
   Future<void> deleteTrainingSession(int sessionId) async {
     try {
-      await _training_sessionRepository.deleteTrainingSession(sessionId);
+      await _sessionRepository.deleteTrainingSession(sessionId);
       await fetchTrainingSessions(forceRefresh: true);
     } catch (e) {
       emit(TrainingSessionError(

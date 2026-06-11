@@ -6,8 +6,9 @@ class TrainingItemWithAudio extends Equatable {
   final String id;
   final String title;
   final String audioFilePath;
-  final String? imagePath;       // legacy local asset path — kept for widgets that still use it
-  final ExerciseMedia media;     // photo / video from the movement table
+  final String?
+      imagePath; // legacy local asset path — kept for widgets that still use it
+  final ExerciseMedia media; // photo / video from the movement table
   final Duration? duration;
   final int? defaultRepetitions;
   final int? userRepetitions;
@@ -42,11 +43,25 @@ class TrainingItemWithAudio extends Equatable {
     }
 
     // Capitalize first letter of each word
-    displayName = displayName.split(' ').map((word) => word.isNotEmpty ? '${word[0].toUpperCase()}${word.substring(1)}' : '').join(' ');
+    displayName = displayName
+        .split(' ')
+        .map((word) => word.isNotEmpty
+            ? '${word[0].toUpperCase()}${word.substring(1)}'
+            : '')
+        .join(' ');
 
     return displayName;
   }
 
   @override
-  List<Object?> get props => [id, title, audioFilePath, imagePath, media, duration, defaultRepetitions, userRepetitions];
+  List<Object?> get props => [
+        id,
+        title,
+        audioFilePath,
+        imagePath,
+        media,
+        duration,
+        defaultRepetitions,
+        userRepetitions
+      ];
 }

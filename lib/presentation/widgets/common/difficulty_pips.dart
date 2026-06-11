@@ -38,7 +38,8 @@ class DifficultyPips extends StatelessWidget {
 
 /// Tappable difficulty selector used in the Edit screen.
 class DifficultySelector extends StatelessWidget {
-  const DifficultySelector({super.key, required this.value, required this.onChanged});
+  const DifficultySelector(
+      {super.key, required this.value, required this.onChanged});
 
   final int value;
   final ValueChanged<int> onChanged;

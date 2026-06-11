@@ -44,7 +44,9 @@ class HiveTrainingSession extends HiveObject {
       title: json['title'] as String,
       description: json['description'] as String,
       difficulty: json['difficulty'] as int,
-      createdAt: json['created_at'] == null ? null : DateTime.parse(json['created_at'] as String),
+      createdAt: json['created_at'] == null
+          ? null
+          : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
       titleFa: json['title_fa'] as String?,
     );
@@ -199,17 +201,18 @@ class HiveTrainingSessionItem extends HiveObject {
     required this.repsToDo,
   });
 
-  factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) => HiveTrainingSessionItem(
-    trainingSessionId: json['training_session_id'] as int,
-    itemId: json['exercise_id'] as int,
-    position: json['position'] as int,
-    repsToDo: json['reps_to_do'] as int,
-  );
+  factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) =>
+      HiveTrainingSessionItem(
+        trainingSessionId: json['training_session_id'] as int,
+        itemId: json['exercise_id'] as int,
+        position: json['position'] as int,
+        repsToDo: json['reps_to_do'] as int,
+      );
 
   Map<String, dynamic> toJson() => {
-    'training_session_id': trainingSessionId,
-    'exercise_id': itemId,
-    'position': position,
-    'reps_to_do': repsToDo,
-  };
+        'training_session_id': trainingSessionId,
+        'exercise_id': itemId,
+        'position': position,
+        'reps_to_do': repsToDo,
+      };
 }

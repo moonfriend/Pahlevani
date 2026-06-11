@@ -62,7 +62,8 @@ DomainSnapshot buildDomainSnapshot({
 
   final exercisesById = {
     for (final e in exerciseRows)
-      e.id: mapExercise(e, movement: e.movementId != null ? movementsById[e.movementId] : null)
+      e.id: mapExercise(e,
+          movement: e.movementId != null ? movementsById[e.movementId] : null)
   };
 
   return DomainSnapshot(

@@ -21,8 +21,7 @@ class ExerciseImageProvider extends ImageProvider<ExerciseImageProvider> {
   bool get isLocalFile => src.startsWith('/');
 
   /// The URL/path actually used when fetching — transform applied for remote URLs.
-  String get effectiveSrc =>
-      isLocalFile ? src : supabaseImageTransformUrl(src);
+  String get effectiveSrc => isLocalFile ? src : supabaseImageTransformUrl(src);
 
   @override
   Future<ExerciseImageProvider> obtainKey(ImageConfiguration configuration) =>
@@ -33,9 +32,11 @@ class ExerciseImageProvider extends ImageProvider<ExerciseImageProvider> {
       ExerciseImageProvider key, ImageDecoderCallback decode) {
     if (key.isLocalFile) {
       final delegate = FileImage(File(key.src));
+      // ignore: invalid_use_of_protected_member
       return delegate.loadImage(delegate, decode);
     }
     final delegate = NetworkImage(key.effectiveSrc);
+    // ignore: invalid_use_of_protected_member
     return delegate.loadImage(delegate, decode);
   }
 

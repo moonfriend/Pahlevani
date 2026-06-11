@@ -12,7 +12,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 
 /// Service for handling local database operations using Hive
 class TrainingSessionLocalDatabase {
-  static const String _training_sessionBoxName = 'training_sessions';
+  static const String _trainingSessionBoxName = 'training_sessions';
   static const String _lastSyncKey = 'last_sync';
 
   // Increment this when the Hive schema changes to trigger a cache wipe.
@@ -35,16 +35,16 @@ class TrainingSessionLocalDatabase {
     final settings = await Hive.openBox('settings');
     final stored = settings.get(_cacheVersionKey, defaultValue: 0) as int;
     if (stored < _cacheVersion) {
-      await Hive.deleteBoxFromDisk(_training_sessionBoxName);
+      await Hive.deleteBoxFromDisk(_trainingSessionBoxName);
       await Hive.deleteBoxFromDisk(_trackBoxName);
-      await Hive.deleteBoxFromDisk(_training_sessionSongBoxName);
+      await Hive.deleteBoxFromDisk(_trainingSessionSongBoxName);
       await settings.put(_cacheVersionKey, _cacheVersion);
     }
   }
 
   /// Get the training_sessions box
   Future<Box<HiveTrainingSession>> getTrainingSessionBox() async {
-    return await Hive.openBox<HiveTrainingSession>(_training_sessionBoxName);
+    return await Hive.openBox<HiveTrainingSession>(_trainingSessionBoxName);
   }
 
   /// Get the settings box for last sync time
@@ -53,20 +53,22 @@ class TrainingSessionLocalDatabase {
   }
 
   static const String _trackBoxName = 'tracks';
-  static const String _training_sessionSongBoxName = 'training_session_items';
+  static const String _trainingSessionSongBoxName = 'training_session_items';
 
   Future<Box<HiveExercise>> _getTrackBox() async {
     return await Hive.openBox<HiveExercise>(_trackBoxName);
   }
 
   Future<Box<HiveTrainingSessionItem>> getTrainingSessionItemBox() async {
-    return await Hive.openBox<HiveTrainingSessionItem>(_training_sessionSongBoxName);
+    return await Hive.openBox<HiveTrainingSessionItem>(
+        _trainingSessionSongBoxName);
   }
 
   /// Upsert server sessions without touching user-created ones.
   /// Entries present locally but absent from [trainingSessions] are removed
   /// (unless isUserCreated).
-  Future<void> saveTrainingSessions(List<TrainingSession> trainingSessions) async {
+  Future<void> saveTrainingSessions(
+      List<TrainingSession> trainingSessions) async {
     final box = await getTrainingSessionBox();
 
     final serverIds = trainingSessions.map((s) => s.id).toSet();
@@ -74,7 +76,9 @@ class TrainingSessionLocalDatabase {
     // Delete server entries that no longer exist on the server.
     final staleKeys = box.keys.where((k) {
       final entry = box.get(k);
-      return entry != null && !entry.isUserCreated && !serverIds.contains(entry.id);
+      return entry != null &&
+          !entry.isUserCreated &&
+          !serverIds.contains(entry.id);
     }).toList();
     await box.deleteAll(staleKeys);
 
@@ -104,10 +108,10 @@ class TrainingSessionLocalDatabase {
 
   /// Save tracks to local database
   /// [Exercise] is a list of HiveAudio objects representing the tracks table.
-  Future<void> saveExercises(List<HiveExercise> Exercise) async {
-    final box = await _getTrackBox();//todo: rename to exercise
+  Future<void> saveExercises(List<HiveExercise> exercises) async {
+    final box = await _getTrackBox();
     await box.clear();
-    await box.addAll(Exercise);
+    await box.addAll(exercises);
   }
 
   /// Get all tracks from local database
@@ -126,7 +130,8 @@ class TrainingSessionLocalDatabase {
     final box = await getTrainingSessionItemBox();
     if (serverSessionIds != null) {
       final staleKeys = box.keys
-          .where((k) => serverSessionIds.contains(box.get(k)?.trainingSessionId))
+          .where(
+              (k) => serverSessionIds.contains(box.get(k)?.trainingSessionId))
           .toList();
       await box.deleteAll(staleKeys);
     } else {
@@ -165,10 +170,10 @@ class TrainingSessionLocalDatabase {
     final box = await getTrainingSessionBox();
     final settingsBox = await _getSettingsBox();
     final trackBox = await _getTrackBox();
-    final training_sessionSongBox = await getTrainingSessionItemBox();
+    final trainingSessionsongbox = await getTrainingSessionItemBox();
     await box.clear();
     await settingsBox.clear();
     await trackBox.clear();
-    await training_sessionSongBox.clear();
+    await trainingSessionsongbox.clear();
   }
 }
