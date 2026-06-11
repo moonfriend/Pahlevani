@@ -1,0 +1,19 @@
+#!/bin/sh
+# Pre-commit hook. Activated by running:
+#   git config core.hooksPath .githooks
+#
+# Checks format and static analysis before each commit.
+# Run `dart format .` to fix formatting, then re-stage and commit.
+
+set -e
+
+echo "→ Checking Dart formatting..."
+dart format --set-exit-if-changed . || {
+  echo ""
+  echo "  Format check failed. Run: dart format ."
+  echo "  Then re-stage your changes and commit again."
+  exit 1
+}
+
+echo "→ Running flutter analyze..."
+flutter analyze
