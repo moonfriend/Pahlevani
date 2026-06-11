@@ -1,4 +1,4 @@
-package com.example.pahlevani;
+package com.pahlevani.app;
 
 import io.flutter.embedding.android.FlutterActivity;
 
