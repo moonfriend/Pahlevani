@@ -5,11 +5,9 @@ Run:
     cd scripts
     uv run streamlit run admin.py
 
-Credentials (any one):
+Credentials (required — use the service-role key, not the anon key):
   • env vars:  SUPABASE_URL  SUPABASE_KEY
-  • .streamlit/secrets.toml with those two keys
-  • falls back to the public anon key from config.dart (reads fine; writes may be
-    blocked — supply a service-role key for uploads and session saves)
+  • .streamlit/secrets.toml with those two keys (preferred)
 
 Storage:
   Set BUCKET_PUBLIC = True once you make the 'tracks' bucket public in Supabase
@@ -21,6 +19,7 @@ import io
 import os
 import re
 import tempfile
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -36,18 +35,8 @@ def _secret(key: str) -> str:
     except Exception:
         return ""
 
-SUPABASE_URL = (
-    os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
-    or "https://eudjdgjkrhrwvjfkutcg.supabase.co"
-)
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
-    or (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-        ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1ZGpkZ2prcmhyd3ZqZmt1dGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MjI0ODEsImV4cCI6MjA1OTQ5ODQ4MX0"
-        ".a7-SBq-NiokUE0eMUCxdwYBqQC0nmRBB5yzMvZFuCjU"
-    )
-)
+SUPABASE_URL = os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
 
 STORAGE_BUCKET = "tracks"
 # Bucket for movement photos / poster images.
@@ -62,6 +51,13 @@ SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
 
 @st.cache_resource
 def get_client() -> Client:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        st.error(
+            "Supabase credentials not configured. "
+            "Add SUPABASE_URL and SUPABASE_KEY (service-role key) to "
+            "scripts/.streamlit/secrets.toml"
+        )
+        st.stop()
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
@@ -454,10 +450,12 @@ def tab_batch_import():
 # Tab: Session Builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SB_ITEMS  = "sb_items"   # list[{exercise_id, reps_to_do}]
-_SB_META   = "sb_meta"    # {title, title_fa, description, difficulty}
-_SB_MODE   = "sb_mode"    # "new" | "edit"
-_SB_SID    = "sb_sid"     # session id being edited
+_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, uid}]
+_SB_META          = "sb_meta"         # {title, title_fa, description, difficulty}
+_SB_MODE          = "sb_mode"         # "new" | "edit"
+_SB_SID           = "sb_sid"          # session id being edited
+_SB_PENDING_OP    = "sb_pending_op"   # deferred list op applied before next render
+_SB_PENDING_RESET = "sb_pending_reset"  # deferred metadata reset applied before text_inputs
 
 def _sb_reset():
     # Directly set widget state so the fields visibly clear on the next render.
@@ -502,10 +500,11 @@ def tab_session_builder():
             s_row = sessions[sessions["id"] == sid].iloc[0]
             items_df = load_items()
             session_items = items_df[items_df["training_session_id"] == sid].sort_values("position")
-            _title  = s_row.get("title")       or ""
-            _titlefa = s_row.get("title_fa")   or ""
-            _desc   = s_row.get("description") or ""
-            _diff   = int(s_row.get("difficulty") or 2)
+            def _str(val): return "" if (val is None or (isinstance(val, float) and pd.isna(val))) else str(val)
+            _title   = _str(s_row.get("title"))
+            _titlefa = _str(s_row.get("title_fa"))
+            _desc    = _str(s_row.get("description"))
+            _diff    = int(s_row.get("difficulty") or 2)
             # Directly set widget state BEFORE the widgets render so the fields
             # reflect the newly selected session without needing an extra rerun.
             st.session_state["sb_title"]   = _title
@@ -517,8 +516,8 @@ def tab_session_builder():
                 "description": _desc, "difficulty": _diff,
             }
             st.session_state[_SB_ITEMS] = [
-                {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"])}
-                for _, r in session_items.iterrows()
+                {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"]), "uid": str(i)}
+                for i, (_, r) in enumerate(session_items.iterrows())
             ]
             st.session_state[_SB_SID] = sid
     else:
@@ -526,6 +525,10 @@ def tab_session_builder():
             _sb_reset()
         if _SB_META not in st.session_state:
             _sb_reset()
+
+    # Apply pending reset (triggered by save) before metadata widgets render.
+    if st.session_state.pop(_SB_PENDING_RESET, False):
+        _sb_reset()
 
     # ── Session metadata ──────────────────────────────────────────────────────
     meta = st.session_state.get(_SB_META, {})
@@ -548,14 +551,34 @@ def tab_session_builder():
     st.subheader("Exercises")
     items: list[dict] = st.session_state.get(_SB_ITEMS, [])
 
+    # Namespace widget keys by session id so switching sessions uses fresh keys
+    # (browser-side widget state is keyed by widget key, not session state).
+    _kns = st.session_state.get(_SB_SID, "new")
+
+    # Apply any pending list operation BEFORE widgets are instantiated.
+    # (Streamlit forbids modifying widget-keyed session state after instantiation,
+    # so we defer move/remove ops to the top of the next render pass.)
+    # Reps widgets use uid-based keys (not position-based), so keys travel with
+    # items on move — no session-state key manipulation needed.
+    pending = st.session_state.pop(_SB_PENDING_OP, None)
+    if pending:
+        op = pending["op"]
+        if op == "move":
+            a, b = pending["a"], pending["b"]
+            items[a], items[b] = items[b], items[a]
+        elif op == "remove":
+            items.pop(pending["i"])
+        st.session_state[_SB_ITEMS] = items
+
     # Build a lookup for display
     ex_by_id: dict[int, pd.Series] = {
         int(r["id"]): r for _, r in exercises.iterrows()
     }
 
-    # Namespace widget keys by session id so switching sessions uses fresh keys
-    # (browser-side widget state is keyed by widget key, not session state).
-    _kns = st.session_state.get(_SB_SID, "new")
+    # Ensure every item has a uid so widget keys are stable across position changes.
+    for idx, it in enumerate(items):
+        if "uid" not in it:
+            it["uid"] = f"legacy_{idx}"
 
     # Show current list
     for i, item in enumerate(items):
@@ -567,29 +590,19 @@ def tab_session_builder():
         new_reps = c_reps.number_input(
             "Reps", min_value=1, max_value=999,
             value=item["reps_to_do"],
-            key=f"reps_{_kns}_{i}",
+            key=f"reps_{_kns}_{item['uid']}",
             label_visibility="collapsed",
         )
         items[i]["reps_to_do"] = new_reps
 
         if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
-            ka, kb = f"reps_{_kns}_{i}", f"reps_{_kns}_{i - 1}"
-            va = st.session_state.get(ka, items[i]["reps_to_do"])
-            vb = st.session_state.get(kb, items[i - 1]["reps_to_do"])
-            st.session_state[ka], st.session_state[kb] = vb, va
-            items[i], items[i - 1] = items[i - 1], items[i]
-            st.session_state[_SB_ITEMS] = items
+            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i - 1}
             st.rerun()
         if c_dn.button("↓", key=f"dn_{_kns}_{i}", disabled=i == len(items) - 1):
-            ka, kb = f"reps_{_kns}_{i}", f"reps_{_kns}_{i + 1}"
-            va = st.session_state.get(ka, items[i]["reps_to_do"])
-            vb = st.session_state.get(kb, items[i + 1]["reps_to_do"])
-            st.session_state[ka], st.session_state[kb] = vb, va
-            items[i], items[i + 1] = items[i + 1], items[i]
-            st.session_state[_SB_ITEMS] = items
+            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i + 1}
             st.rerun()
         if c_rm.button("✕", key=f"rm_{_kns}_{i}"):
-            items.pop(i)
+            st.session_state[_SB_PENDING_OP] = {"op": "remove", "i": i}
             st.rerun()
 
     st.session_state[_SB_ITEMS] = items
@@ -643,7 +656,7 @@ def tab_session_builder():
                 label_visibility="collapsed",
             )
             if c_add.button("＋ Add", key="sb_add_btn"):
-                st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps})
+                st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps, "uid": uuid.uuid4().hex[:8]})
                 st.rerun()
 
     # ── Duration estimate ─────────────────────────────────────────────────────
@@ -704,7 +717,7 @@ def tab_session_builder():
 
         st.success(f"✅ Session **{title}** saved (id {sid}).")
         bust_cache()
-        _sb_reset()
+        st.session_state[_SB_PENDING_RESET] = True
         st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
