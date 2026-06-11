@@ -80,15 +80,15 @@ class _FakeLocalDataSource implements TrainingSessionLocalDataSource {
   Future<void> saveDownloadedTrainingSessionIds(List<String> ids) async {}
 
   @override
-  Future<String> getTrainingSessionDirectoryPath(int training_sessionId) async =>
-      '/fake/$training_sessionId';
+  Future<String> getTrainingSessionDirectoryPath(int trainingSessionid) async =>
+      '/fake/$trainingSessionid';
 
   @override
-  Future<bool> training_sessionDirectoryExists(int training_sessionId) async =>
+  Future<bool> trainingSessionDirectoryExists(int trainingSessionid) async =>
       false;
 
   @override
-  Future<void> deleteTrainingSessionDirectory(int training_sessionId) async {}
+  Future<void> deleteTrainingSessionDirectory(int trainingSessionid) async {}
 
   @override
   Future<void> downloadFile(String url, String savePath,
@@ -149,8 +149,7 @@ class _MemBox<E> implements Box<E> {
   Future<void> putAt(int index, E value) async {}
 
   @override
-  Future<void> putAll(Map<dynamic, E> entries) async =>
-      _store.addAll(entries);
+  Future<void> putAll(Map<dynamic, E> entries) async => _store.addAll(entries);
 
   @override
   Future<int> add(E value) async {
@@ -240,8 +239,10 @@ class _FakeLocalDatabase extends TrainingSessionLocalDatabase {
     List<HiveExercise> exercises = const [],
     List<HiveTrainingSessionItem> items = const [],
   })  : _sessionBox = _MemBox(
-          {for (var i = 0; i < sessions.length; i++)
-            i: HiveTrainingSession.fromDomain(sessions[i])},
+          {
+            for (var i = 0; i < sessions.length; i++)
+              i: HiveTrainingSession.fromDomain(sessions[i])
+          },
         ),
         _exercises = exercises,
         _itemBox = _MemBox(
@@ -249,8 +250,7 @@ class _FakeLocalDatabase extends TrainingSessionLocalDatabase {
         );
 
   @override
-  Future<Box<HiveTrainingSession>> getTrainingSessionBox() async =>
-      _sessionBox;
+  Future<Box<HiveTrainingSession>> getTrainingSessionBox() async => _sessionBox;
 
   @override
   Future<Box<HiveTrainingSessionItem>> getTrainingSessionItemBox() async =>
@@ -383,10 +383,12 @@ void main() {
       await repo.getTrainingSessions();
 
       expect(remote.fetchCount, 1,
-          reason: 'only one remote fetch should happen; second call uses cache');
+          reason:
+              'only one remote fetch should happen; second call uses cache');
     });
 
-    test('getTrainingSessions(refresh:true) bypasses in-memory cache', () async {
+    test('getTrainingSessions(refresh:true) bypasses in-memory cache',
+        () async {
       final remote = _FakeRemoteDataSource(
         sessions: [_sessionRow(1, 'S')],
         exercises: [_exerciseRow(10, 'E')],
@@ -398,7 +400,8 @@ void main() {
       await repo.getTrainingSessions(refresh: true);
 
       expect(remote.fetchCount, 2,
-          reason: 'refresh:true must bypass the in-memory snapshot and re-fetch');
+          reason:
+              'refresh:true must bypass the in-memory snapshot and re-fetch');
     });
   });
 
@@ -411,8 +414,7 @@ void main() {
         description: 'from hive',
         difficulty: 1,
       );
-      final cachedExercise =
-          HiveExercise(id: 20, name: 'Meel', repetitions: 3);
+      final cachedExercise = HiveExercise(id: 20, name: 'Meel', repetitions: 3);
       final cachedItem = HiveTrainingSessionItem(
         trainingSessionId: 99,
         itemId: 20,
@@ -492,7 +494,8 @@ void main() {
       expect(snap.sessionsById.containsKey(99), isTrue,
           reason: 'Hive session should be returned');
       expect(snap.sessionsById.containsKey(1), isFalse,
-          reason: 'remote was not called — server session should not be present');
+          reason:
+              'remote was not called — server session should not be present');
       expect(remote.fetchCount, 0,
           reason: 'Hive-first: remote must not be contacted');
     });
