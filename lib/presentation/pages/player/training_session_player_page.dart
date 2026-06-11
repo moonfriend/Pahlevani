@@ -1,12 +1,17 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
@@ -30,14 +35,18 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   void initState() {
     super.initState();
-    _cubit = TrainingSessionPlayerCubit(trainingSession: widget.trainingSession);
+    _cubit = TrainingSessionPlayerCubit(
+      trainingSession: widget.trainingSession,
+      audioPlayerService: getIt<AudioPlayerService>(),
+      downloadRepository: getIt<DownloadRepository>(),
+      sessionRepository: getIt<TrainingSessionRepository>(),
+    );
     _cubit.loadTracks();
   }
 
   @override
   void dispose() {
-    _cubit.stop();
-    _cubit.close();
+    _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
   }
 
@@ -57,8 +66,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           listener: (context, state) {
             _trackListKey.currentState?.scrollToActive(state.playingIndex);
             for (final track in state.tracks) {
-              if (track.media.type == 'photo' && track.media.src?.isNotEmpty == true) {
-                precacheImage(NetworkImage(track.media.src!), context);
+              if (track.media.type == 'photo' &&
+                  track.media.src?.isNotEmpty == true) {
+                precacheImage(NetworkImage(track.media.src!), context,
+                    onError: (_, __) {});
               }
             }
           },
@@ -67,8 +78,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               return const Center(child: CircularProgressIndicator());
             }
             if (state.errorMessage != null && state.tracks.isEmpty) {
-              return Center(child: Text(state.errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)));
+              return Center(
+                  child: Text(state.errorMessage!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)));
             }
             return Stack(children: [
               Column(children: [
@@ -76,8 +89,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 _Stage(state: state, accent: accent, cubit: _cubit),
                 _RepCounter(state: state),
                 _ProgressBlock(state: state, cubit: _cubit),
-                Expanded(child: _TrackList(
-                    key: _trackListKey, state: state, accent: accent, cubit: _cubit)),
+                Expanded(
+                    child: _TrackList(
+                        key: _trackListKey,
+                        state: state,
+                        accent: accent,
+                        cubit: _cubit)),
                 _Transport(state: state, cubit: _cubit),
               ]),
               if (state.isFinished)
@@ -107,17 +124,18 @@ class _AppBar extends StatelessWidget {
     final detail = sessionCubit.getSessionDetail(session.id);
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
-      MaterialPageRoute(builder: (_) => EditTrainingSessionPage(
-        trainingSession: session,
-        items: detail?.items ?? const [],
-      )),
+      MaterialPageRoute(
+          builder: (_) => EditTrainingSessionPage(
+                trainingSession: session,
+                items: detail?.items ?? const [],
+              )),
     );
     if (result != null && context.mounted) {
       final updated = result['session'] as TrainingSession;
       final items = result['items'] as List<ItemDetail>?;
       await sessionCubit.updateTrainingSession(updated, items: items);
       if (!context.mounted) return;
-      context.read<TrainingSessionPlayerCubit>().loadTracks();
+      unawaited(context.read<TrainingSessionPlayerCubit>().loadTracks());
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${updated.title} saved'),
         duration: const Duration(milliseconds: 2200),
@@ -134,17 +152,29 @@ class _AppBar extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
         child: Row(children: [
-          _RoundBtn(icon: Icons.arrow_back_rounded, color: cs.onSurface,
+          _RoundBtn(
+              icon: Icons.arrow_back_rounded,
+              color: cs.onSurface,
               onTap: () => Navigator.pop(context)),
           const SizedBox(width: 4),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PLAY ALONG',
-                style: PTextStyles.of(context).playerOverline.copyWith(color: colors.onFaint)),
-            Text(session.title,
-                style: PTextStyles.of(context).appBarTitle.copyWith(color: cs.onSurface),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-          ])),
-          _RoundBtn(icon: Icons.edit_outlined, color: colors.onMuted,
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('PLAY ALONG',
+                    style: PTextStyles.of(context)
+                        .playerOverline
+                        .copyWith(color: colors.onFaint)),
+                Text(session.title,
+                    style: PTextStyles.of(context)
+                        .appBarTitle
+                        .copyWith(color: cs.onSurface),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ])),
+          _RoundBtn(
+              icon: Icons.edit_outlined,
+              color: colors.onMuted,
               onTap: () => _openEdit(context)),
         ]),
       ),
@@ -156,7 +186,8 @@ class _AppBar extends StatelessWidget {
 // Media stage (232px)
 // ─────────────────────────────────────────────────────────────────────────────
 class _Stage extends StatelessWidget {
-  const _Stage({required this.state, required this.accent, required this.cubit});
+  const _Stage(
+      {required this.state, required this.accent, required this.cubit});
   final AudioPlayerState state;
   final SessionAccent accent;
   final TrainingSessionPlayerCubit cubit;
@@ -179,10 +210,14 @@ class _Stage extends StatelessWidget {
       const fit = BoxFit.fitHeight;
       const align = Alignment.center;
       if (src.startsWith('/')) {
-        return Image.file(File(src), fit: fit, alignment: align,
+        return Image.file(File(src),
+            fit: fit,
+            alignment: align,
             errorBuilder: (_, __, ___) => const SizedBox.shrink());
       }
-      return Image.network(src, fit: fit, alignment: align,
+      return Image.network(src,
+          fit: fit,
+          alignment: align,
           errorBuilder: (_, __, ___) => const SizedBox.shrink());
     }
 
@@ -202,9 +237,10 @@ class _Stage extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(children: [
           // Pattern is always the background — visible during load and on error
-          Positioned.fill(child: PersianPattern(color: accent.fg, opacity: 0.5, tileSize: 110)),
-          if (hasPhoto)
-            Positioned.fill(child: buildImage(track.media.src!)),
+          Positioned.fill(
+              child: PersianPattern(
+                  color: accent.fg, opacity: 0.5, tileSize: 110)),
+          if (hasPhoto) Positioned.fill(child: buildImage(track.media.src!)),
           // Dark gradient at bottom so text stays legible over photos
           if (hasPhoto)
             Positioned.fill(
@@ -213,7 +249,10 @@ class _Stage extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.55)
+                    ],
                     stops: const [0.45, 1.0],
                   ),
                 ),
@@ -221,10 +260,13 @@ class _Stage extends StatelessWidget {
             ),
           // Exercise name — bottom left
           Positioned(
-            left: 16, bottom: 16, right: 80,
+            left: 16,
+            bottom: 16,
+            right: 80,
             child: Text(state.currentTrack?.title ?? '',
-                style: PTextStyles.of(context).playerExLatin.copyWith(
-                    color: hasPhoto ? Colors.white : cs.onSurface),
+                style: PTextStyles.of(context)
+                    .playerExLatin
+                    .copyWith(color: hasPhoto ? Colors.white : cs.onSurface),
                 maxLines: 2),
           ),
           // Paused overlay
@@ -234,12 +276,15 @@ class _Stage extends StatelessWidget {
                 color: colors.scrim,
                 child: Center(
                   child: Container(
-                    width: 72, height: 72,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
-                        color: cs.surface, shape: BoxShape.circle,
+                        color: cs.surface,
+                        shape: BoxShape.circle,
                         boxShadow: colors.shadowPop),
                     alignment: Alignment.center,
-                    child: Icon(Icons.play_arrow_rounded, size: 34, color: cs.primary),
+                    child: Icon(Icons.play_arrow_rounded,
+                        size: 34, color: cs.primary),
                   ),
                 ),
               ),
@@ -247,17 +292,23 @@ class _Stage extends StatelessWidget {
           // Now-playing pill
           if (state.isPlaying)
             Positioned(
-              right: 14, bottom: 14,
+              right: 14,
+              bottom: 14,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
-                decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(99),
+                decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(99),
                     boxShadow: colors.shadowCard),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   _Equalizer(color: accent.fg),
                   const SizedBox(width: 8),
                   Text('Pause',
-                      style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-                          fontSize: 12, color: cs.onSurface)),
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: cs.onSurface)),
                 ]),
               ),
             ),
@@ -280,26 +331,38 @@ class _RepCounter extends StatefulWidget {
 
 class _RepCounterState extends State<_RepCounter>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 420));
-  late final Animation<double> _scale = TweenSequence([
-    TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.28).chain(CurveTween(curve: Curves.easeOut)), weight: 35),
-    TweenSequenceItem(
-        tween: Tween(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeIn)), weight: 65),
-  ]).animate(_ctrl);
-  late final Animation<double> _flash = Tween(begin: 0.85, end: 0.0)
-      .animate(CurvedAnimation(parent: _ctrl,
-          curve: const Interval(0, 0.6, curve: Curves.easeOut)));
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _flash;
 
   int _lastRep = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420));
+    _scale = TweenSequence([
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 1.28)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 35),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.28, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeIn)),
+          weight: 65),
+    ]).animate(_ctrl);
+    _flash = Tween(begin: 0.85, end: 0.0).animate(CurvedAnimation(
+        parent: _ctrl, curve: const Interval(0, 0.6, curve: Curves.easeOut)));
+  }
 
   int _computeRep(AudioPlayerState s) {
     if (s.logicalDuration.inMilliseconds <= 0) return 1;
     final total = s.currentTrack?.effectiveRepetitions ?? 1;
     final secondsPerRep = s.logicalDuration.inMilliseconds / total / 1000;
     if (secondsPerRep <= 0) return 1;
-    return ((s.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() + 1;
+    return ((s.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() +
+        1;
   }
 
   @override
@@ -315,7 +378,10 @@ class _RepCounterState extends State<_RepCounter>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -326,10 +392,11 @@ class _RepCounterState extends State<_RepCounter>
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final track = s.currentTrack!;
     final total = track.effectiveRepetitions;
-    final isCustom = track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
+    final isCustom =
+        track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
     final rep = _computeRep(s).clamp(1, total);
-    final pillBg  = isCustom ? colors.repCustomBg  : colors.repDefaultBg;
-    final pillFg  = isCustom ? colors.repCustom     : colors.repDefault;
+    final pillBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+    final pillFg = isCustom ? colors.repCustom : colors.repDefault;
     final glow = isCustom
         ? colors.repCustom.withValues(alpha: 0.4)
         : colors.repDefault.withValues(alpha: 0.36);
@@ -343,7 +410,10 @@ class _RepCounterState extends State<_RepCounter>
             decoration: BoxDecoration(
               color: pillBg,
               borderRadius: BorderRadius.circular(99),
-              boxShadow: [BoxShadow(color: glow, blurRadius: 8, offset: const Offset(0, 2))],
+              boxShadow: [
+                BoxShadow(
+                    color: glow, blurRadius: 8, offset: const Offset(0, 2))
+              ],
             ),
             child: Stack(alignment: Alignment.center, children: [
               AnimatedBuilder(
@@ -359,23 +429,35 @@ class _RepCounterState extends State<_RepCounter>
                 padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(
-                    width: 22, height: 22,
-                    decoration: BoxDecoration(color: pillFg, shape: BoxShape.circle),
+                    width: 22,
+                    height: 22,
+                    decoration:
+                        BoxDecoration(color: pillFg, shape: BoxShape.circle),
                     alignment: Alignment.center,
                     child: Text('$rep',
-                        style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w800,
-                            fontSize: 12, color: pillBg)),
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            color: pillBg)),
                   ),
                   const SizedBox(width: 8),
-                  RichText(text: TextSpan(
-                    style: PTextStyles.of(context).repPill.copyWith(color: pillFg, fontSize: 13),
+                  RichText(
+                      text: TextSpan(
+                    style: PTextStyles.of(context)
+                        .repPill
+                        .copyWith(color: pillFg, fontSize: 13),
                     children: [
                       TextSpan(text: 'Rep $rep '),
-                      TextSpan(text: 'of $total',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                      TextSpan(
+                          text: 'of $total',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 12)),
                       if (isCustom)
-                        const TextSpan(text: '  · custom',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10)),
+                        const TextSpan(
+                            text: '  · custom',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 10)),
                     ],
                   )),
                 ]),
@@ -429,12 +511,18 @@ class _ProgressBlock extends StatelessWidget {
           children: [
             Flexible(
               child: Text(state.currentTrack?.title ?? '',
-                  style: TextStyle(fontFamily: PFonts.ui, fontWeight: FontWeight.w700,
-                      fontSize: 13.5, color: cs.onSurface),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: TextStyle(
+                      fontFamily: PFonts.ui,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: cs.onSurface),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
             ),
             Text('${_clock(pos)} / ${_clock(dur)}',
-                style: PTextStyles.of(context).playerTime.copyWith(color: colors.onMuted)),
+                style: PTextStyles.of(context)
+                    .playerTime
+                    .copyWith(color: colors.onMuted)),
           ],
         ),
         const SizedBox(height: 7),
@@ -442,7 +530,8 @@ class _ProgressBlock extends StatelessWidget {
           builder: (_, constraints) => GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
-            onHorizontalDragUpdate: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
+            onHorizontalDragUpdate: (d) =>
+                _seek(d.localPosition.dx, constraints.maxWidth),
             child: SizedBox(
               height: 28,
               child: Align(
@@ -450,7 +539,8 @@ class _ProgressBlock extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(99),
                   child: LinearProgressIndicator(
-                    value: progress, minHeight: 6,
+                    value: progress,
+                    minHeight: 6,
                     backgroundColor: colors.surface3,
                     valueColor: AlwaysStoppedAnimation(colors.repDefault),
                   ),
@@ -468,7 +558,11 @@ class _ProgressBlock extends StatelessWidget {
 // Track list
 // ─────────────────────────────────────────────────────────────────────────────
 class _TrackList extends StatefulWidget {
-  const _TrackList({super.key, required this.state, required this.accent, required this.cubit});
+  const _TrackList(
+      {super.key,
+      required this.state,
+      required this.accent,
+      required this.cubit});
   final AudioPlayerState state;
   final SessionAccent accent;
   final TrainingSessionPlayerCubit cubit;
@@ -486,13 +580,17 @@ class _TrackListState extends State<_TrackList> {
       final key = _itemKeys[index];
       if (key?.currentContext != null) {
         Scrollable.ensureVisible(key!.currentContext!,
-            duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic);
       }
     });
   }
 
   @override
-  void dispose() { _scrollCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -510,8 +608,9 @@ class _TrackListState extends State<_TrackList> {
         _itemKeys[i] ??= GlobalKey();
         final track = tracks[i];
         final active = i == activeIndex;
-        final isCustom = track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
-        final repFg = isCustom ? colors.repCustom   : colors.repDefault;
+        final isCustom =
+            track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
+        final repFg = isCustom ? colors.repCustom : colors.repDefault;
         final repBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
 
         return GestureDetector(
@@ -527,44 +626,60 @@ class _TrackListState extends State<_TrackList> {
             ),
             child: Row(children: [
               Container(
-                width: 28, height: 28,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: active ? widget.accent.fg : colors.surface3,
                   borderRadius: BorderRadius.circular(9),
                 ),
                 alignment: Alignment.center,
-                child: Text('${i + 1}', style: TextStyle(
-                    fontFamily: PFonts.ui, fontWeight: FontWeight.w700, fontSize: 13,
-                    color: active ? cs.onPrimary : colors.onMuted,
-                    fontFeatures: const [FontFeature.tabularFigures()])),
+                child: Text('${i + 1}',
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: active ? cs.onPrimary : colors.onMuted,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
               ),
               const SizedBox(width: 12),
-              Expanded(child: Column(
+              Expanded(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(track.title, style: TextStyle(
-                      fontFamily: PFonts.ui,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w600,
-                      fontSize: 14.5,
-                      color: active ? cs.onSurface : colors.onMuted),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(track.title,
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight:
+                              active ? FontWeight.w700 : FontWeight.w600,
+                          fontSize: 14.5,
+                          color: active ? cs.onSurface : colors.onMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   Text('${track.effectiveRepetitions} reps',
-                      style: PTextStyles.of(context).trackRowGloss.copyWith(color: colors.onFaint)),
+                      style: PTextStyles.of(context)
+                          .trackRowGloss
+                          .copyWith(color: colors.onFaint)),
                 ],
               )),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(color: repBg, borderRadius: BorderRadius.circular(99)),
+                decoration: BoxDecoration(
+                    color: repBg, borderRadius: BorderRadius.circular(99)),
                 child: Text('${track.effectiveRepetitions}×',
-                    style: PTextStyles.of(context).repChip.copyWith(color: repFg)),
+                    style:
+                        PTextStyles.of(context).repChip.copyWith(color: repFg)),
               ),
               const SizedBox(width: 8),
               SizedBox(
                 width: 22,
                 child: active
-                    ? Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        size: 18, color: widget.accent.fg)
+                    ? Icon(
+                        isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 18,
+                        color: widget.accent.fg)
                     : const SizedBox.shrink(),
               ),
             ]),
@@ -594,19 +709,25 @@ class _Transport extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
           colors: [colors.bg, colors.bg.withValues(alpha: 0)],
           stops: const [0.6, 1.0],
         ),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        _TransportBtn(size: 52, icon: Icons.keyboard_arrow_up_rounded,
-            enabled: !atStart, colors: colors, onTap: cubit.prev),
+        _TransportBtn(
+            size: 52,
+            icon: Icons.keyboard_arrow_up_rounded,
+            enabled: !atStart,
+            colors: colors,
+            onTap: cubit.prev),
         const SizedBox(width: 28),
         GestureDetector(
           onTap: cubit.togglePlay,
           child: Container(
-            width: 68, height: 68,
+            width: 68,
+            height: 68,
             decoration: BoxDecoration(
               color: cs.primary,
               borderRadius: BorderRadius.circular(24),
@@ -616,14 +737,21 @@ class _Transport extends StatelessWidget {
             child: Icon(
               state.isFinished
                   ? Icons.replay_rounded
-                  : (state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-              size: 30, color: cs.onPrimary,
+                  : (state.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded),
+              size: 30,
+              color: cs.onPrimary,
             ),
           ),
         ),
         const SizedBox(width: 28),
-        _TransportBtn(size: 52, icon: Icons.keyboard_arrow_down_rounded,
-            enabled: !atEnd, colors: colors, onTap: cubit.next),
+        _TransportBtn(
+            size: 52,
+            icon: Icons.keyboard_arrow_down_rounded,
+            enabled: !atEnd,
+            colors: colors,
+            onTap: cubit.next),
       ]),
     );
   }
@@ -631,8 +759,11 @@ class _Transport extends StatelessWidget {
 
 class _TransportBtn extends StatelessWidget {
   const _TransportBtn({
-    required this.size, required this.icon,
-    required this.enabled, required this.colors, required this.onTap,
+    required this.size,
+    required this.icon,
+    required this.enabled,
+    required this.colors,
+    required this.onTap,
   });
   final double size;
   final IconData icon;
@@ -648,14 +779,16 @@ class _TransportBtn extends StatelessWidget {
       child: Opacity(
         opacity: enabled ? 1.0 : 0.5,
         child: Container(
-          width: size, height: size,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             color: colors.surface2,
             shape: BoxShape.circle,
             border: Border.all(color: colors.borderSoft),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 24, color: enabled ? cs.onSurface : colors.onFaint),
+          child: Icon(icon,
+              size: 24, color: enabled ? cs.onSurface : colors.onFaint),
         ),
       ),
     );
@@ -700,19 +833,25 @@ class _CompletionSheet extends StatelessWidget {
           ),
           // Sheet slides up from bottom
           Positioned(
-            left: 0, right: 0, bottom: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: Container(
               decoration: BoxDecoration(
                 color: cs.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(28)),
               ),
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 // Drag handle
                 Container(
-                  width: 36, height: 4,
+                  width: 36,
+                  height: 4,
                   margin: const EdgeInsets.only(bottom: 18),
-                  decoration: BoxDecoration(color: colors.border, borderRadius: BorderRadius.circular(9)),
+                  decoration: BoxDecoration(
+                      color: colors.border,
+                      borderRadius: BorderRadius.circular(9)),
                 ),
                 // Gold banner with pattern
                 Container(
@@ -723,15 +862,21 @@ class _CompletionSheet extends StatelessWidget {
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(alignment: Alignment.center, children: [
-                    Positioned.fill(child: PersianPattern(color: cs.primary, opacity: 0.5, tileSize: 84)),
+                    Positioned.fill(
+                        child: PersianPattern(
+                            color: cs.primary, opacity: 0.5, tileSize: 84)),
                     Text('خسته نباشی',
-                        style: PTextStyles.of(context).sheetFarsi.copyWith(color: cs.primary),
+                        style: PTextStyles.of(context)
+                            .sheetFarsi
+                            .copyWith(color: cs.primary),
                         textDirection: TextDirection.rtl),
                   ]),
                 ),
                 const SizedBox(height: 18),
                 Text('Session complete',
-                    style: PTextStyles.of(context).dialogTitle.copyWith(color: cs.onSurface),
+                    style: PTextStyles.of(context)
+                        .dialogTitle
+                        .copyWith(color: cs.onSurface),
                     textAlign: TextAlign.center),
                 const SizedBox(height: 6),
                 Padding(
@@ -740,15 +885,27 @@ class _CompletionSheet extends StatelessWidget {
                     TextSpan(children: [
                       TextSpan(
                         text: 'You moved through all $trackCount exercises of ',
-                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, color: colors.onMuted, height: 1.5),
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontSize: 14,
+                            color: colors.onMuted,
+                            height: 1.5),
                       ),
                       TextSpan(
                         text: session.title,
-                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface),
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface),
                       ),
                       TextSpan(
                         text: '. Khaste nabâshi — may you never tire.',
-                        style: TextStyle(fontFamily: PFonts.ui, fontSize: 14, color: colors.onMuted, height: 1.5),
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontSize: 14,
+                            color: colors.onMuted,
+                            height: 1.5),
                       ),
                     ]),
                     textAlign: TextAlign.center,
@@ -768,7 +925,9 @@ class _CompletionSheet extends StatelessWidget {
                         ),
                         alignment: Alignment.center,
                         child: Text('Done',
-                            style: PTextStyles.of(context).buttonLabel.copyWith(color: cs.onSurface)),
+                            style: PTextStyles.of(context)
+                                .buttonLabel
+                                .copyWith(color: cs.onSurface)),
                       ),
                     ),
                   ),
@@ -784,10 +943,13 @@ class _CompletionSheet extends StatelessWidget {
                         ),
                         alignment: Alignment.center,
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.replay_rounded, size: 20, color: cs.onPrimary),
+                          Icon(Icons.replay_rounded,
+                              size: 20, color: cs.onPrimary),
                           const SizedBox(width: 8),
                           Text('Again',
-                              style: PTextStyles.of(context).buttonLabel.copyWith(color: cs.onPrimary)),
+                              style: PTextStyles.of(context)
+                                  .buttonLabel
+                                  .copyWith(color: cs.onPrimary)),
                         ]),
                       ),
                     ),
@@ -803,17 +965,18 @@ class _CompletionSheet extends StatelessWidget {
 }
 
 class _RoundBtn extends StatelessWidget {
-  const _RoundBtn({required this.icon, required this.color, required this.onTap});
+  const _RoundBtn(
+      {required this.icon, required this.color, required this.onTap});
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: SizedBox(width: 44, height: 44,
-        child: Icon(icon, size: 24, color: color)),
-  );
+        onTap: onTap,
+        child: SizedBox(
+            width: 44, height: 44, child: Icon(icon, size: 24, color: color)),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -834,34 +997,45 @@ class _EqualizerState extends State<_Equalizer> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _ctrls = List.generate(3, (i) => AnimationController(
-      vsync: this, duration: Duration(milliseconds: 700 + i * 180))..repeat(reverse: true));
-    _anims = _ctrls.map((c) =>
-        Tween(begin: 4.0, end: 14.0).animate(CurvedAnimation(parent: c, curve: Curves.easeInOut))
-    ).toList();
+    _ctrls = List.generate(
+        3,
+        (i) => AnimationController(
+            vsync: this, duration: Duration(milliseconds: 700 + i * 180))
+          ..repeat(reverse: true));
+    _anims = _ctrls
+        .map((c) => Tween(begin: 4.0, end: 14.0)
+            .animate(CurvedAnimation(parent: c, curve: Curves.easeInOut)))
+        .toList();
   }
 
   @override
   void dispose() {
-    for (final c in _ctrls) { c.dispose(); }
+    for (final c in _ctrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 14,
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(3, (i) => Padding(
-        padding: EdgeInsets.only(left: i > 0 ? 2.5 : 0),
-        child: AnimatedBuilder(
-          animation: _anims[i],
-          builder: (_, __) => Container(
-            width: 3, height: _anims[i].value,
-            decoration: BoxDecoration(color: widget.color, borderRadius: BorderRadius.circular(2)),
-          ),
+        height: 14,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(
+              3,
+              (i) => Padding(
+                    padding: EdgeInsets.only(left: i > 0 ? 2.5 : 0),
+                    child: AnimatedBuilder(
+                      animation: _anims[i],
+                      builder: (_, __) => Container(
+                        width: 3,
+                        height: _anims[i].value,
+                        decoration: BoxDecoration(
+                            color: widget.color,
+                            borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ),
+                  )),
         ),
-      )),
-    ),
-  );
+      );
 }
