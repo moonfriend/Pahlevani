@@ -6,8 +6,10 @@ import '../../data/datasources/training_session/training_session_local_datasourc
 import '../../data/datasources/training_session/training_session_remote_datasource.dart';
 import '../../data/repositories_impl/download_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
+import '../../data/services/audio_players_service_impl.dart';
 import '../../domain/repositories/download_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
+import '../../domain/services/audio_player_service.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
 final getIt = GetIt.instance;
@@ -47,13 +49,15 @@ class DependencyInjection {
       ),
     );
 
+    // Factory: each player page gets its own AudioPlayerService instance.
+    getIt.registerFactory<AudioPlayerService>(() => AudioPlayersServiceImpl());
+
     getIt.registerLazySingleton<TrainingSessionCubit>(
       () => TrainingSessionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         downloadRepository: getIt<DownloadRepository>(),
       ),
     );
-
   }
 
   Future<void> ensureInitialized() async {

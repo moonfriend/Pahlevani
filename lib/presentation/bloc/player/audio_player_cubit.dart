@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
@@ -9,8 +7,9 @@ import 'package:pahlevani/domain/entities/training_session/session_details.dart'
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/services/audio_player_service.dart';
 
-/// State for the AudioPlayerCubit
+/// State for the audio player.
 class AudioPlayerState {
   final bool isPlaying;
   final int playingIndex;
@@ -19,26 +18,22 @@ class AudioPlayerState {
   final Duration duration;
   final bool isLoading;
   final String? errorMessage;
-  final Duration logicalPosition; // Logical timer-based position
-  final Duration logicalDuration; // Logical total duration
+  final Duration logicalPosition;
+  final Duration logicalDuration;
+  final bool isFinished;
 
-  /// Current track being played or selected
   TrainingItemWithAudio? get currentTrack =>
       tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
           ? tracks[playingIndex]
           : null;
 
-  /// Next track in the training_session
   TrainingItemWithAudio? get nextTrack =>
       tracks.isNotEmpty && playingIndex < tracks.length - 1
           ? tracks[playingIndex + 1]
           : null;
 
-  /// Previous track in the training_session
   TrainingItemWithAudio? get previousTrack =>
       tracks.isNotEmpty && playingIndex > 0 ? tracks[playingIndex - 1] : null;
-
-  final bool isFinished;
 
   const AudioPlayerState({
     required this.playingIndex,
@@ -53,7 +48,6 @@ class AudioPlayerState {
     this.isFinished = false,
   });
 
-  /// Create a copy of the state with updated values
   AudioPlayerState copyWith({
     int? playingIndex,
     bool? isPlaying,
@@ -65,116 +59,87 @@ class AudioPlayerState {
     Duration? logicalPosition,
     Duration? logicalDuration,
     bool? isFinished,
-  }) {
-    return AudioPlayerState(
-      playingIndex: playingIndex ?? this.playingIndex,
-      isPlaying: isPlaying ?? this.isPlaying,
-      tracks: tracks ?? this.tracks,
-      position: position ?? this.position,
-      duration: duration ?? this.duration,
-      isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
-      logicalPosition: logicalPosition ?? this.logicalPosition,
-      logicalDuration: logicalDuration ?? this.logicalDuration,
-      isFinished: isFinished ?? this.isFinished,
-    );
-  }
+  }) =>
+      AudioPlayerState(
+        playingIndex: playingIndex ?? this.playingIndex,
+        isPlaying: isPlaying ?? this.isPlaying,
+        tracks: tracks ?? this.tracks,
+        position: position ?? this.position,
+        duration: duration ?? this.duration,
+        isLoading: isLoading ?? this.isLoading,
+        errorMessage: errorMessage ?? this.errorMessage,
+        logicalPosition: logicalPosition ?? this.logicalPosition,
+        logicalDuration: logicalDuration ?? this.logicalDuration,
+        isFinished: isFinished ?? this.isFinished,
+      );
 
-  /// Create a state with an error
-  AudioPlayerState withError(String message) {
-    return AudioPlayerState(
-      playingIndex: playingIndex,
-      isPlaying: false,
-      tracks: tracks,
-      errorMessage: message,
-    );
-  }
+  AudioPlayerState withError(String message) => AudioPlayerState(
+        playingIndex: playingIndex,
+        isPlaying: false,
+        tracks: tracks,
+        errorMessage: message,
+      );
 }
 
-/// Cubit for managing audio player state and operations
 class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
-  late AudioPlayer _audioPlayer;
-  late TrainingSession _trainingSession;
-  late final DownloadRepository _downloadRepo;
+  final AudioPlayerService _audioService;
+  final DownloadRepository _downloadRepo;
+  final TrainingSessionRepository _sessionRepo;
+  final TrainingSession _trainingSession;
 
-  // Parallel list of ItemDetail kept for background caching (same order as state.tracks).
   final List<ItemDetail> _itemDetails = [];
 
-  // Subscriptions to audio streams
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
-  StreamSubscription<PlayerState>? _playerStateSubscription;
 
-  // Dynamic duration management
-  Duration? _originalDuration; // Original track duration
-  Duration? _targetDuration; // Target duration based on repetitions
+  Duration? _originalDuration;
+  Duration? _targetDuration;
 
   Timer? _logicalTimer;
   Duration _logicalElapsed = Duration.zero;
   Duration? _logicalTargetDuration;
 
-  /// Expose the AudioPlayer instance
-  AudioPlayer get audioPlayer => _audioPlayer;
-
-  TrainingSessionPlayerCubit({required TrainingSession trainingSession})
-      : super(const AudioPlayerState(
+  TrainingSessionPlayerCubit({
+    required TrainingSession trainingSession,
+    required AudioPlayerService audioPlayerService,
+    required DownloadRepository downloadRepository,
+    required TrainingSessionRepository sessionRepository,
+  })  : _trainingSession = trainingSession,
+        _audioService = audioPlayerService,
+        _downloadRepo = downloadRepository,
+        _sessionRepo = sessionRepository,
+        super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
-    _trainingSession = trainingSession;
-    _audioPlayer = AudioPlayer();
-    _downloadRepo = getIt<DownloadRepository>();
-    _initAudioPlayerListeners();
+    _initListeners();
   }
 
-  /// Set up the audio player listeners
-  void _initAudioPlayerListeners() {
-    // Listen for position changes
-    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
+  void _initListeners() {
+    _positionSubscription = _audioService.onPositionChanged.listen((position) {
       emit(state.copyWith(position: position));
       _handleDynamicDuration(position);
     });
 
-    // Listen for duration changes
-    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
-      // GStreamer fires Duration(0) both before and after the real duration.
-      // Ignore those entirely — keep whatever real value we already have.
+    _durationSubscription = _audioService.onDurationChanged.listen((duration) {
       if (duration.inMilliseconds <= 0) return;
       _originalDuration = duration;
       _calculateTargetDuration();
       emit(state.copyWith(duration: _targetDuration ?? duration));
-      // Cancel + restart so a corrected late-arriving duration takes effect.
       _logicalTimer?.cancel();
       _startLogicalTimer();
     });
 
-    // Listen for player state changes
-    _playerStateSubscription =
-        _audioPlayer.onPlayerStateChanged.listen((playerState) {
-      if (playerState == PlayerState.completed) {
-        _handleTrackCompletion();
-      }
-    });
-
-    // Set loop mode for dynamic duration handling
-    _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    _audioService.setLooping(true);
   }
 
-  // /// Factory constructor to create and initialize the AudioPlayerCubit
-  // static Future<TrainingSessionPlayerCubit> create() async {
-  //   final cubit = TrainingSessionPlayerCubit();
-  //   return cubit;
-  // }
-
-  /// Loads tracks for the current session, resolving local cached files where available.
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
 
     emit(state.copyWith(isLoading: true, errorMessage: null));
-    await _audioPlayer.stop();
+    await _audioService.stop();
 
     try {
-      final repo = getIt<TrainingSessionRepository>();
-      final snap = await repo.getTrainingSessions();
+      final snap = await _sessionRepo.getTrainingSessions();
       final sessionId = _trainingSession.id;
       final items = snap.itemsBySessionId[sessionId] ?? [];
 
@@ -189,15 +154,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final itemDetail = ItemDetail(item: item, exercise: exercise);
         _itemDetails.add(itemDetail);
 
-        // Use local audio file if cached, otherwise fall back to remote URL.
-        final localAudio = await _downloadRepo.getLocalAudioPath(sessionId, itemDetail);
+        final localAudio =
+            await _downloadRepo.getLocalAudioPath(sessionId, itemDetail);
         final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
 
-        // Use local image if cached, otherwise keep the remote URL.
         String? localImage;
         if (exercise.media.hasAsset) {
-          localImage = await _downloadRepo.getLocalImagePath(
-              sessionId, item.id,
+          localImage = await _downloadRepo.getLocalImagePath(sessionId, item.id,
               imageUrl: exercise.media.src);
         }
         final resolvedMedia = localImage != null
@@ -238,7 +201,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Move to the next track and play it. Emits isFinished when the last track ends.
   void next() {
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
@@ -250,14 +212,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       ));
       _loadSourceAtIndex(nextIndex, shouldPlay: true);
     } else {
-      // Last track finished — stop and surface completion sheet.
-      _audioPlayer.stop();
+      _audioService.stop();
       _stopLogicalTimer();
       emit(state.copyWith(isPlaying: false, isFinished: true));
     }
   }
 
-  /// Replay session from the beginning.
   void replay() {
     emit(state.copyWith(
       playingIndex: 0,
@@ -271,7 +231,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _loadSourceAtIndex(0, shouldPlay: true);
   }
 
-  /// Move to the previous track and play it.
   void prev() {
     if (state.playingIndex > 0) {
       final prevIndex = state.playingIndex - 1;
@@ -284,132 +243,94 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Set the current track index
   void setIndex(int index) {
     if (index >= 0 &&
         index < state.tracks.length &&
         index != state.playingIndex) {
       final wasPlaying = state.isPlaying;
-      // Update state with the new index FIRST
       emit(state.copyWith(
         playingIndex: index,
-        position: Duration.zero, // Reset position
-        duration: Duration.zero, // Reset duration
+        position: Duration.zero,
+        duration: Duration.zero,
       ));
-      // Load source, playing only if it was already playing
       _loadSourceAtIndex(index, shouldPlay: wasPlaying);
     }
   }
 
-  /// Set index and start playing immediately
   void setIndexAndPlay(int index) {
     if (index >= 0 && index < state.tracks.length) {
-      emit(state.copyWith(
-        playingIndex: index,
-        isPlaying: true,
-      ));
-
+      emit(state.copyWith(playingIndex: index, isPlaying: true));
       _loadSourceAtIndex(index, shouldPlay: true);
     }
   }
 
-  /// Fire-and-forget: cache audio (and image) for [index] if not already on disk.
   void _cacheInBackground(int index) {
-    if (index < 0 || index >= state.tracks.length || index >= _itemDetails.length) return;
+    if (index < 0 ||
+        index >= state.tracks.length ||
+        index >= _itemDetails.length) {
+      return;
+    }
     final track = state.tracks[index];
     final detail = _itemDetails[index];
     final sessionId = _trainingSession.id;
 
-    // Cache audio if still loading from network.
     if (!track.audioFilePath.startsWith('/')) {
       _downloadRepo.cacheAudio(sessionId, detail);
     }
-
-    // Cache image if still loading from network.
     if (track.media.type == 'photo' &&
         track.media.src != null &&
         !track.media.src!.startsWith('/')) {
-      _downloadRepo.cacheImage(sessionId, int.parse(track.id), track.media.src!);
+      _downloadRepo.cacheImage(
+          sessionId, int.parse(track.id), track.media.src!);
     }
   }
 
-  /// Helper to handle track changes
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
-    final sourcePath = track.audioFilePath; // Get the path/URL from the track
+    final sourcePath = track.audioFilePath;
 
-    // Reset dynamic duration state for new track
     _originalDuration = null;
     _targetDuration = null;
     _stopLogicalTimer();
     _logicalElapsed = Duration.zero;
 
-    // Add loading state indication if needed
-    // emit(state.copyWith(isLoading: true));
-
     try {
-      Source? audioSource;
-
-      // Determine the source type based on the path format
-      if (sourcePath.startsWith('http://') ||
-          sourcePath.startsWith('https://')) {
-        audioSource = UrlSource(sourcePath);
-      } else if (sourcePath.startsWith('/')) {
-        audioSource = DeviceFileSource(sourcePath);
-      } else if (sourcePath.startsWith('assets/')) {
-        final assetPath = sourcePath.replaceFirst('assets/', '');
-        audioSource = AssetSource(assetPath);
-      } else if (sourcePath.isNotEmpty) {
-        audioSource = AssetSource(sourcePath);
-      } else {
-        throw Exception("Audio source path is empty");
-      }
+      if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
 
       if (shouldPlay) {
-        // play() atomically stops current source, loads new one, and starts
-        // playback — more reliable than stop+setSource+resume on GStreamer.
-        await _audioPlayer.play(audioSource);
+        await _audioService.play(sourcePath);
         emit(state.copyWith(isPlaying: true, isLoading: false));
-        // Timer starts from _durationSubscription once _originalDuration is known.
       } else {
-        await _audioPlayer.stop();
-        await _audioPlayer.setSource(audioSource);
+        await _audioService.stop();
+        await _audioService.setSource(sourcePath);
         emit(state.copyWith(isPlaying: false, isLoading: false));
       }
 
-      // Always cache current + next 3 tracks in the background.
-      // _cacheInBackground skips any track already on disk, so this is safe
-      // to call unconditionally — it won't re-download cached files.
       _cacheInBackground(index);
       _cacheInBackground(index + 1);
       _cacheInBackground(index + 2);
       _cacheInBackground(index + 3);
-      // Check whether the whole session is now cached and update the badge.
-      _downloadRepo
+      unawaited(_downloadRepo
           .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
-          .catchError((_) {});
+          .catchError((_) => false));
     } catch (e) {
       emit(state.copyWith(
-          errorMessage: "Error loading track: ${track.displayName}"));
-      // emit(state.copyWith(isLoading: false)); // Ensure loading is removed on error
-      await _audioPlayer.stop(); // Stop playback on error
+          errorMessage: 'Error loading track: ${track.displayName}'));
+      await _audioService.stop();
     }
   }
 
-  /// Stop playback
   Future<void> stop() async {
-    await _audioPlayer.stop();
+    await _audioService.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
     _stopLogicalTimer();
   }
 
-  /// Start or resume playback
   Future<void> play() async {
-    final currentTrack = state.currentTrack;
-    if (currentTrack != null) {
-      await _audioPlayer.resume();
+    if (state.currentTrack != null) {
+      await _audioService.resume();
       emit(state.copyWith(isPlaying: true));
       if (_logicalTimer == null || !_logicalTimer!.isActive) {
         _startLogicalTimer();
@@ -417,85 +338,66 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  /// Toggle between play and pause
   void togglePlay() {
     if (state.isFinished) {
       replay();
     } else if (state.isPlaying) {
-      _audioPlayer.pause();
+      _audioService.pause();
       emit(state.copyWith(isPlaying: false));
     } else {
       play();
     }
   }
 
-  /// Seek to [position] in the logical timeline for the current track.
-  /// The audio is seeked to the correct offset within the repeating loop.
   Future<void> seekTo(Duration position) async {
     if (_originalDuration == null || _logicalTargetDuration == null) return;
     final clamped = Duration(
-      milliseconds:
-          position.inMilliseconds.clamp(0, _logicalTargetDuration!.inMilliseconds),
+      milliseconds: position.inMilliseconds
+          .clamp(0, _logicalTargetDuration!.inMilliseconds),
     );
     _logicalTimer?.cancel();
     _logicalElapsed = clamped;
     final seekMs = clamped.inMilliseconds % _originalDuration!.inMilliseconds;
-    await _audioPlayer.seek(Duration(milliseconds: seekMs));
+    await _audioService.seek(Duration(milliseconds: seekMs));
     emit(state.copyWith(logicalPosition: clamped));
     if (state.isPlaying) _startLogicalTimer();
   }
 
-  /// Calculate target duration based on repetitions
   void _calculateTargetDuration() {
-    final currentTrack = state.currentTrack;
-    if (currentTrack == null || _originalDuration == null) return;
-
-    final defaultReps = currentTrack.defaultRepetitions ?? 1;
-    final effectiveReps = currentTrack.effectiveRepetitions;
-    final originalDurationMs = _originalDuration!.inMilliseconds;
-    final targetDurationMs =
-        (originalDurationMs / defaultReps * effectiveReps).round();
-    _targetDuration = Duration(milliseconds: targetDurationMs);
+    final track = state.currentTrack;
+    if (track == null || _originalDuration == null) return;
+    final defaultReps = track.defaultRepetitions ?? 1;
+    final effectiveReps = track.effectiveRepetitions;
+    final ms = (_originalDuration!.inMilliseconds / defaultReps * effectiveReps)
+        .round();
+    _targetDuration = Duration(milliseconds: ms);
   }
 
-  /// Seek the audio back to zero when the logical target is passed.
-  /// The logical timer is the sole authority on when to advance to the next track.
   void _handleDynamicDuration(Duration position) {
     if (_targetDuration == null || !state.isPlaying) return;
-    if (position >= _targetDuration!) {
-      _audioPlayer.seek(Duration.zero);
-    }
+    if (position >= _targetDuration!) _audioService.seek(Duration.zero);
   }
-
-  /// No-op: ReleaseMode.loop keeps the audio going; the logical timer calls next().
-  void _handleTrackCompletion() {}
 
   void _startLogicalTimer() {
     if (!state.isPlaying) return;
-    final currentTrack = state.currentTrack;
-    if (currentTrack == null || _originalDuration == null) return;
-    final originalDurationMs = _originalDuration!.inMilliseconds;
-    // GStreamer fires Duration(0) before the real value — ignore it.
-    if (originalDurationMs <= 0) return;
-    // repetitions=0 means "loop until user stops" — treat as infinite.
-    final defaultReps = currentTrack.defaultRepetitions ?? 1;
+    final track = state.currentTrack;
+    if (track == null || _originalDuration == null) return;
+    final originalMs = _originalDuration!.inMilliseconds;
+    if (originalMs <= 0) return;
+    final defaultReps = track.defaultRepetitions ?? 1;
     if (defaultReps <= 0) return;
-    final effectiveReps = currentTrack.effectiveRepetitions;
-    final targetDurationMs =
-        (originalDurationMs / defaultReps * effectiveReps).round();
-    _logicalTargetDuration = Duration(milliseconds: targetDurationMs);
+    final effectiveReps = track.effectiveRepetitions;
+    final targetMs = (originalMs / defaultReps * effectiveReps).round();
+    _logicalTargetDuration = Duration(milliseconds: targetMs);
     emit(state.copyWith(
         logicalPosition: _logicalElapsed,
         logicalDuration: _logicalTargetDuration));
     _logicalTimer =
         Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-      // Only increment if isPlaying is true
       if (!state.isPlaying) return;
       _logicalElapsed += const Duration(milliseconds: 200);
       if (_logicalElapsed >= _logicalTargetDuration!) {
         _logicalTimer?.cancel();
-        // await _audioPlayer.stop();
-        // emit(state.copyWith(isPlaying: false, logicalPosition: _logicalTargetDuration));
         next();
         return;
       }
@@ -512,15 +414,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   @override
   Future<void> close() async {
-    // Cancel subscriptions
+    // Cancel timer first (sync) before any awaits so the fake timer system in
+    // tests sees no pending timers when _verifyInvariants runs.
+    _logicalTimer?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
-    await _playerStateSubscription?.cancel();
-
-    _logicalTimer?.cancel();
-
-    // Dispose the audio player
-    await _audioPlayer.dispose();
+    await _audioService.dispose();
     return super.close();
   }
 }
