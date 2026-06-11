@@ -10,25 +10,25 @@ void main() {
 
   group('isLocalFile', () {
     test('true for absolute local path', () {
-      expect(ExerciseImageProvider(localPath).isLocalFile, isTrue);
+      expect(const ExerciseImageProvider(localPath).isLocalFile, isTrue);
     });
 
     test('false for https URL', () {
-      expect(ExerciseImageProvider(supabaseUrl).isLocalFile, isFalse);
+      expect(const ExerciseImageProvider(supabaseUrl).isLocalFile, isFalse);
     });
 
     test('false for non-Supabase URL', () {
-      expect(ExerciseImageProvider(otherUrl).isLocalFile, isFalse);
+      expect(const ExerciseImageProvider(otherUrl).isLocalFile, isFalse);
     });
   });
 
   group('effectiveSrc', () {
     test('local path passes through unchanged', () {
-      expect(ExerciseImageProvider(localPath).effectiveSrc, localPath);
+      expect(const ExerciseImageProvider(localPath).effectiveSrc, localPath);
     });
 
     test('Supabase public URL gets render/image transform', () {
-      final result = ExerciseImageProvider(supabaseUrl).effectiveSrc;
+      final result = const ExerciseImageProvider(supabaseUrl).effectiveSrc;
       expect(result, contains('/storage/v1/render/image/public/'));
       expect(result, contains('width=500'));
       expect(result, contains('height=500'));
@@ -37,36 +37,36 @@ void main() {
     });
 
     test('non-Supabase URL is not transformed', () {
-      expect(ExerciseImageProvider(otherUrl).effectiveSrc, otherUrl);
+      expect(const ExerciseImageProvider(otherUrl).effectiveSrc, otherUrl);
     });
   });
 
   group('equality and hashCode', () {
     test('same src → equal', () {
       expect(
-        ExerciseImageProvider(localPath),
-        equals(ExerciseImageProvider(localPath)),
+        const ExerciseImageProvider(localPath),
+        equals(const ExerciseImageProvider(localPath)),
       );
     });
 
     test('different src → not equal', () {
       expect(
-        ExerciseImageProvider(localPath),
-        isNot(equals(ExerciseImageProvider(supabaseUrl))),
+        const ExerciseImageProvider(localPath),
+        isNot(equals(const ExerciseImageProvider(supabaseUrl))),
       );
     });
 
     test('same src → same hashCode', () {
       expect(
-        ExerciseImageProvider(supabaseUrl).hashCode,
-        ExerciseImageProvider(supabaseUrl).hashCode,
+        const ExerciseImageProvider(supabaseUrl).hashCode,
+        const ExerciseImageProvider(supabaseUrl).hashCode,
       );
     });
 
     test('different src → different hashCode (very likely)', () {
       expect(
-        ExerciseImageProvider(localPath).hashCode,
-        isNot(ExerciseImageProvider(supabaseUrl).hashCode),
+        const ExerciseImageProvider(localPath).hashCode,
+        isNot(const ExerciseImageProvider(supabaseUrl).hashCode),
       );
     });
   });
