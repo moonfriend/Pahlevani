@@ -46,12 +46,15 @@ Widget _buildPage(DomainSnapshot snapshot) {
 // Also pumps through the scroll animation that scrollToActive schedules.
 // Registers addTearDown to clean up before test framework finalization.
 Future<void> _pumpAndLoad(WidgetTester tester) async {
+  // The stage is 290px tall; use 900px so all track list items remain visible.
+  await tester.binding.setSurfaceSize(const Size(800, 900));
   await tester.pump(); // schedule loadTracks
   await tester.pump(); // complete async operations
   // scrollToActive schedules a post-frame callback that starts a 350ms scroll
   // animation; pump through it so it finishes cleanly.
   await tester.pump(const Duration(milliseconds: 400));
   addTearDown(() async {
+    await tester.binding.setSurfaceSize(null);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
