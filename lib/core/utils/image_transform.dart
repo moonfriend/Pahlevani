@@ -3,8 +3,9 @@
 /// Supabase's render endpoint resizes/compresses images server-side before
 /// delivery, so only the small version is transferred and cached on device.
 ///
-/// For non-Supabase URLs (CDNs, signed URLs, local paths) the original is
-/// returned unchanged so callers never need to guard the result.
+/// Only applies to public-bucket URLs (.../object/public/...). Signed URLs
+/// (.../object/sign/...) require Supabase Pro for transforms — for those and
+/// all other URLs, the original is returned unchanged.
 String supabaseImageTransformUrl(
   String url, {
   int width = 500,

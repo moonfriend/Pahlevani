@@ -224,7 +224,7 @@ class _Stage extends StatelessWidget {
     return GestureDetector(
       onTap: cubit.togglePlay,
       child: Container(
-        height: 232,
+        height: 290,
         margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
         decoration: BoxDecoration(
           color: accent.bg,
@@ -615,7 +615,9 @@ class _TrackListState extends State<_TrackList> {
 
         return GestureDetector(
           key: _itemKeys[i],
-          onTap: () => widget.cubit.setIndexAndPlay(i),
+          onTap: () => active
+              ? widget.cubit.togglePlay()
+              : widget.cubit.setIndexAndPlay(i),
           child: Container(
             height: 70,
             margin: const EdgeInsets.only(bottom: 2),

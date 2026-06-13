@@ -61,7 +61,16 @@ class DownloadRepositoryImpl implements DownloadRepository {
         return;
       }
 
-      final total = validItems.length;
+      final imageItems = session.items
+          .where((i) =>
+              i.exercise.media.type == 'photo' &&
+              (i.exercise.media.src ?? '').isNotEmpty)
+          .toList();
+
+      // Total work units: each audio file + each image file.
+      // Audio occupies units 0..audioCount-1; images occupy audioCount..total-1.
+      final audioCount = validItems.length;
+      final totalWork = audioCount + imageItems.length;
       int done = 0;
       controller.add(0.0);
 
@@ -74,14 +83,14 @@ class DownloadRepositoryImpl implements DownloadRepository {
             savePath,
             (received, totalBytes) {
               if (totalBytes > 0) {
-                final progress =
-                    ((done + received / totalBytes) / total).clamp(0.0, 1.0);
+                final progress = ((done + received / totalBytes) / totalWork)
+                    .clamp(0.0, 1.0);
                 controller.add(progress);
               }
             },
           );
           done++;
-          controller.add((done / total).clamp(0.0, 1.0));
+          controller.add((done / totalWork).clamp(0.0, 1.0));
           await Future.delayed(const Duration(milliseconds: 100));
         } catch (e) {
           controller.addError(
@@ -97,9 +106,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
         return File(path).exists();
       })).then((results) => results.every((e) => e));
 
-      if (allExist && done == total) {
+      if (allExist && done == audioCount) {
         await _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
-        controller.add(1.0);
       } else {
         await _saveDownloadStatus(sessionId, DownloadStatus.error);
         controller
@@ -108,14 +116,14 @@ class DownloadRepositoryImpl implements DownloadRepository {
         return;
       }
 
-      // Download images after audio — non-fatal, doesn't affect download status.
-      for (final item in session.items) {
-        if (item.exercise.media.type == 'photo' &&
-            (item.exercise.media.src ?? '').isNotEmpty) {
-          await cacheImage(sessionId, item.item.id, item.exercise.media.src!);
-        }
+      // Image downloads — non-fatal: a failed image never rolls back audio status.
+      for (final item in imageItems) {
+        await cacheImage(sessionId, item.item.id, item.exercise.media.src!);
+        done++;
+        controller.add((done / totalWork).clamp(0.0, 1.0));
       }
 
+      controller.add(1.0);
       await controller.close();
     } catch (e) {
       await _saveDownloadStatus(sessionId, DownloadStatus.error);
