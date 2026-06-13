@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "pahlevani-placeholder",
-    "storage_bucket": "pahlevani-placeholder.appspot.com"
+    "project_number": "770507992356",
+    "project_id": "pahlevani-74ba6",
+    "storage_bucket": "pahlevani-74ba6.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:770507992356:android:0167ae603436d2b3dcd7b1",
         "android_client_info": {
           "package_name": "com.pahlevani.app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "REPLACE_WITH_REAL_API_KEY"
+          "current_key": "FIREBASE_ANDROID_API_KEY"
         }
       ],
       "services": {

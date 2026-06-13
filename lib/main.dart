@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pahlevani/firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/config.dart';
@@ -23,7 +24,9 @@ void main() async {
   // Crashlytics is intentionally disabled in debug builds so noise stays local.
   bool crashlyticsEnabled = false;
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     if (!kDebugMode) {
       FlutterError.onError =
           FirebaseCrashlytics.instance.recordFlutterFatalError;
