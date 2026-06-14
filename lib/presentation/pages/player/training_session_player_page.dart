@@ -74,6 +74,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               if (track.media.type == 'photo' &&
                   src != null &&
                   src.isNotEmpty &&
+                  !src.startsWith('/') &&
                   _precachedUrls.add(src)) {
                 precacheImage(NetworkImage(src), context, onError: (_, __) {});
               }
