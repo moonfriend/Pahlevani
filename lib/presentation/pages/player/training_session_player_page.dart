@@ -31,6 +31,7 @@ class AudioPlayerPage extends StatefulWidget {
 class _AudioPlayerPageState extends State<AudioPlayerPage> {
   late final TrainingSessionPlayerCubit _cubit;
   final _trackListKey = GlobalKey<_TrackListState>();
+  final _precachedUrls = <String>{};
 
   @override
   void initState() {
@@ -65,11 +66,16 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               (prev.tracks.isEmpty && cur.tracks.isNotEmpty),
           listener: (context, state) {
             _trackListKey.currentState?.scrollToActive(state.playingIndex);
+            // Precache each image URL at most once per player session.
+            // Previously this looped all tracks on every index change, causing
+            // repeated Supabase egress when the in-memory cache was full.
             for (final track in state.tracks) {
+              final src = track.media.src;
               if (track.media.type == 'photo' &&
-                  track.media.src?.isNotEmpty == true) {
-                precacheImage(NetworkImage(track.media.src!), context,
-                    onError: (_, __) {});
+                  src != null &&
+                  src.isNotEmpty &&
+                  _precachedUrls.add(src)) {
+                precacheImage(NetworkImage(src), context, onError: (_, __) {});
               }
             }
           },
