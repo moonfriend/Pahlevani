@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 
 import '../../data/datasources/training_session/training_session_local_database.dart';
@@ -7,9 +10,13 @@ import '../../data/datasources/training_session/training_session_remote_datasour
 import '../../data/repositories_impl/download_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
 import '../../data/services/audio_players_service_impl.dart';
+import '../../data/services/just_audio_player_service.dart';
+import '../../data/services/no_op_notification_service.dart';
+import '../../data/services/pahlevani_audio_handler.dart';
 import '../../domain/repositories/download_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/services/audio_player_service.dart';
+import '../../domain/services/player_notification_service.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
 final getIt = GetIt.instance;
@@ -49,8 +56,22 @@ class DependencyInjection {
       ),
     );
 
-    // Factory: each player page gets its own AudioPlayerService instance.
-    getIt.registerFactory<AudioPlayerService>(() => AudioPlayersServiceImpl());
+    // Audio service + notification: mobile uses just_audio + audio_service handler
+    // registered in main.dart; Linux/Web fall back to audioplayers + no-op.
+    final bool useMobileAudio =
+        !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+
+    if (useMobileAudio && getIt.isRegistered<PahlevaniAudioHandler>()) {
+      final handler = getIt<PahlevaniAudioHandler>();
+      getIt.registerFactory<AudioPlayerService>(
+          () => JustAudioPlayerService(handler));
+      getIt.registerSingleton<PlayerNotificationService>(handler);
+    } else {
+      getIt
+          .registerFactory<AudioPlayerService>(() => AudioPlayersServiceImpl());
+      getIt.registerSingleton<PlayerNotificationService>(
+          NoOpNotificationService());
+    }
 
     getIt.registerLazySingleton<TrainingSessionCubit>(
       () => TrainingSessionCubit(

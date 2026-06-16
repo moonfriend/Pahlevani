@@ -8,6 +8,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
+import 'package:pahlevani/domain/services/player_notification_service.dart';
 
 /// State for the audio player.
 class AudioPlayerState {
@@ -86,11 +87,17 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final DownloadRepository _downloadRepo;
   final TrainingSessionRepository _sessionRepo;
   final TrainingSession _trainingSession;
+  final PlayerNotificationService _notification;
 
   final List<ItemDetail> _itemDetails = [];
 
+  // Tracks which track indices have already been scheduled for background
+  // caching this session — prevents concurrent redundant downloads.
+  final _cachedIndices = <int>{};
+
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<NotificationCommand>? _notificationSub;
 
   Duration? _originalDuration;
   Duration? _targetDuration;
@@ -104,10 +111,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     required AudioPlayerService audioPlayerService,
     required DownloadRepository downloadRepository,
     required TrainingSessionRepository sessionRepository,
+    required PlayerNotificationService notificationService,
   })  : _trainingSession = trainingSession,
         _audioService = audioPlayerService,
         _downloadRepo = downloadRepository,
         _sessionRepo = sessionRepository,
+        _notification = notificationService,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _initListeners();
@@ -134,6 +143,22 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
+    _cachedIndices.clear();
+
+    // Subscribe (or re-subscribe) to notification commands so lock-screen /
+    // dropdown controls are forwarded to this cubit.
+    unawaited(_notificationSub?.cancel());
+    _notificationSub = _notification.commands.listen((cmd) {
+      switch (cmd) {
+        case NotificationCommand.skipNext:
+          next();
+        case NotificationCommand.skipPrev:
+          prev();
+        case NotificationCommand.play:
+        case NotificationCommand.pause:
+          togglePlay();
+      }
+    });
 
     emit(state.copyWith(isLoading: true, errorMessage: null));
     await _audioService.stop();
@@ -264,12 +289,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
+  // Each index is scheduled at most once per loadTracks() call.
+  // _cachedIndices.add() returns false if already present → skip.
   void _cacheInBackground(int index) {
     if (index < 0 ||
         index >= state.tracks.length ||
         index >= _itemDetails.length) {
       return;
     }
+    if (!_cachedIndices.add(index)) return;
+
     final track = state.tracks[index];
     final detail = _itemDetails[index];
     final sessionId = _trainingSession.id;
@@ -307,6 +336,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _audioService.setSource(sourcePath);
         emit(state.copyWith(isPlaying: false, isLoading: false));
       }
+
+      // Update the OS notification (lock screen / dropdown card).
+      _notification.update(
+        trackTitle: track.displayName,
+        artUri: track.media.type == 'photo' ? track.media.src : null,
+        isPlaying: shouldPlay,
+        duration: state.duration == Duration.zero ? null : state.duration,
+      );
 
       _cacheInBackground(index);
       _cacheInBackground(index + 1);
@@ -417,6 +454,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     // Cancel timer first (sync) before any awaits so the fake timer system in
     // tests sees no pending timers when _verifyInvariants runs.
     _logicalTimer?.cancel();
+    await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
     await _audioService.dispose();

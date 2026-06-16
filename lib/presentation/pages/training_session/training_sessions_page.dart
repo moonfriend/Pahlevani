@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
@@ -33,9 +34,40 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
   );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _checkConnectivityOnce());
+  }
+
+  @override
   void dispose() {
     _refreshSpin.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkConnectivityOnce() async {
+    if (!mounted) return;
+    final result = await Connectivity().checkConnectivity();
+    if (!mounted) return;
+    if (result.every((r) => r == ConnectivityResult.none)) {
+      unawaited(showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No internet connection'),
+          content: const Text(
+            'Connect to the internet to sync sessions and download audio.\n\n'
+            'Downloaded sessions are available offline.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Continue offline'),
+            ),
+          ],
+        ),
+      ));
+    }
   }
 
   Future<void> _refresh() async {
