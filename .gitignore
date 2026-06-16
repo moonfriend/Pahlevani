@@ -58,3 +58,10 @@ scripts/.streamlit/secrets.toml
 android/key.properties
 *.jks
 *.keystore
+
+# Firebase config — contains API keys; injected at build time
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Firebase local dev env (real keys for --dart-define-from-file)
+.firebase.env

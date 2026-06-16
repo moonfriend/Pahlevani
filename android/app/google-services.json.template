@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "770507992356",
+    "project_id": "pahlevani-74ba6",
+    "storage_bucket": "pahlevani-74ba6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770507992356:android:0167ae603436d2b3dcd7b1",
+        "android_client_info": {
+          "package_name": "com.pahlevani.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "YOUR_FIREBASE_ANDROID_API_KEY_HERE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
