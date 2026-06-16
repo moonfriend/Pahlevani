@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../fakes/fake_connectivity_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -109,7 +113,15 @@ Widget _buildHarness(TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await getIt.reset();
+    // Default: online. Individual tests override to offline when needed.
+    getIt.registerSingleton<ConnectivityService>(
+        const FakeConnectivityService(online: true));
+  });
+
+  tearDown(() async => getIt.reset());
 
   testWidgets('compact density renders without layout exception',
       (tester) async {
@@ -151,5 +163,72 @@ void main() {
     await tester.pump();
 
     expect(find.text('Yours'), findsOneWidget);
+  });
+
+  // ── Connectivity dialog ────────────────────────────────────────────────────
+
+  testWidgets('shows offline dialog when device has no connection',
+      (tester) async {
+    // Override with offline fake for this test only.
+    await getIt.reset();
+    getIt.registerSingleton<ConnectivityService>(
+        const FakeConnectivityService(online: false));
+
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump(); // initState → _checkConnectivityOnce schedules dialog
+    await tester.pump(); // dialog renders
+
+    expect(find.text('No internet connection'), findsOneWidget);
+    expect(find.text('Continue offline'), findsOneWidget);
+  });
+
+  testWidgets('offline dialog dismisses on Continue offline tap',
+      (tester) async {
+    await getIt.reset();
+    getIt.registerSingleton<ConnectivityService>(
+        const FakeConnectivityService(online: false));
+
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Continue offline'));
+    await tester.pump(); // dismiss
+    await tester.pump(const Duration(milliseconds: 300)); // dialog fade-out
+
+    expect(find.text('No internet connection'), findsNothing);
+  });
+
+  testWidgets('no dialog shown when device is online', (tester) async {
+    // Default setUp already registers online fake — no override needed.
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No internet connection'), findsNothing);
   });
 }

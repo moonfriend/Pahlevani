@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
@@ -14,6 +13,8 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/difficulty_pips.dart';
 import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,9 +49,9 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
 
   Future<void> _checkConnectivityOnce() async {
     if (!mounted) return;
-    final result = await Connectivity().checkConnectivity();
+    final online = await getIt<ConnectivityService>().isOnline();
     if (!mounted) return;
-    if (result.every((r) => r == ConnectivityResult.none)) {
+    if (!online) {
       unawaited(showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(

@@ -10,6 +10,7 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_player_notification_service.dart';
 
@@ -635,6 +636,133 @@ void main() {
       await cubit.loadTracks();
 
       expect(cubit.state.tracks[0].media.type, 'photo');
+    });
+  });
+
+  // ---------- notification command routing ----------
+
+  group('notification commands', () {
+    // Returns both the cubit and its notification fake for direct command injection.
+    (TrainingSessionPlayerCubit, FakePlayerNotificationService) makeCubitN(
+        DomainSnapshot snap) {
+      final notification = FakePlayerNotificationService();
+      final session = snap.sessionsById.values.first;
+      final cubit = TrainingSessionPlayerCubit(
+        trainingSession: session,
+        audioPlayerService: FakeAudioPlayerService(),
+        downloadRepository: _FakeDownloadRepo(),
+        sessionRepository: _FakeSessionRepo(snap),
+        notificationService: notification,
+      );
+      return (cubit, notification);
+    }
+
+    test('skipNext command advances to next track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 1, position: 0),
+          _item(sessionId: 1, exerciseId: 2, position: 1),
+        ],
+        [_exercise(1), _exercise(2)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      notification.emit(NotificationCommand.skipNext);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test('skipPrev command goes to previous track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 1, position: 0),
+          _item(sessionId: 1, exerciseId: 2, position: 1),
+        ],
+        [_exercise(1), _exercise(2)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      await Future<void>.delayed(Duration.zero);
+
+      notification.emit(NotificationCommand.skipPrev);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.playingIndex, 0);
+    });
+
+    test('pause command pauses playback', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // starts playing
+
+      notification.emit(NotificationCommand.pause);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    test('play command resumes paused playback', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // starts playing
+      cubit.togglePlay(); // pause
+
+      notification.emit(NotificationCommand.play);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isTrue);
+    });
+
+    test('notification updated with track title and isPlaying=true on load',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      expect(notification.lastTitle, _exercise(1).name);
+      expect(notification.lastIsPlaying, isTrue);
+    });
+
+    test('notification updated with new title when skipping to next track',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 1, position: 0),
+          _item(sessionId: 1, exerciseId: 2, position: 1),
+        ],
+        [_exercise(1), _exercise(2)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notification.lastTitle, _exercise(2).name);
     });
   });
 
