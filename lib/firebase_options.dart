@@ -70,6 +70,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '770507992356',
     projectId: 'pahlevani-74ba6',
     storageBucket: 'pahlevani-74ba6.firebasestorage.app',
-    iosBundleId: 'com.example.pahlevani',
+    iosBundleId: 'com.pahlevani.app',
   );
 }

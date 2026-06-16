@@ -321,6 +321,8 @@ void main() {
     getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
     getIt.registerSingleton<TrainingSessionRepository>(
         FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -337,6 +339,85 @@ void main() {
     // addTearDown callbacks fire after invariant checks, so they're too late.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  // ── Notification command routing (end-to-end through UI) ─────────────────
+
+  testWidgets('skipNext notification command advances player to next track',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // Retrieve the fake registered by setUp so we can emit commands.
+    final notification =
+        getIt<PlayerNotificationService>() as FakePlayerNotificationService;
+
+    notification.emit(NotificationCommand.skipNext);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The cubit is accessible via the BlocConsumer in the tree.
+    final cubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+    expect(cubit.state.playingIndex, 1);
+  });
+
+  testWidgets('skipPrev notification command goes back to first track',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final notification =
+        getIt<PlayerNotificationService>() as FakePlayerNotificationService;
+
+    // Advance first, then go back.
+    notification.emit(NotificationCommand.skipNext);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    notification.emit(NotificationCommand.skipPrev);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final cubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+    expect(cubit.state.playingIndex, 0);
+  });
+
+  testWidgets('pause notification command pauses playback in UI',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final notification =
+        getIt<PlayerNotificationService>() as FakePlayerNotificationService;
+
+    notification.emit(NotificationCommand.pause);
+    await tester.pump();
+
+    // After pause, play icon replaces pause icon.
+    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+  });
+
+  testWidgets('play notification command resumes paused playback in UI',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final notification =
+        getIt<PlayerNotificationService>() as FakePlayerNotificationService;
+
+    notification.emit(NotificationCommand.pause); // pause first
+    await tester.pump();
+    notification.emit(NotificationCommand.play); // resume
+    await tester.pump();
+
+    // After resume, pause icon is back.
+    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
   });
 
   // ── Photo media exercise ───────────────────────────────────────────────────
