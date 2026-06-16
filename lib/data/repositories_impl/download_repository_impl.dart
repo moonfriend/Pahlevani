@@ -11,6 +11,10 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 class DownloadRepositoryImpl implements DownloadRepository {
   final TrainingSessionLocalDataSource localDataSource;
 
+  // Prevents concurrent downloads of the same file.
+  // Checked synchronously (before the first await) so there is no race window.
+  final _inFlight = <String>{};
+
   DownloadRepositoryImpl({required this.localDataSource});
 
   @override
@@ -179,11 +183,19 @@ class DownloadRepositoryImpl implements DownloadRepository {
           await localDataSource.getTrainingSessionDirectoryPath(sessionId);
       await Directory(dir).create(recursive: true);
       final path = '$dir/${_safeFilename(item)}';
-      if (await File(path).exists()) return path;
-      final url = item.exercise.audioFileUrl;
-      if (url == null || url.isEmpty) return null;
-      await localDataSource.downloadFile(url, path, (_, __) {});
-      return path;
+      // Guard: checked synchronously before any await so two concurrent calls
+      // for the same path cannot both pass through.
+      if (_inFlight.contains(path)) return null;
+      _inFlight.add(path);
+      try {
+        if (await File(path).exists()) return path;
+        final url = item.exercise.audioFileUrl;
+        if (url == null || url.isEmpty) return null;
+        await localDataSource.downloadFile(url, path, (_, __) {});
+        return path;
+      } finally {
+        _inFlight.remove(path);
+      }
     } catch (e, st) {
       AppLogger.w('cacheAudio failed for ${item.exercise.name}',
           error: e, stackTrace: st);
@@ -199,11 +211,17 @@ class DownloadRepositoryImpl implements DownloadRepository {
       await Directory(dir).create(recursive: true);
       // Hash keyed on original URL so getLocalImagePath lookup stays stable.
       final path = '$dir/img_${itemId}_${_urlHash(url)}';
-      if (await File(path).exists()) return path;
-      // Download the Supabase-resized version (500×500, quality 80) to save disk space.
-      await localDataSource.downloadFile(
-          supabaseImageTransformUrl(url), path, (_, __) {});
-      return path;
+      if (_inFlight.contains(path)) return null;
+      _inFlight.add(path);
+      try {
+        if (await File(path).exists()) return path;
+        // Download the Supabase-resized version (500×500, quality 80) to save disk space.
+        await localDataSource.downloadFile(
+            supabaseImageTransformUrl(url), path, (_, __) {});
+        return path;
+      } finally {
+        _inFlight.remove(path);
+      }
     } catch (e, st) {
       AppLogger.w('cacheImage failed (itemId=$itemId)',
           error: e, stackTrace: st);

@@ -11,6 +11,7 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import '../../../fakes/fake_audio_player_service.dart';
+import '../../../fakes/fake_player_notification_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ TrainingSessionPlayerCubit _makeCubit(
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
     downloadRepository: _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
+    notificationService: FakePlayerNotificationService(),
   );
 }
 
@@ -456,6 +458,7 @@ void main() {
         audioPlayerService: audioService,
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
+        notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
 
