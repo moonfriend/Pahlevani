@@ -9,8 +9,11 @@
 #   smoke_test.dart — hits real Supabase; run manually:
 #     flutter test integration_test/smoke_test.dart -d linux --update-goldens
 #
-# GitHub Actions secrets (Settings → Secrets → Actions):
-#   SUPABASE_URL / SUPABASE_ANON_KEY — used only for manual smoke runs
+# GitHub Actions secrets required (Settings → Secrets → Actions):
+#   FIREBASE_ANDROID_API_KEY  — Android Firebase API key (for APK build)
+#   FIREBASE_IOS_API_KEY      — iOS Firebase API key (for APK build dart-define)
+#   FIREBASE_WEB_API_KEY      — Web Firebase API key (for APK build dart-define)
+#   GOOGLE_SERVICES_JSON      — base64-encoded android/app/google-services.json
 
 name: CI
 
@@ -102,13 +105,25 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # google-services.json is gitignored; decode from secret.
+      - name: Write google-services.json
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
+
       - name: Build Android APK (debug)
-        run: flutter build apk --debug
+        run: |
+          flutter build apk --debug \
+            --dart-define=FIREBASE_ANDROID_API_KEY=${{ secrets.FIREBASE_ANDROID_API_KEY }} \
+            --dart-define=FIREBASE_IOS_API_KEY=${{ secrets.FIREBASE_IOS_API_KEY }} \
+            --dart-define=FIREBASE_WEB_API_KEY=${{ secrets.FIREBASE_WEB_API_KEY }}
 
       # Release build uses debug signing in CI (key.properties absent).
       # Purpose: catch R8/ProGuard/compilation issues that only appear in release mode.
       - name: Build Android APK (release)
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release \
+            --dart-define=FIREBASE_ANDROID_API_KEY=${{ secrets.FIREBASE_ANDROID_API_KEY }} \
+            --dart-define=FIREBASE_IOS_API_KEY=${{ secrets.FIREBASE_IOS_API_KEY }} \
+            --dart-define=FIREBASE_WEB_API_KEY=${{ secrets.FIREBASE_WEB_API_KEY }}
 
   # ── Integration tests (Linux desktop, fake repos) ─────────────────────────
   integration:
@@ -151,6 +166,7 @@ jobs:
 
       # xvfb-run provides a virtual X11 display so Flutter can open a window.
       # Software Mesa handles GPU rendering on the headless runner.
+      # Linux desktop does not use Firebase; no --dart-define needed here.
       - name: Run integration tests (fake-repo journeys)
         run: |
           PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
