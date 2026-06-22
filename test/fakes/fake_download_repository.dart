@@ -50,6 +50,11 @@ class FakeDownloadRepository implements DownloadRepository {
   Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
 
   @override
+  Future<String> resolvePlayableAudioPath(
+          int sessionId, ItemDetail item) async =>
+      item.exercise.audioFileUrl ?? '';
+
+  @override
   Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
       null;
 

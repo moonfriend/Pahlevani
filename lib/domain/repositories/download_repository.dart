@@ -25,6 +25,14 @@ abstract class DownloadRepository {
   /// Download a single audio track and return its local path. No-op if already cached.
   Future<String?> cacheAudio(int sessionId, ItemDetail item);
 
+  /// Returns a local file path for [item]'s audio, downloading it first if
+  /// necessary. Unlike [cacheAudio], this never returns null on success —
+  /// callers should hand the result straight to playback instead of reading
+  /// [ItemDetail.exercise.audioFileUrl] themselves, so the file is fetched
+  /// exactly once (not once to stream it and once more to cache it).
+  /// Falls back to the original remote URL if the download fails.
+  Future<String> resolvePlayableAudioPath(int sessionId, ItemDetail item);
+
   /// Download a single image and return its local path. No-op if already cached.
   Future<String?> cacheImage(int sessionId, int itemId, String url);
 

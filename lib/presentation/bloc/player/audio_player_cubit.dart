@@ -318,7 +318,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
-    final sourcePath = track.audioFilePath;
+    // Resolve to a local path before handing it to the audio engine — playing
+    // a remote URL directly would stream/download the file, and the
+    // background lookahead cache would then download it again separately.
+    final sourcePath = track.audioFilePath.startsWith('/')
+        ? track.audioFilePath
+        : await _downloadRepo.resolvePlayableAudioPath(
+            _trainingSession.id, _itemDetails[index]);
 
     _originalDuration = null;
     _targetDuration = null;
