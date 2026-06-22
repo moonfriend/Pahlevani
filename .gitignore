@@ -54,6 +54,9 @@ coverage/
 # Streamlit secrets
 scripts/.streamlit/secrets.toml
 
+# Generated script output (downloaded/processed media, reports)
+scripts/output/
+
 # Android signing — NEVER commit these
 android/key.properties
 *.jks
