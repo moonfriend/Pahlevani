@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,7 @@ import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
+import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -78,7 +78,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                   src.isNotEmpty &&
                   !src.startsWith('/') &&
                   _precachedUrls.add(src)) {
-                precacheImage(NetworkImage(src), context, onError: (_, __) {});
+                precacheImage(ExerciseImageProvider(src), context,
+                    onError: (_, __) {});
               }
             }
           },
@@ -216,17 +217,12 @@ class _Stage extends StatelessWidget {
       // fitHeight: image always fills the stage height; on wide containers
       // the sides are left transparent so the Persian pattern shows through
       // instead of cropping/zooming the image to fill the full width.
-      const fit = BoxFit.fitHeight;
-      const align = Alignment.center;
-      if (src.startsWith('/')) {
-        return Image.file(File(src),
-            fit: fit,
-            alignment: align,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink());
-      }
-      return Image.network(src,
-          fit: fit,
-          alignment: align,
+      // ExerciseImageProvider owns the local-vs-remote decision and applies
+      // the Supabase size transform for remote URLs.
+      return Image(
+          image: ExerciseImageProvider(src),
+          fit: BoxFit.fitHeight,
+          alignment: Alignment.center,
           errorBuilder: (_, __, ___) => const SizedBox.shrink());
     }
 
