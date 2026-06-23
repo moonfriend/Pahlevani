@@ -422,6 +422,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   void _startLogicalTimer() {
+    // Defensive cancel: callers (e.g. seekTo, called rapid-fire during a
+    // slider drag) may race, leaving a previous timer's cancellation
+    // overtaken by a newer call before it ever scheduled a replacement.
+    // Without this, multiple Timer.periodic instances can end up ticking
+    // concurrently — multiplying the effective tick rate (the "progress
+    // bar moves very fast and the track ends immediately" symptom) — and
+    // orphaned ones keep ticking forever after the page closes, since
+    // close() can only cancel whichever single timer _logicalTimer
+    // currently references.
+    _logicalTimer?.cancel();
     if (!state.isPlaying) return;
     final track = state.currentTrack;
     if (track == null || _originalDuration == null) return;
@@ -437,10 +447,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         logicalDuration: _logicalTargetDuration));
     _logicalTimer =
         Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+      if (isClosed) {
+        timer.cancel();
+        return;
+      }
       if (!state.isPlaying) return;
       _logicalElapsed += const Duration(milliseconds: 200);
       if (_logicalElapsed >= _logicalTargetDuration!) {
-        _logicalTimer?.cancel();
+        timer.cancel();
         next();
         return;
       }
