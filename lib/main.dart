@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
@@ -19,7 +18,7 @@ import 'package:pahlevani/presentation/pages/training_session/training_sessions_
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase Crashlytics — requires android/app/google-services.json.
@@ -49,35 +48,41 @@ void main() async {
 
   // Initialize audio_service on mobile so the handler is available to DI.
   // On Linux / Web, the handler is skipped and DI falls back to audioplayers.
+  // Non-fatal: DependencyInjection's isRegistered<PahlevaniAudioHandler> check
+  // already falls back to AudioPlayersServiceImpl, so a failure here should
+  // degrade the notification card, not take down the whole app.
   if (!kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) {
-    final handler = await AudioService.init<PahlevaniAudioHandler>(
-      builder: () => PahlevaniAudioHandler(),
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.pahlevani.app.audio',
-        androidNotificationChannelName: 'Pahlevani Audio',
-        androidNotificationIcon: 'mipmap/ic_launcher',
-        androidShowNotificationBadge: false,
-        androidStopForegroundOnPause: false,
-      ),
-    );
-    getIt.registerSingleton<PahlevaniAudioHandler>(handler);
+    try {
+      final handler = await AudioService.init<PahlevaniAudioHandler>(
+        builder: () => PahlevaniAudioHandler(),
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.pahlevani.app.audio',
+          androidNotificationChannelName: 'Pahlevani Audio',
+          androidNotificationIcon: 'mipmap/ic_launcher',
+          androidShowNotificationBadge: false,
+          androidStopForegroundOnPause: false,
+        ),
+      );
+      getIt.registerSingleton<PahlevaniAudioHandler>(handler);
+    } catch (error, stack) {
+      AppLogger.e('AudioService.init failed — falling back to audioplayers',
+          error: error, stackTrace: stack);
+    }
   }
 
   await DependencyInjection().ensureInitialized();
 
   // Request POST_NOTIFICATIONS on Android 13+ (needed for the media card).
   if (!kIsWeb && Platform.isAndroid) {
-    await Permission.notification.request();
+    try {
+      await Permission.notification.request();
+    } catch (error, stack) {
+      AppLogger.w('Notification permission request failed',
+          error: error, stackTrace: stack);
+    }
   }
 
-  runZonedGuarded(
-    () => runApp(const PahlevaniApp()),
-    (error, stack) {
-      if (crashlyticsEnabled) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      }
-    },
-  );
+  runApp(const PahlevaniApp());
 }
 
 class PahlevaniApp extends StatelessWidget {
