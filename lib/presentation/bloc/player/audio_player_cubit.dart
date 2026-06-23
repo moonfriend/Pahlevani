@@ -335,6 +335,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
 
       if (shouldPlay) {
+        // Optimistic emit: the engine's play() future, and the chain of
+        // awaits leading up to this call (download-path resolution etc.),
+        // can take noticeably longer than the lock-screen notification
+        // takes to flip to "playing" (it's driven straight off the audio
+        // engine's own event stream). Emitting here keeps the in-app icon
+        // from visibly lagging behind — same pattern setIndexAndPlay()
+        // already uses.
+        emit(state.copyWith(isPlaying: true));
         await _audioService.play(sourcePath);
         emit(state.copyWith(isPlaying: true, isLoading: false));
       } else {
