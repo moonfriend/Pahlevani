@@ -41,7 +41,11 @@ class PahlevaniAudioHandler extends BaseAudioHandler
     mediaItem.add(MediaItem(
       id: trackTitle,
       title: trackTitle,
-      artUri: artUri != null ? Uri.tryParse(artUri) : null,
+      artUri: artUri != null
+          ? (artUri.startsWith('http://') || artUri.startsWith('https://')
+              ? Uri.tryParse(artUri)
+              : Uri.file(artUri))
+          : null,
       duration: duration,
     ));
     syncPlaybackState(playing: isPlaying);
