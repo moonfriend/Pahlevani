@@ -74,6 +74,11 @@ create table if not exists public.trainer_roster (
   id bigint generated always as identity primary key,
   trainer_id uuid not null references auth.users (id) on delete cascade,
   trainee_id uuid not null references auth.users (id) on delete cascade,
+  -- Denormalized at link-creation time so the trainer's app can show who's
+  -- on their roster without a separate cross-user read on `profiles` (RLS
+  -- there only lets a user read their own row) — the admin already has this
+  -- value, it's exactly what the trainee gave them to set up the link.
+  trainee_email text not null,
   created_at timestamptz not null default now(),
   unique (trainer_id, trainee_id)
 );
