@@ -483,6 +483,54 @@ void main() {
     });
   });
 
+  // ---------- engine-driven self-healing ----------
+  //
+  // The cubit's isPlaying must not only be set by its own call sites — it
+  // must also self-heal from engine state changes it didn't itself request
+  // (OS audio-focus loss/regain, lock-screen hardware buttons, internal
+  // engine errors). Regression coverage for the play/pause-vs-visual desync
+  // bug: previously isPlaying was write-only, so any out-of-band engine
+  // change left the UI stuck showing the wrong icon/mask until the next tap.
+
+  group('onPlayingChanged self-healing', () {
+    test('isPlaying flips to false when engine stops out-of-band', () async {
+      final session = _session(1);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      expect(cubit.state.isPlaying, isTrue);
+
+      // No cubit method called — simulates an OS-level interruption.
+      audioService.emitPlaying(false);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    test('isPlaying flips to true when engine resumes out-of-band', () async {
+      final session = _session(1);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.togglePlay(); // pause
+      expect(cubit.state.isPlaying, isFalse);
+
+      // No cubit method called — simulates the OS resuming playback itself.
+      audioService.emitPlaying(true);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isTrue);
+    });
+  });
+
   // ---------- replay ----------
 
   group('replay()', () {

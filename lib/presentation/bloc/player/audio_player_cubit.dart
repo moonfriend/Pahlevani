@@ -97,6 +97,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<bool>? _playingSubscription;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
   Duration? _originalDuration;
@@ -135,6 +136,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       emit(state.copyWith(duration: _targetDuration ?? duration));
       _logicalTimer?.cancel();
       _startLogicalTimer();
+    });
+
+    // Authoritative correction on top of the optimistic emits already done at
+    // each call site: heals isPlaying back in sync whenever the engine's real
+    // state changes for a reason this cubit didn't itself request (OS
+    // audio-focus interruption/resume, lock-screen hardware buttons, an
+    // engine-internal error after a failed play()).
+    _playingSubscription = _audioService.onPlayingChanged.listen((playing) {
+      if (state.isPlaying != playing) emit(state.copyWith(isPlaying: playing));
     });
 
     _audioService.setLooping(true);
@@ -485,6 +495,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
+    await _playingSubscription?.cancel();
     await _audioService.dispose();
     return super.close();
   }
