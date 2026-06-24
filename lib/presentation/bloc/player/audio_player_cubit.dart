@@ -318,7 +318,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
-    final sourcePath = track.audioFilePath;
+    // Resolve to a local path before handing it to the audio engine — playing
+    // a remote URL directly would stream/download the file, and the
+    // background lookahead cache would then download it again separately.
+    final sourcePath = track.audioFilePath.startsWith('/')
+        ? track.audioFilePath
+        : await _downloadRepo.resolvePlayableAudioPath(
+            _trainingSession.id, _itemDetails[index]);
 
     _originalDuration = null;
     _targetDuration = null;
@@ -329,6 +335,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
 
       if (shouldPlay) {
+        // Optimistic emit: the engine's play() future, and the chain of
+        // awaits leading up to this call (download-path resolution etc.),
+        // can take noticeably longer than the lock-screen notification
+        // takes to flip to "playing" (it's driven straight off the audio
+        // engine's own event stream). Emitting here keeps the in-app icon
+        // from visibly lagging behind — same pattern setIndexAndPlay()
+        // already uses.
+        emit(state.copyWith(isPlaying: true));
         await _audioService.play(sourcePath);
         emit(state.copyWith(isPlaying: true, isLoading: false));
       } else {
@@ -416,6 +430,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   void _startLogicalTimer() {
+    // Defensive cancel: callers (e.g. seekTo, called rapid-fire during a
+    // slider drag) may race, leaving a previous timer's cancellation
+    // overtaken by a newer call before it ever scheduled a replacement.
+    // Without this, multiple Timer.periodic instances can end up ticking
+    // concurrently — multiplying the effective tick rate (the "progress
+    // bar moves very fast and the track ends immediately" symptom) — and
+    // orphaned ones keep ticking forever after the page closes, since
+    // close() can only cancel whichever single timer _logicalTimer
+    // currently references.
+    _logicalTimer?.cancel();
     if (!state.isPlaying) return;
     final track = state.currentTrack;
     if (track == null || _originalDuration == null) return;
@@ -431,10 +455,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         logicalDuration: _logicalTargetDuration));
     _logicalTimer =
         Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+      if (isClosed) {
+        timer.cancel();
+        return;
+      }
       if (!state.isPlaying) return;
       _logicalElapsed += const Duration(milliseconds: 200);
       if (_logicalElapsed >= _logicalTargetDuration!) {
-        _logicalTimer?.cancel();
+        timer.cancel();
         next();
         return;
       }

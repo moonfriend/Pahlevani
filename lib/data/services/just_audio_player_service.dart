@@ -60,8 +60,12 @@ class JustAudioPlayerService implements AudioPlayerService {
   Future<void> setLooping(bool loop) =>
       _player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
 
+  // _player is the singleton PahlevaniAudioHandler's player, not owned by
+  // this wrapper — disposing it here would kill audio for every future
+  // session. Stop playback instead; the player itself lives for the app's
+  // lifetime.
   @override
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() => _player.stop();
 
   Future<void> _setSource(String path) async {
     if (path.startsWith('http://') || path.startsWith('https://')) {
