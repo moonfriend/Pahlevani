@@ -189,14 +189,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final itemDetail = ItemDetail(item: item, exercise: exercise);
         _itemDetails.add(itemDetail);
 
-        final localAudio =
-            await _downloadRepo.getLocalAudioPath(sessionId, itemDetail);
+        final localAudio = await _downloadRepo.getLocalAudioPath(itemDetail);
         final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
 
         String? localImage;
         if (exercise.media.hasAsset) {
-          localImage = await _downloadRepo.getLocalImagePath(sessionId, item.id,
-              imageUrl: exercise.media.src);
+          localImage =
+              await _downloadRepo.getLocalImagePath(exercise.media.src!);
         }
         final resolvedMedia = localImage != null
             ? ExerciseMedia(type: 'photo', src: localImage)
@@ -311,16 +310,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     final track = state.tracks[index];
     final detail = _itemDetails[index];
-    final sessionId = _trainingSession.id;
 
     if (!track.audioFilePath.startsWith('/')) {
-      _downloadRepo.cacheAudio(sessionId, detail);
+      _downloadRepo.cacheAudio(detail);
     }
     if (track.media.type == 'photo' &&
         track.media.src != null &&
         !track.media.src!.startsWith('/')) {
-      _downloadRepo.cacheImage(
-          sessionId, int.parse(track.id), track.media.src!);
+      _downloadRepo.cacheImage(track.media.src!);
     }
   }
 
@@ -333,8 +330,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     // background lookahead cache would then download it again separately.
     final sourcePath = track.audioFilePath.startsWith('/')
         ? track.audioFilePath
-        : await _downloadRepo.resolvePlayableAudioPath(
-            _trainingSession.id, _itemDetails[index]);
+        : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
 
     _originalDuration = null;
     _targetDuration = null;

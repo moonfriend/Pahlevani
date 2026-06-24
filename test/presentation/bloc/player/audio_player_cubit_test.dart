@@ -54,25 +54,23 @@ class _FakeDownloadRepo implements DownloadRepository {
   Stream<double> downloadTrainingSession(SessionDetail s) =>
       const Stream.empty();
   @override
-  Future<bool> isTrainingSessionDownloaded(int id) async => false;
+  Future<bool> isTrainingSessionDownloaded(
+          int id, List<ItemDetail> items) async =>
+      false;
   @override
-  Future<String?> getLocalSongPath(int sid, ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
   @override
-  Future<String?> getLocalAudioPath(int sid, ItemDetail item) async => null;
+  Future<String?> getLocalImagePath(String imageUrl) async => null;
   @override
-  Future<String?> getLocalImagePath(int sid, int itemId,
-          {String? imageUrl}) async =>
-      null;
+  Future<String?> cacheAudio(ItemDetail item) async => null;
   @override
-  Future<String?> cacheAudio(int sid, ItemDetail item) async => null;
-  @override
-  Future<String?> cacheImage(int sid, int itemId, String url) async => null;
+  Future<String?> cacheImage(String url) async => null;
   @override
   Future<bool> checkAllCachedAndMark(int sid, List<ItemDetail> items) async =>
       false;
 
   @override
-  Future<String> resolvePlayableAudioPath(int sid, ItemDetail item) async {
+  Future<String> resolvePlayableAudioPath(ItemDetail item) async {
     resolveCallCount++;
     resolvedItemIds.add(item.item.id);
     return resolvedPathBuilder?.call(item) ?? '/cached/${item.item.id}.mp3';
