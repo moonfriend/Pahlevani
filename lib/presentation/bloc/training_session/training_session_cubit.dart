@@ -139,7 +139,9 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
           ));
         },
         onDone: () {
-          _downloadRepository.isTrainingSessionDownloaded(sessionId).then((ok) {
+          _downloadRepository
+              .isTrainingSessionDownloaded(sessionId, detail.items)
+              .then((ok) {
             _currentDownloadStatus[sessionId] =
                 ok ? DownloadStatus.downloaded : DownloadStatus.error;
             _currentDownloadProgress.remove(sessionId);

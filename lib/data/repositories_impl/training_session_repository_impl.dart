@@ -158,11 +158,17 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           .toList();
       await itemBox.deleteAll(itemKeys);
 
+      // Legacy per-session directory cleanup — harmless no-op for sessions
+      // downloaded after the move to the shared media cache, since nothing
+      // writes here anymore. Audio/image files themselves are never deleted
+      // on session removal: they live in the shared cache and may still be
+      // referenced by other sessions.
       if (await localDataSource
           .trainingSessionDirectoryExists(trainingSessionId)) {
         await localDataSource.deleteTrainingSessionDirectory(trainingSessionId);
-        final ids = await localDataSource.getDownloadedTrainingSessionIds();
-        ids.remove(trainingSessionId.toString());
+      }
+      final ids = await localDataSource.getDownloadedTrainingSessionIds();
+      if (ids.remove(trainingSessionId.toString())) {
         await localDataSource.saveDownloadedTrainingSessionIds(ids);
       }
 
