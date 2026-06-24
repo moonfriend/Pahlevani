@@ -99,11 +99,31 @@ def load_movements() -> pd.DataFrame:
         st.warning(f"Could not load movement table ({e}). Run the DB migration first.")
         return pd.DataFrame()
 
+@st.cache_data(ttl=30)
+def load_profiles() -> pd.DataFrame:
+    try:
+        rows = get_client().table("profiles").select("*").order("email").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Could not load profiles table ({e}). Run the DB migration first.")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=30)
+def load_roster() -> pd.DataFrame:
+    try:
+        rows = get_client().table("trainer_roster").select("*").order("trainer_id").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Could not load trainer_roster table ({e}). Run the DB migration first.")
+        return pd.DataFrame()
+
 def bust_cache():
     load_exercises.clear()
     load_sessions.clear()
     load_items.clear()
     load_movements.clear()
+    load_profiles.clear()
+    load_roster.clear()
 
 def make_media_url(storage_path: str) -> str:
     if MEDIA_BUCKET_PUBLIC:
@@ -154,6 +174,16 @@ def recording_label(row: pd.Series) -> str:
     reps = int(row["repetitions"]) if pd.notna(row.get("repetitions")) else "?"
     auth = row.get("author") or "unknown"
     return f"{auth}  ·  {dur}  ·  {reps} reps"
+
+def find_profile_by_email(email: str) -> dict | None:
+    """profiles is read via the service-role key, which bypasses RLS — that's
+    intentional here, this tool is the only place a trainer/trainee gets
+    looked up by email."""
+    rows = (
+        get_client().table("profiles").select("*")
+        .eq("email", email.strip().lower()).execute().data
+    )
+    return rows[0] if rows else None
 
 # ── Savers ────────────────────────────────────────────────────────────────────
 
@@ -932,6 +962,110 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Trainer Role
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_roles():
+    st.header("Trainer Role")
+    st.caption(
+        "Flip is_trainer for a user, looked up by their signup email. "
+        "This is the only way a user becomes a trainer — the app has no "
+        "self-serve 'become a trainer' flow."
+    )
+
+    email = st.text_input("User email", key="roles_email").strip().lower()
+    if st.button("Look up", key="roles_lookup") and email:
+        profile = find_profile_by_email(email)
+        st.session_state["roles_found_profile"] = profile
+        st.session_state["roles_found_email"] = email
+
+    profile = st.session_state.get("roles_found_profile")
+    if st.session_state.get("roles_found_email") == email and email:
+        if profile is None:
+            st.error(f"No profile found for {email}.")
+        else:
+            status = "a trainer" if profile.get("is_trainer") else "a trainee"
+            st.write(f"**{profile['email']}** — currently {status}.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if not profile.get("is_trainer") and st.button("Make trainer", key="roles_make"):
+                    get_client().table("profiles").update({"is_trainer": True}).eq("id", profile["id"]).execute()
+                    st.success(f"{profile['email']} is now a trainer.")
+                    bust_cache()
+                    st.session_state.pop("roles_found_profile", None)
+                    st.rerun()
+            with col2:
+                if profile.get("is_trainer") and st.button("Revoke trainer", key="roles_revoke"):
+                    get_client().table("profiles").update({"is_trainer": False}).eq("id", profile["id"]).execute()
+                    st.success(f"{profile['email']} is no longer a trainer.")
+                    bust_cache()
+                    st.session_state.pop("roles_found_profile", None)
+                    st.rerun()
+
+    st.divider()
+    st.caption("All trainers")
+    profiles = load_profiles()
+    if profiles.empty or "is_trainer" not in profiles.columns:
+        st.info("No profiles yet — they're created automatically when someone signs up.")
+    else:
+        trainers = profiles[profiles["is_trainer"] == True]  # noqa: E712
+        cols = [c for c in ["email", "created_at"] if c in trainers.columns]
+        st.dataframe(trainers[cols], use_container_width=True, hide_index=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Trainer ↔ Trainee Roster
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_roster():
+    st.header("Trainer ↔ Trainee Roster")
+    st.caption(
+        "Link a trainee to a trainer after the trainee gives the trainer "
+        "(and you) their signup email. The app only ever reads this table — "
+        "links are created here, never in-app."
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        trainer_email = st.text_input("Trainer email", key="roster_trainer_email").strip().lower()
+    with col2:
+        trainee_email = st.text_input("Trainee email", key="roster_trainee_email").strip().lower()
+
+    if st.button("Link trainee to trainer", key="roster_link"):
+        trainer = find_profile_by_email(trainer_email) if trainer_email else None
+        trainee = find_profile_by_email(trainee_email) if trainee_email else None
+        if trainer is None:
+            st.error(f"No account found for trainer email {trainer_email}.")
+        elif trainee is None:
+            st.error(f"No account found for trainee email {trainee_email}.")
+        elif not trainer.get("is_trainer"):
+            st.error(f"{trainer_email} is not flagged as a trainer yet — set that in the Trainer Role tab first.")
+        else:
+            try:
+                get_client().table("trainer_roster").insert({
+                    "trainer_id": trainer["id"],
+                    "trainee_id": trainee["id"],
+                    "trainee_email": trainee["email"],
+                }).execute()
+                st.success(f"Linked {trainee_email} to trainer {trainer_email}.")
+                bust_cache()
+            except Exception as e:
+                st.error(f"Failed to link (already linked?): {e}")
+
+    st.divider()
+    st.caption("Existing roster links")
+    roster = load_roster()
+    if roster.empty:
+        st.info("No roster links yet.")
+    else:
+        profiles = load_profiles()
+        display = roster.copy()
+        if not profiles.empty:
+            id_to_email = dict(zip(profiles["id"], profiles["email"]))
+            display["trainer_email"] = display["trainer_id"].map(id_to_email)
+        cols = [c for c in ["trainer_email", "trainee_email", "created_at"] if c in display.columns]
+        st.dataframe(display[cols], use_container_width=True, hide_index=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -941,13 +1075,15 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
         "🏗️  Session Builder",
         "🔍  Inspector",
         "📸  Movement Media",
+        "🧑‍🏫  Trainer Role",
+        "🔗  Roster",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
@@ -955,6 +1091,8 @@ def main():
     with t4: tab_session_builder()
     with t5: tab_inspector()
     with t6: tab_movement_media()
+    with t7: tab_roles()
+    with t8: tab_roster()
 
 
 if __name__ == "__main__":
