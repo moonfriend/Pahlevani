@@ -230,6 +230,13 @@ class DownloadRepositoryImpl implements DownloadRepository {
   }
 
   @override
+  Future<String> resolvePlayableAudioPath(
+      int sessionId, ItemDetail item) async {
+    final cached = await cacheAudio(sessionId, item);
+    return cached ?? item.exercise.audioFileUrl ?? '';
+  }
+
+  @override
   Future<bool> checkAllCachedAndMark(
       int sessionId, List<ItemDetail> items) async {
     try {
