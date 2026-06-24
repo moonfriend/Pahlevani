@@ -84,6 +84,9 @@ class _FakeLocalDataSource implements TrainingSessionLocalDataSource {
       '/fake/$trainingSessionid';
 
   @override
+  Future<String> getMediaCacheDirectoryPath() async => '/fake/media_cache';
+
+  @override
   Future<bool> trainingSessionDirectoryExists(int trainingSessionid) async =>
       false;
 

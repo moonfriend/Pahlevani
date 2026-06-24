@@ -23,6 +23,9 @@ class JustAudioPlayerService implements AudioPlayerService {
       _player.durationStream.where((d) => d != null).map((d) => d!);
 
   @override
+  Stream<bool> get onPlayingChanged => _player.playingStream;
+
+  @override
   Future<void> play(String path) async {
     await _setSource(path);
     await _player.play();

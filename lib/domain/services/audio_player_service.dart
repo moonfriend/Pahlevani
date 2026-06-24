@@ -9,6 +9,13 @@ abstract class AudioPlayerService {
   /// Fires when the player learns the duration of the current source.
   Stream<Duration> get onDurationChanged;
 
+  /// Fires whenever the engine's actual playing/paused state changes —
+  /// including transitions the caller didn't itself request (OS audio-focus
+  /// interruptions, lock-screen hardware controls, engine-internal errors).
+  /// Consumers should treat this as authoritative rather than relying solely
+  /// on the return value of [play]/[pause]/[resume]/[stop].
+  Stream<bool> get onPlayingChanged;
+
   /// Stop current source, load [path], and start playing immediately.
   /// [path] may be a remote URL (`https://…`), an absolute local path (`/…`),
   /// or an asset path (`assets/…` or bare asset name).
