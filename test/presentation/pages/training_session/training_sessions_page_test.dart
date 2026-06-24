@@ -52,32 +52,25 @@ class _StubDownloadRepository implements DownloadRepository {
       const Stream.empty();
 
   @override
-  Future<bool> isTrainingSessionDownloaded(int sessionId) async => false;
+  Future<bool> isTrainingSessionDownloaded(
+          int sessionId, List<ItemDetail> items) async =>
+      false;
 
   @override
-  Future<String?> getLocalSongPath(int sessionId, ItemDetail song) async =>
-      null;
+  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
 
   @override
-  Future<String?> getLocalAudioPath(int sessionId, ItemDetail item) async =>
-      null;
+  Future<String?> getLocalImagePath(String imageUrl) async => null;
 
   @override
-  Future<String?> getLocalImagePath(int sessionId, int itemId,
-          {String? imageUrl}) async =>
-      null;
+  Future<String?> cacheAudio(ItemDetail item) async => null;
 
   @override
-  Future<String?> cacheAudio(int sessionId, ItemDetail item) async => null;
-
-  @override
-  Future<String> resolvePlayableAudioPath(
-          int sessionId, ItemDetail item) async =>
+  Future<String> resolvePlayableAudioPath(ItemDetail item) async =>
       item.exercise.audioFileUrl ?? '';
 
   @override
-  Future<String?> cacheImage(int sessionId, int itemId, String url) async =>
-      null;
+  Future<String?> cacheImage(String url) async => null;
 
   @override
   Future<bool> checkAllCachedAndMark(

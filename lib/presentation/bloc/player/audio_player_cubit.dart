@@ -97,6 +97,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<bool>? _playingSubscription;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
   Duration? _originalDuration;
@@ -135,6 +136,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       emit(state.copyWith(duration: _targetDuration ?? duration));
       _logicalTimer?.cancel();
       _startLogicalTimer();
+    });
+
+    // Authoritative correction on top of the optimistic emits already done at
+    // each call site: heals isPlaying back in sync whenever the engine's real
+    // state changes for a reason this cubit didn't itself request (OS
+    // audio-focus interruption/resume, lock-screen hardware buttons, an
+    // engine-internal error after a failed play()).
+    _playingSubscription = _audioService.onPlayingChanged.listen((playing) {
+      if (state.isPlaying != playing) emit(state.copyWith(isPlaying: playing));
     });
 
     _audioService.setLooping(true);
@@ -179,14 +189,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final itemDetail = ItemDetail(item: item, exercise: exercise);
         _itemDetails.add(itemDetail);
 
-        final localAudio =
-            await _downloadRepo.getLocalAudioPath(sessionId, itemDetail);
+        final localAudio = await _downloadRepo.getLocalAudioPath(itemDetail);
         final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
 
         String? localImage;
         if (exercise.media.hasAsset) {
-          localImage = await _downloadRepo.getLocalImagePath(sessionId, item.id,
-              imageUrl: exercise.media.src);
+          localImage =
+              await _downloadRepo.getLocalImagePath(exercise.media.src!);
         }
         final resolvedMedia = localImage != null
             ? ExerciseMedia(type: 'photo', src: localImage)
@@ -301,16 +310,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     final track = state.tracks[index];
     final detail = _itemDetails[index];
-    final sessionId = _trainingSession.id;
 
     if (!track.audioFilePath.startsWith('/')) {
-      _downloadRepo.cacheAudio(sessionId, detail);
+      _downloadRepo.cacheAudio(detail);
     }
     if (track.media.type == 'photo' &&
         track.media.src != null &&
         !track.media.src!.startsWith('/')) {
-      _downloadRepo.cacheImage(
-          sessionId, int.parse(track.id), track.media.src!);
+      _downloadRepo.cacheImage(track.media.src!);
     }
   }
 
@@ -323,8 +330,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     // background lookahead cache would then download it again separately.
     final sourcePath = track.audioFilePath.startsWith('/')
         ? track.audioFilePath
-        : await _downloadRepo.resolvePlayableAudioPath(
-            _trainingSession.id, _itemDetails[index]);
+        : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
 
     _originalDuration = null;
     _targetDuration = null;
@@ -485,6 +491,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
+    await _playingSubscription?.cancel();
     await _audioService.dispose();
     return super.close();
   }

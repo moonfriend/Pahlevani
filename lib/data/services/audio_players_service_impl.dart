@@ -14,6 +14,10 @@ class AudioPlayersServiceImpl implements AudioPlayerService {
   @override
   Stream<Duration> get onDurationChanged => _player.onDurationChanged;
 
+  @override
+  Stream<bool> get onPlayingChanged =>
+      _player.onPlayerStateChanged.map((s) => s == PlayerState.playing);
+
   @visibleForTesting
   static Source sourceFor(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) {

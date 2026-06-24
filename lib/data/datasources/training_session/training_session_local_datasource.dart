@@ -25,7 +25,17 @@ abstract class TrainingSessionLocalDataSource {
   Future<void> saveDownloadedTrainingSessionIds(List<String> ids);
 
   /// Gets the expected local directory path for a given training_session ID.
+  /// Legacy — pre-shared-cache downloads land here; only used to clean up
+  /// the directory when a session is deleted. New downloads use
+  /// [getMediaCacheDirectoryPath] instead, since audio/image files are
+  /// shared across whichever sessions reference the same exercise.
   Future<String> getTrainingSessionDirectoryPath(int trainingSessionid);
+
+  /// Shared, content-addressed cache directory for all downloaded audio and
+  /// image files — flat, not nested per session, so the same exercise
+  /// downloaded for one session is reused by every other session that
+  /// references it.
+  Future<String> getMediaCacheDirectoryPath();
 
   /// Checks if the directory for a given training_session ID exists.
   Future<bool> trainingSessionDirectoryExists(int trainingSessionid);
@@ -84,6 +94,12 @@ class TrainingSessionLocalDataSourceImpl
   Future<String> getTrainingSessionDirectoryPath(int trainingSessionid) async {
     final baseDir = await _getBaseDirectory();
     return '$baseDir/training_session_$trainingSessionid';
+  }
+
+  @override
+  Future<String> getMediaCacheDirectoryPath() async {
+    final baseDir = await _getBaseDirectory();
+    return '$baseDir/media_cache';
   }
 
   @override

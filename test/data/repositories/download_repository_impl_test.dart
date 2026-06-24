@@ -15,8 +15,10 @@ import '../../fakes/test_seed_data.dart';
 class MockLocalDataSource extends Mock
     implements TrainingSessionLocalDataSource {}
 
-// Mirrors _safeFilename / _djb2 from DownloadRepositoryImpl so tests can
-// pre-create the exact file paths the impl will look for.
+// Mirrors _audioFilename / _djb2 from DownloadRepositoryImpl so tests can
+// pre-create the exact file paths the impl will look for. Keyed purely on
+// the exercise (name + URL hash) — not on the item/session — since audio is
+// now shared across every session that references the same exercise.
 String _urlHash(String url) {
   var hash = 5381;
   for (final c in url.codeUnits) {
@@ -25,7 +27,7 @@ String _urlHash(String url) {
   return (hash.toUnsigned(32)).toRadixString(16).padLeft(8, '0');
 }
 
-String _filename(TrainingItem item, Exercise exercise) {
+String _audioFilename(Exercise exercise) {
   final safeName = exercise.name
       .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
       .replaceAll(' ', '_');
@@ -41,7 +43,7 @@ String _filename(TrainingItem item, Exercise exercise) {
       }
     }
   } catch (_) {}
-  return '${item.id}_${safeName}_${_urlHash(url)}$ext';
+  return '${safeName}_${_urlHash(url)}$ext';
 }
 
 void main() {
@@ -53,6 +55,8 @@ void main() {
     mockDs = MockLocalDataSource();
     repo = DownloadRepositoryImpl(localDataSource: mockDs);
     tmpDir = await Directory.systemTemp.createTemp('pahlevani_dl_test_');
+    when(() => mockDs.getMediaCacheDirectoryPath())
+        .thenAnswer((_) async => tmpDir.path);
   });
 
   tearDown(() async {
@@ -69,49 +73,20 @@ void main() {
       expect(await repo.getInitialDownloadStatuses(), isEmpty);
     });
 
-    test('maps id to downloaded when directory exists', () async {
-      when(() => mockDs.getDownloadedTrainingSessionIds())
-          .thenAnswer((_) async => ['1']);
-      when(() => mockDs.trainingSessionDirectoryExists(1))
-          .thenAnswer((_) async => true);
-
-      expect(
-        await repo.getInitialDownloadStatuses(),
-        {1: DownloadStatus.downloaded},
-      );
-    });
-
-    test('maps id to error when directory is missing', () async {
-      when(() => mockDs.getDownloadedTrainingSessionIds())
-          .thenAnswer((_) async => ['1']);
-      when(() => mockDs.trainingSessionDirectoryExists(1))
-          .thenAnswer((_) async => false);
-
-      expect(
-        await repo.getInitialDownloadStatuses(),
-        {1: DownloadStatus.error},
-      );
-    });
-
-    test('handles multiple sessions with mixed directory existence', () async {
+    test('maps every saved id to downloaded, trusting the persisted flag',
+        () async {
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['1', '2']);
-      when(() => mockDs.trainingSessionDirectoryExists(1))
-          .thenAnswer((_) async => true);
-      when(() => mockDs.trainingSessionDirectoryExists(2))
-          .thenAnswer((_) async => false);
 
       expect(
         await repo.getInitialDownloadStatuses(),
-        {1: DownloadStatus.downloaded, 2: DownloadStatus.error},
+        {1: DownloadStatus.downloaded, 2: DownloadStatus.downloaded},
       );
     });
 
     test('skips non-integer id strings silently', () async {
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['not_a_number', '2']);
-      when(() => mockDs.trainingSessionDirectoryExists(2))
-          .thenAnswer((_) async => true);
 
       final result = await repo.getInitialDownloadStatuses();
       expect(result, {2: DownloadStatus.downloaded});
@@ -128,29 +103,28 @@ void main() {
   // ── isTrainingSessionDownloaded ────────────────────────────────────────────
 
   group('isTrainingSessionDownloaded', () {
+    const item = ItemDetail(item: testItem1, exercise: testExercise1);
+
     test('returns false when session id not in saved list', () async {
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['2', '3']);
 
-      expect(await repo.isTrainingSessionDownloaded(1), isFalse);
+      expect(await repo.isTrainingSessionDownloaded(1, [item]), isFalse);
     });
 
-    test('returns false when id in list but directory missing', () async {
+    test('returns false when id in list but audio file missing', () async {
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['1']);
-      when(() => mockDs.trainingSessionDirectoryExists(1))
-          .thenAnswer((_) async => false);
 
-      expect(await repo.isTrainingSessionDownloaded(1), isFalse);
+      expect(await repo.isTrainingSessionDownloaded(1, [item]), isFalse);
     });
 
-    test('returns true when id in list and directory exists', () async {
+    test('returns true when id in list and audio file is cached', () async {
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['1']);
-      when(() => mockDs.trainingSessionDirectoryExists(1))
-          .thenAnswer((_) async => true);
+      File('${tmpDir.path}/${_audioFilename(testExercise1)}').createSync();
 
-      expect(await repo.isTrainingSessionDownloaded(1), isTrue);
+      expect(await repo.isTrainingSessionDownloaded(1, [item]), isTrue);
     });
   });
 
@@ -158,23 +132,31 @@ void main() {
 
   group('getLocalAudioPath', () {
     test('returns null when file does not exist on disk', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      expect(await repo.getLocalAudioPath(1, item), isNull);
+      expect(await repo.getLocalAudioPath(item), isNull);
     });
 
     test('returns path when file exists on disk', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
       final expectedFile =
-          File('${tmpDir.path}/${_filename(testItem1, testExercise1)}');
+          File('${tmpDir.path}/${_audioFilename(testExercise1)}');
       await expectedFile.create();
 
-      expect(await repo.getLocalAudioPath(1, item), expectedFile.path);
+      expect(await repo.getLocalAudioPath(item), expectedFile.path);
+    });
+
+    test('shared across two items in different sessions for the same exercise',
+        () async {
+      // testItem2 (session 1) and testItem3 (session 2) both reference
+      // exercise 102 — the cache must resolve to the same file for both.
+      const item2 = ItemDetail(item: testItem2, exercise: testExercise2);
+      const item3 = ItemDetail(item: testItem3, exercise: testExercise2);
+      final cachedFile =
+          File('${tmpDir.path}/${_audioFilename(testExercise2)}');
+      await cachedFile.create();
+
+      expect(await repo.getLocalAudioPath(item2), cachedFile.path);
+      expect(await repo.getLocalAudioPath(item3), cachedFile.path);
     });
   });
 
@@ -182,37 +164,21 @@ void main() {
 
   group('getLocalImagePath', () {
     test('returns null when image file does not exist', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       expect(
-        await repo.getLocalImagePath(1, 101,
-            imageUrl: 'https://example.com/img.jpg'),
+        await repo.getLocalImagePath('https://example.com/img.jpg'),
         isNull,
       );
     });
 
-    test('returns path when image file exists', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
-      const url = 'https://example.com/img.jpg';
-      final imgFile = File('${tmpDir.path}/img_101_${_urlHash(url)}')
-        ..createSync();
-
-      expect(
-        await repo.getLocalImagePath(1, 101, imageUrl: url),
-        imgFile.path,
-      );
+    test('returns null for an empty url', () async {
+      expect(await repo.getLocalImagePath(''), isNull);
     });
 
-    test('uses fallback path when no imageUrl supplied', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
+    test('returns path when image file exists', () async {
+      const url = 'https://example.com/img.jpg';
+      final imgFile = File('${tmpDir.path}/img_${_urlHash(url)}')..createSync();
 
-      final fallbackFile = File('${tmpDir.path}/img_101')..createSync();
-
-      expect(await repo.getLocalImagePath(1, 101), fallbackFile.path);
+      expect(await repo.getLocalImagePath(url), imgFile.path);
     });
   });
 
@@ -224,9 +190,6 @@ void main() {
     });
 
     test('returns false when items have no audio URL', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const silent = Exercise(id: 999, name: 'Silent', repetitionsDefault: 1);
       const silentItem = TrainingItem(
           id: 9999,
@@ -240,41 +203,32 @@ void main() {
     });
 
     test('returns false when audio files are not on disk', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
       expect(await repo.checkAllCachedAndMark(1, [item]), isFalse);
     });
 
     test('returns true and persists downloaded status when all files present',
         () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => []);
       when(() => mockDs.saveDownloadedTrainingSessionIds(any()))
           .thenAnswer((_) async {});
 
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      File('${tmpDir.path}/${_filename(testItem1, testExercise1)}')
-          .createSync();
+      File('${tmpDir.path}/${_audioFilename(testExercise1)}').createSync();
 
       expect(await repo.checkAllCachedAndMark(1, [item]), isTrue);
       verify(() => mockDs.saveDownloadedTrainingSessionIds(['1'])).called(1);
     });
 
     test('does not re-save if id already in downloaded list', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => ['1']); // already there
       when(() => mockDs.saveDownloadedTrainingSessionIds(any()))
           .thenAnswer((_) async {});
 
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      File('${tmpDir.path}/${_filename(testItem1, testExercise1)}')
-          .createSync();
+      File('${tmpDir.path}/${_audioFilename(testExercise1)}').createSync();
 
       await repo.checkAllCachedAndMark(1, [item]);
       verifyNever(() => mockDs.saveDownloadedTrainingSessionIds(any()));
@@ -285,9 +239,6 @@ void main() {
 
   group('cacheAudio', () {
     test('returns null when exercise has no audio URL', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const silent = Exercise(id: 999, name: 'Silent', repetitionsDefault: 1);
       const silentItem = TrainingItem(
           id: 9999,
@@ -297,28 +248,22 @@ void main() {
           prescription: RepsPresc(1));
 
       expect(
-        await repo.cacheAudio(
-            1, const ItemDetail(item: silentItem, exercise: silent)),
+        await repo
+            .cacheAudio(const ItemDetail(item: silentItem, exercise: silent)),
         isNull,
       );
     });
 
     test('returns existing path without calling downloadFile again', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      File('${tmpDir.path}/${_filename(testItem1, testExercise1)}')
-          .createSync();
+      File('${tmpDir.path}/${_audioFilename(testExercise1)}').createSync();
 
-      final result = await repo.cacheAudio(1, item);
+      final result = await repo.cacheAudio(item);
       expect(result, isNotNull);
       verifyNever(() => mockDs.downloadFile(any(), any(), any()));
     });
 
     test('downloads file when not already on disk', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenAnswer((inv) async {
         await File(inv.positionalArguments[1] as String)
@@ -326,20 +271,38 @@ void main() {
       });
 
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      final result = await repo.cacheAudio(1, item);
+      final result = await repo.cacheAudio(item);
 
       expect(result, isNotNull);
       verify(() => mockDs.downloadFile(any(), any(), any())).called(1);
     });
 
     test('returns null when download throws', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenThrow(Exception('network error'));
 
       const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      expect(await repo.cacheAudio(1, item), isNull);
+      expect(await repo.cacheAudio(item), isNull);
+    });
+
+    test('a second item referencing the same exercise reuses the cached file',
+        () async {
+      // testItem2 (session 1) and testItem3 (session 2) both reference
+      // exercise 102 — caching the first must skip the network call for the second.
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+
+      const item2 = ItemDetail(item: testItem2, exercise: testExercise2);
+      const item3 = ItemDetail(item: testItem3, exercise: testExercise2);
+
+      final firstPath = await repo.cacheAudio(item2);
+      final secondPath = await repo.cacheAudio(item3);
+
+      expect(secondPath, firstPath);
+      verify(() => mockDs.downloadFile(any(), any(), any())).called(1);
     });
   });
 
@@ -348,9 +311,6 @@ void main() {
   group('cacheImage', () {
     test('downloads Supabase image at 500×500 quality-80 transform URL',
         () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       String? downloadedUrl;
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenAnswer((inv) async {
@@ -361,7 +321,7 @@ void main() {
 
       const url =
           'https://abcdef.supabase.co/storage/v1/object/public/movement-media/kick.jpg';
-      await repo.cacheImage(1, 101, url);
+      await repo.cacheImage(url);
 
       expect(downloadedUrl, isNotNull);
       expect(downloadedUrl, contains('/storage/v1/render/image/public/'));
@@ -371,9 +331,6 @@ void main() {
     });
 
     test('passes non-Supabase image URL to downloadFile unchanged', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       String? downloadedUrl;
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenAnswer((inv) async {
@@ -383,34 +340,32 @@ void main() {
       });
 
       const url = 'https://cdn.example.com/image.jpg';
-      await repo.cacheImage(1, 101, url);
+      await repo.cacheImage(url);
 
       expect(downloadedUrl, url);
     });
 
     test('returns cached path without re-downloading if file already exists',
         () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
-
       const url = 'https://example.com/img.jpg';
-      final path = '${tmpDir.path}/img_101_${_urlHash(url)}';
+      final path = '${tmpDir.path}/img_${_urlHash(url)}';
       File(path).createSync();
 
-      final result = await repo.cacheImage(1, 101, url);
+      final result = await repo.cacheImage(url);
 
       expect(result, path);
       verifyNever(() => mockDs.downloadFile(any(), any(), any()));
     });
 
     test('returns null when download throws', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenThrow(Exception('network error'));
 
-      expect(
-          await repo.cacheImage(1, 101, 'https://example.com/img.jpg'), isNull);
+      expect(await repo.cacheImage('https://example.com/img.jpg'), isNull);
+    });
+
+    test('returns null for an empty url', () async {
+      expect(await repo.cacheImage(''), isNull);
     });
   });
 
@@ -418,8 +373,6 @@ void main() {
 
   group('downloadTrainingSession', () {
     test('emits error for session with no downloadable audio', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.getDownloadedTrainingSessionIds())
           .thenAnswer((_) async => []);
       when(() => mockDs.saveDownloadedTrainingSessionIds(any()))
@@ -442,8 +395,6 @@ void main() {
     });
 
     test('emits 0.0, intermediate progress, then 1.0 on success', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenAnswer((inv) async {
         await File(inv.positionalArguments[1] as String)
@@ -466,8 +417,6 @@ void main() {
     });
 
     test('emits error and marks status on download failure', () async {
-      when(() => mockDs.getTrainingSessionDirectoryPath(1))
-          .thenAnswer((_) async => tmpDir.path);
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenThrow(Exception('connection timeout'));
       when(() => mockDs.getDownloadedTrainingSessionIds())
@@ -485,6 +434,28 @@ void main() {
       await expectLater(
           stream, emitsInOrder([0.0, emitsError(isA<Exception>())]));
       verify(() => mockDs.saveDownloadedTrainingSessionIds([])).called(1);
+    });
+
+    test('skips the network call for audio already cached by another session',
+        () async {
+      // testItem2 (session 1) and testItem3 (session 2) reference the same
+      // exercise (102) — pre-seed the cache as if session 1 already
+      // downloaded it, then download session 2 and confirm no audio fetch.
+      File('${tmpDir.path}/${_audioFilename(testExercise2)}').createSync();
+      when(() => mockDs.getDownloadedTrainingSessionIds())
+          .thenAnswer((_) async => []);
+      when(() => mockDs.saveDownloadedTrainingSessionIds(any()))
+          .thenAnswer((_) async {});
+
+      final session = SessionDetail(
+        session: testSession2,
+        items: [const ItemDetail(item: testItem3, exercise: testExercise2)],
+      );
+
+      final events = await repo.downloadTrainingSession(session).toList();
+
+      expect(events.last, equals(1.0));
+      verifyNever(() => mockDs.downloadFile(any(), any(), any()));
     });
   });
 }
