@@ -7,6 +7,7 @@ import 'package:pahlevani/domain/services/audio_player_service.dart';
 class FakeAudioPlayerService implements AudioPlayerService {
   final _positionCtrl = StreamController<Duration>.broadcast();
   final _durationCtrl = StreamController<Duration>.broadcast();
+  final _playingCtrl = StreamController<bool>.broadcast();
 
   String? lastPlayedPath;
   String? lastSetSourcePath;
@@ -24,8 +25,17 @@ class FakeAudioPlayerService implements AudioPlayerService {
   @override
   Stream<Duration> get onDurationChanged => _durationCtrl.stream;
 
+  @override
+  Stream<bool> get onPlayingChanged => _playingCtrl.stream;
+
   void emitPosition(Duration d) => _positionCtrl.add(d);
   void emitDuration(Duration d) => _durationCtrl.add(d);
+
+  /// Simulates an out-of-band engine state change (OS audio-focus loss,
+  /// lock-screen hardware button, internal error) the cubit didn't itself
+  /// request — the scenario the [TrainingSessionPlayerCubit] must self-heal
+  /// from once it subscribes to [onPlayingChanged].
+  void emitPlaying(bool playing) => _playingCtrl.add(playing);
 
   @override
   Future<void> play(String path) async {
@@ -69,6 +79,7 @@ class FakeAudioPlayerService implements AudioPlayerService {
   Future<void> dispose() async {
     await _positionCtrl.close();
     await _durationCtrl.close();
+    await _playingCtrl.close();
     disposed = true;
   }
 }
