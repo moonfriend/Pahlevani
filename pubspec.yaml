@@ -51,6 +51,7 @@ dependencies:
   logger: ^2.4.0
   package_info_plus: ^8.0.0 # reads the real installed build number, for the version gate
   url_launcher: ^6.3.1      # "Update" button on the version-gate screen (was transitive-only)
+  flutter_svg: ^2.0.10      # sketch-style move icons for the home redesign
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -80,6 +81,9 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/home/
 
   fonts:
     - family: Lora
@@ -111,4 +115,30 @@ flutter:
         - asset: assets/fonts/Vazirmatn-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Vazirmatn-Bold.ttf
+          weight: 700
+
+    - family: Gaegu
+      fonts:
+        - asset: assets/fonts/Gaegu-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Gaegu-Bold.ttf
+          weight: 700
+
+    - family: PatrickHand
+      fonts:
+        - asset: assets/fonts/PatrickHand-Regular.ttf
+          weight: 400
+
+    - family: Caveat
+      fonts:
+        - asset: assets/fonts/Caveat-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Caveat-Bold.ttf
+          weight: 700
+
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/SpaceMono-Bold.ttf
           weight: 700
