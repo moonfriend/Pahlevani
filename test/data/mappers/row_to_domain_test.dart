@@ -180,6 +180,23 @@ void main() {
       final s = mapSession(row(createdAt: dt));
       expect(s.createdAt, dt);
     });
+
+    test('maps assignedToUserId and assignedByTrainerId when present', () {
+      final s = mapSession(TrainingSessionRow(
+        id: 1,
+        assignedToUserId: 'trainee-uuid',
+        assignedByTrainerId: 'trainer-uuid',
+      ));
+      expect(s.assignedToUserId, 'trainee-uuid');
+      expect(s.assignedByTrainerId, 'trainer-uuid');
+      expect(s.isIndividualized, isTrue);
+    });
+
+    test('isIndividualized is false for an original (unassigned) session', () {
+      final s = mapSession(row());
+      expect(s.assignedToUserId, isNull);
+      expect(s.isIndividualized, isFalse);
+    });
   });
 
   // ---------- mapItem ----------

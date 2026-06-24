@@ -28,6 +28,12 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(6)
   final String? titleFa;
 
+  @HiveField(7)
+  final String? assignedToUserId;
+
+  @HiveField(8)
+  final String? assignedByTrainerId;
+
   HiveTrainingSession({
     required this.id,
     required this.title,
@@ -36,6 +42,8 @@ class HiveTrainingSession extends HiveObject {
     this.createdAt,
     this.isUserCreated = false,
     this.titleFa,
+    this.assignedToUserId,
+    this.assignedByTrainerId,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -49,6 +57,8 @@ class HiveTrainingSession extends HiveObject {
           : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
       titleFa: json['title_fa'] as String?,
+      assignedToUserId: json['assigned_to_user_id'] as String?,
+      assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
     );
   }
 
@@ -60,6 +70,9 @@ class HiveTrainingSession extends HiveObject {
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
         if (titleFa != null) 'title_fa': titleFa,
+        if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
+        if (assignedByTrainerId != null)
+          'assigned_by_trainer_id': assignedByTrainerId,
       };
 
   factory HiveTrainingSession.fromDomain(TrainingSession s) {
@@ -71,6 +84,8 @@ class HiveTrainingSession extends HiveObject {
       createdAt: s.createdAt,
       isUserCreated: s.isUserCreated,
       titleFa: s.titleFa,
+      assignedToUserId: s.assignedToUserId,
+      assignedByTrainerId: s.assignedByTrainerId,
     );
   }
 
@@ -83,6 +98,8 @@ class HiveTrainingSession extends HiveObject {
       difficulty: difficulty,
       createdAt: createdAt,
       isUserCreated: isUserCreated,
+      assignedToUserId: assignedToUserId,
+      assignedByTrainerId: assignedByTrainerId,
     );
   }
 }
