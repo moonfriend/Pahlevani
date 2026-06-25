@@ -91,6 +91,11 @@ def load_items() -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=60)
+def load_release_gate() -> dict | None:
+    rows = get_client().table("app_release_gate").select("*").eq("id", 1).execute().data
+    return rows[0] if rows else None
+
+@st.cache_data(ttl=60)
 def load_movements() -> pd.DataFrame:
     try:
         rows = get_client().table("movement").select("*").order("id").execute().data
@@ -104,6 +109,7 @@ def bust_cache():
     load_sessions.clear()
     load_items.clear()
     load_movements.clear()
+    load_release_gate.clear()
 
 def make_media_url(storage_path: str) -> str:
     if MEDIA_BUCKET_PUBLIC:
@@ -932,6 +938,94 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Release Gate
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_release_gate():
+    st.header("Release Gate")
+    st.caption(
+        "Controls whether old app builds are blocked from running. "
+        "The app reads this table on every launch via the anon key — no auth required."
+    )
+
+    if st.button("↺ Reload", key="rel_rg"):
+        load_release_gate.clear()
+
+    cfg = load_release_gate()
+
+    if cfg is None:
+        st.error(
+            "⚠️ `app_release_gate` table not found. "
+            "Run `supabase/migrations/0002_app_release_gate.sql` in the Supabase SQL Editor first."
+        )
+        return
+
+    # ── Current state summary ─────────────────────────────────────────────────
+    force = cfg.get("force_update", False)
+    min_build = cfg.get("min_supported_build_number", 1)
+    msg = cfg.get("update_message", "")
+    updated_at = cfg.get("updated_at", "—")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Min supported build", min_build)
+    col2.metric("Force update", "🔴 YES" if force else "🟢 No")
+    col3.metric("Last updated", str(updated_at)[:19])
+
+    if force:
+        st.warning(
+            f"⚠️  **Force update is ON.** All installs with build number < {min_build} "
+            "are blocked from using the app."
+        )
+
+    st.divider()
+
+    # ── Edit form ─────────────────────────────────────────────────────────────
+    st.subheader("Edit gate settings")
+
+    new_min_build = st.number_input(
+        "Minimum supported build number",
+        min_value=1,
+        value=int(min_build),
+        help="Any installed app with a build number below this will see the update screen.",
+        key="rg_min_build",
+    )
+
+    new_force = st.toggle(
+        "Force update (blocks app until updated)",
+        value=bool(force),
+        key="rg_force",
+    )
+
+    if new_force:
+        st.warning(
+            "With force update **ON**, any install with build < "
+            f"{new_min_build} is **fully blocked** — they see the update screen and "
+            "cannot proceed until they install a newer build."
+        )
+
+    new_msg = st.text_area(
+        "Update message shown to the user",
+        value=msg,
+        height=90,
+        key="rg_msg",
+    )
+
+    st.divider()
+
+    if st.button("💾 Save release gate", type="primary", key="rg_save"):
+        with st.spinner("Saving…"):
+            get_client().table("app_release_gate").update({
+                "min_supported_build_number": int(new_min_build),
+                "force_update": bool(new_force),
+                "update_message": new_msg.strip(),
+                "updated_at": "now()",
+            }).eq("id", 1).execute()
+        st.success("✅ Release gate updated.")
+        load_release_gate.clear()
+        st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -941,13 +1035,14 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
         "🏗️  Session Builder",
         "🔍  Inspector",
         "📸  Movement Media",
+        "🚦  Release Gate",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
@@ -955,6 +1050,7 @@ def main():
     with t4: tab_session_builder()
     with t5: tab_inspector()
     with t6: tab_movement_media()
+    with t7: tab_release_gate()
 
 
 if __name__ == "__main__":

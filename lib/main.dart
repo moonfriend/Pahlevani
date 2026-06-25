@@ -12,9 +12,13 @@ import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
+import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
+import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -82,11 +86,25 @@ Future<void> main() async {
     }
   }
 
-  runApp(const PahlevaniApp());
+  // Real installed build number (not a hand-maintained constant that could
+  // drift from pubspec.yaml) — compared against app_release_gate.
+  int currentBuildNumber;
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 999999;
+  } catch (error, stack) {
+    AppLogger.w('PackageInfo.fromPlatform() failed — version gate disabled',
+        error: error, stackTrace: stack);
+    currentBuildNumber = 999999; // fail open: never block on a read failure
+  }
+
+  runApp(PahlevaniApp(currentBuildNumber: currentBuildNumber));
 }
 
 class PahlevaniApp extends StatelessWidget {
-  const PahlevaniApp({super.key});
+  const PahlevaniApp({super.key, required this.currentBuildNumber});
+
+  final int currentBuildNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +118,13 @@ class PahlevaniApp extends StatelessWidget {
           create: (_) => getIt<TrainingSessionCubit>()..initialize(),
           lazy: false,
         ),
+        BlocProvider<VersionGateCubit>(
+          create: (_) => VersionGateCubit(
+            repository: getIt<VersionGateRepository>(),
+            currentBuildNumber: currentBuildNumber,
+          ),
+          lazy: false,
+        ),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) => MaterialApp(
@@ -108,7 +133,7 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
-          home: const TrainingSessionPage(),
+          home: const VersionGate(child: TrainingSessionPage()),
         ),
       ),
     );

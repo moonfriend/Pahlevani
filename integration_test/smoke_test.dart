@@ -34,7 +34,7 @@ void main() {
 
   testWidgets('smoke: boot, load sessions from Supabase, open player',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
 
     await tester.pump();
     await screenshot(tester, '01_loading_state');
