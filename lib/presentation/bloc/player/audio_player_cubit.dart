@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
@@ -144,6 +145,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     // audio-focus interruption/resume, lock-screen hardware buttons, an
     // engine-internal error after a failed play()).
     _playingSubscription = _audioService.onPlayingChanged.listen((playing) {
+      AppLogger.d(
+          '[player-diag] onPlayingChanged stream fired: playing=$playing, '
+          'state.isPlaying=${state.isPlaying}');
       if (state.isPlaying != playing) emit(state.copyWith(isPlaying: playing));
     });
 
@@ -396,6 +400,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   void togglePlay() {
+    AppLogger.d(
+        '[player-diag] togglePlay() called: isFinished=${state.isFinished}, '
+        'isPlaying=${state.isPlaying}');
     if (state.isFinished) {
       replay();
     } else if (state.isPlaying) {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 
 /// Audio handler wired to the OS media session (lock screen / notification card).
@@ -78,16 +79,24 @@ class PahlevaniAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> play() async {
+    AppLogger.d(
+        '[player-diag] PahlevaniAudioHandler.play() (OS/notification path) entered');
     await _player.play();
     syncPlaybackState(playing: true);
     _commandController.add(NotificationCommand.play);
+    AppLogger.d(
+        '[player-diag] PahlevaniAudioHandler.play() returned, command forwarded');
   }
 
   @override
   Future<void> pause() async {
+    AppLogger.d(
+        '[player-diag] PahlevaniAudioHandler.pause() (OS/notification path) entered');
     await _player.pause();
     syncPlaybackState(playing: false);
     _commandController.add(NotificationCommand.pause);
+    AppLogger.d(
+        '[player-diag] PahlevaniAudioHandler.pause() returned, command forwarded');
   }
 
   @override
