@@ -183,6 +183,25 @@ void main() {
     expect(find.text('Kabbadeh'), findsWidgets);
   });
 
+  testWidgets('play/pause icon shows playing after next() from a paused state',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // Pause first.
+    await tester.tap(find.byIcon(Icons.pause_rounded).last);
+    await tester.pump();
+    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+
+    // next() always resumes playback regardless of prior pause state —
+    // the icon must reflect that, not the stale paused look.
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+  });
+
   testWidgets('tapping a track list item plays that track', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -251,6 +270,38 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('Session complete'), findsOneWidget);
+  });
+
+  testWidgets('transport button shows replay icon when session is finished',
+      (tester) async {
+    final singleItemSnap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [testItem1]
+      },
+      exercisesById: {testExercise1.id: testExercise1},
+    );
+    await getIt.reset();
+    _registerFakes(singleItemSnap);
+
+    await tester.pumpWidget(_buildPage(singleItemSnap));
+    await _pumpAndLoad(tester);
+
+    expect(find.byIcon(Icons.replay_rounded), findsNothing);
+
+    final cubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+    cubit.next(); // only 1 track → isFinished: true
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The completion sheet's "Again" button also uses replay_rounded, so at
+    // least one (not exactly one) is expected once finished.
+    expect(find.byIcon(Icons.replay_rounded), findsWidgets);
+    expect(find.byIcon(Icons.pause_rounded), findsNothing,
+        reason: 'a finished session must never still show a pause icon');
   });
 
   testWidgets('completion sheet shows Done and Again buttons', (tester) async {
@@ -337,6 +388,37 @@ void main() {
     // emitDuration starts _logicalTimer in the cubit. Cancel it by closing the
     // cubit synchronously (via widget disposal) BEFORE _verifyInvariants runs —
     // addTearDown callbacks fire after invariant checks, so they're too late.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('rep counter pill increments from Rep 1 to Rep 2 over time',
+      (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // testExercise1 has repetitionsDefault=3; a 3s duration gives exactly
+    // 1s (5 logical-timer ticks) per rep — enough headroom to land cleanly
+    // on rep 2 without the boundary rounding into rep 1 or rep 3.
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+
+    await tester.pump(const Duration(milliseconds: 1100));
+    expect(find.textContaining('Rep 2', findRichText: true), findsWidgets);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
