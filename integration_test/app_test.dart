@@ -15,14 +15,20 @@ import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
+import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 
 import '../test/fakes/fake_audio_player_service.dart';
+import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
+import '../test/fakes/fake_version_gate_repository.dart';
 import '../test/fakes/test_seed_data.dart';
 
 void main() {
@@ -30,6 +36,9 @@ void main() {
 
   late FakeTrainingSessionRepository fakeSessionRepo;
   late FakeDownloadRepository fakeDownloadRepo;
+  // Tracks the most recently created FakeAudioPlayerService so tests can
+  // emit events (e.g. duration) to drive the logical timer inside the cubit.
+  FakeAudioPlayerService? lastFakeAudioService;
 
   setUpAll(() async {
     // Wipe any prior registrations (e.g. from a previous run in the same process).
@@ -42,7 +51,11 @@ void main() {
         () => fakeSessionRepo);
     getIt.registerLazySingleton<DownloadRepository>(() => fakeDownloadRepo);
     // Factory: each player page gets its own FakeAudioPlayerService instance.
-    getIt.registerFactory<AudioPlayerService>(() => FakeAudioPlayerService());
+    // The outer variable is updated so tests can emit events on the live instance.
+    getIt.registerFactory<AudioPlayerService>(() {
+      lastFakeAudioService = FakeAudioPlayerService();
+      return lastFakeAudioService!;
+    });
     // Factory: each pumpWidget gets a fresh cubit (old one closes on widget dispose).
     getIt.registerFactory<TrainingSessionCubit>(
       () => TrainingSessionCubit(
@@ -50,6 +63,16 @@ void main() {
         downloadRepository: getIt<DownloadRepository>(),
       ),
     );
+    getIt.registerLazySingleton<VersionGateRepository>(
+        () => FakeVersionGateRepository());
+    // Page's initState reads this; default online so the no-connection
+    // dialog never fires during the journey tests.
+    getIt.registerLazySingleton<ConnectivityService>(
+        () => const FakeConnectivityService());
+    // Player page resolves this for the media-notification card; the no-op
+    // implementation is the correct desktop/test fallback.
+    getIt.registerSingleton<PlayerNotificationService>(
+        NoOpNotificationService());
   });
 
   tearDownAll(() async => getIt.reset());
@@ -58,20 +81,20 @@ void main() {
 
   testWidgets('sessions list renders both seeded session titles',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     expect(find.text('Beginner Warm-up'), findsOneWidget);
     expect(find.text('Advanced Drill'), findsOneWidget);
-    // Section label from _SessionList
-    expect(find.textContaining('sessions'), findsOneWidget);
+    // Section label from _SessionList (rendered uppercase via .toUpperCase())
+    expect(find.textContaining('SESSIONS'), findsOneWidget);
   });
 
   // ── 2: Navigation to player ─────────────────────────────────────────────────
 
   testWidgets('tapping a session card navigates to the player page',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     // The outer GestureDetector for the first card is the first one inside ListView.
@@ -79,7 +102,8 @@ void main() {
     final cards =
         find.descendant(of: listView, matching: find.byType(GestureDetector));
     await tester.tap(cards.first);
-    await tester.pumpAndSettle();
+    // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
+    await pumpPlayer(tester);
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
     // First exercise of session 1 is 'Shena'.
@@ -90,7 +114,7 @@ void main() {
 
   testWidgets('overflow menu for server session shows edit-a-copy and download',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     // First more_vert icon belongs to 'Beginner Warm-up' (server session, id=1).
@@ -108,7 +132,7 @@ void main() {
   testWidgets(
       'overflow menu for user-created session shows edit and delete options',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     // Last more_vert icon belongs to 'Advanced Drill' (isUserCreated: true, id=2).
@@ -122,7 +146,7 @@ void main() {
   // ── 5: Delete flow ──────────────────────────────────────────────────────────
 
   testWidgets('confirming delete removes session from list', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     // Open overflow for 'Advanced Drill' (user-created).
@@ -143,21 +167,10 @@ void main() {
     fakeSessionRepo.updateSnapshot(buildTestSnapshot());
   });
 
-  // ── Player navigation helpers ────────────────────────────────────────────────
-
-  // Pumps enough frames for loadTracks() to complete and the player UI to
-  // render.  Cannot use pumpAndSettle because _Equalizer uses an infinite
-  // repeat animation that never settles.
-  Future<void> pumpPlayer(WidgetTester tester) async {
-    await tester.pump(); // schedule loadTracks
-    await tester.pump(); // complete async work
-    await tester.pump(const Duration(milliseconds: 400)); // scroll animation
-  }
-
   // ── 6: Next button advances track ───────────────────────────────────────────
 
   testWidgets('tapping next advances to second track', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
@@ -184,7 +197,7 @@ void main() {
   // ── 7: Prev button no-op on first track ─────────────────────────────────────
 
   testWidgets('prev button is no-op on first track', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     final cards = find.descendant(
@@ -204,7 +217,7 @@ void main() {
 
   testWidgets('completion sheet appears at end and Again restarts from track 1',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp());
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
     final cards = find.descendant(
@@ -217,20 +230,33 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Tap next again — triggers isFinished, shows completion sheet.
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400)); // sheet animation
+    // The transport "next" button is disabled on the last track, so we can't
+    // tap it to trigger isFinished. Instead, emit a short audio duration so
+    // the cubit's logical timer starts and fires next() when elapsed >= target.
+    // Kabbadeh has repetitionsDefault=1 so targetMs = duration × 1/1 = 200ms.
+    lastFakeAudioService!.emitDuration(const Duration(milliseconds: 200));
+    await tester.pump(); // flush the stream event → timer starts
+    await tester.pump(const Duration(milliseconds: 400)); // timer fires next()
+    // isFinished=true ⇒ isPlaying=false ⇒ _Equalizer disposed — can settle now.
+    await tester.pumpAndSettle();
 
     expect(find.text('Again'), findsOneWidget);
 
-    // Tapping Again replays from the beginning.
+    // Tapping Again replays from the beginning. replay() re-starts isPlaying,
+    // which brings back _Equalizer — cannot pumpAndSettle.
     await tester.tap(find.text('Again'));
     await tester.pump();
     await tester.pump();
 
-    // Back to track 1: Shena appears multiple times as the current track.
+    // Back to track 1: Shena appears in stage + transport label + track list.
     expect(find.text('Shena'), findsWidgets);
   });
+}
+
+// Pumps enough frames for loadTracks() to complete and the player UI to render.
+// Cannot use pumpAndSettle: _Equalizer has an infinite repeat animation.
+Future<void> pumpPlayer(WidgetTester tester) async {
+  await tester.pump(); // schedule loadTracks
+  await tester.pump(); // complete async work
+  await tester.pump(const Duration(milliseconds: 400)); // navigation animation
 }
