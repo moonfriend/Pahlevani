@@ -1,4 +1,5 @@
 import 'package:just_audio/just_audio.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/data/services/pahlevani_audio_handler.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 
@@ -40,13 +41,21 @@ class JustAudioPlayerService implements AudioPlayerService {
 
   @override
   Future<void> pause() async {
+    AppLogger.d('[player-diag] JustAudioPlayerService.pause() entered, '
+        'engine playing=${_player.playing}');
     await _player.pause();
+    AppLogger.d('[player-diag] JustAudioPlayerService.pause() returned, '
+        'engine playing=${_player.playing}');
     _handler.syncPlaybackState(playing: false);
   }
 
   @override
   Future<void> resume() async {
+    AppLogger.d('[player-diag] JustAudioPlayerService.resume() entered, '
+        'engine playing=${_player.playing}');
     await _player.play();
+    AppLogger.d('[player-diag] JustAudioPlayerService.resume() returned, '
+        'engine playing=${_player.playing}');
     _handler.syncPlaybackState(playing: true);
   }
 
