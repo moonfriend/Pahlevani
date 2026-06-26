@@ -66,5 +66,5 @@ ios/Runner/GoogleService-Info.plist
 # Firebase local dev env (real keys for --dart-define-from-file)
 .firebase.env
 
-# DB migration test sentinel (created by scripts/test_migration.sh on success)
-supabase/.migration_test_ok
+# DB migration test — real Supabase credentials (copy from supabase/.db.env.example)
+supabase/.db.env
