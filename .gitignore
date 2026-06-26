@@ -68,3 +68,6 @@ ios/Runner/GoogleService-Info.plist
 
 # DB migration test — real Supabase credentials (copy from supabase/.db.env.example)
 supabase/.db.env
+
+# Supabase snapshot — table data + media files downloaded by scripts/dump_supabase.py
+supabase/dump/
