@@ -9,11 +9,15 @@ abstract class AudioPlayerService {
   /// Fires when the player learns the duration of the current source.
   Stream<Duration> get onDurationChanged;
 
-  /// Fires whenever the engine's actual playing/paused state changes —
-  /// including transitions the caller didn't itself request (OS audio-focus
-  /// interruptions, lock-screen hardware controls, engine-internal errors).
-  /// Consumers should treat this as authoritative rather than relying solely
-  /// on the return value of [play]/[pause]/[resume]/[stop].
+  /// Fires whenever the engine's actual playing/paused state changes.
+  ///
+  /// NOTE: this is an *informational* signal, not an authority. It also fires
+  /// for the engine's own internal transitions (e.g. stopped→playing on every
+  /// loop cycle), so consumers must not blindly mirror it into their own state
+  /// — doing so causes play/pause desync. The cubit owns playing-state and
+  /// drives the engine, not the other way around. A future audio-focus handler
+  /// may observe this stream to *raise an intent*, but must never write state
+  /// directly from it.
   Stream<bool> get onPlayingChanged;
 
   /// Stop current source, load [path], and start playing immediately.

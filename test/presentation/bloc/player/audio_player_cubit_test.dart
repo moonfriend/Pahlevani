@@ -481,17 +481,23 @@ void main() {
     });
   });
 
-  // ---------- engine-driven self-healing ----------
+  // ---------- cubit is the single source of truth ----------
   //
-  // The cubit's isPlaying must not only be set by its own call sites — it
-  // must also self-heal from engine state changes it didn't itself request
-  // (OS audio-focus loss/regain, lock-screen hardware buttons, internal
-  // engine errors). Regression coverage for the play/pause-vs-visual desync
-  // bug: previously isPlaying was write-only, so any out-of-band engine
-  // change left the UI stuck showing the wrong icon/mask until the next tap.
+  // isPlaying is owned solely by the cubit and mutated only in response to
+  // intents (button taps, lock-screen commands, track completion). The audio
+  // engine is a pure follower: it receives play/pause/seek commands but never
+  // writes back into the cubit's state.
+  //
+  // Regression coverage for the play/pause-vs-visual desync bug: the looping
+  // engine emits stopped→playing on every loop cycle. The old design
+  // subscribed to onPlayingChanged and let those internal transitions overwrite
+  // isPlaying, so an engine "playing" event arriving right after a user pause
+  // silently flipped the state back — the audio was paused but the UI (and
+  // logical timer) thought it was still playing, requiring a second tap.
 
-  group('onPlayingChanged self-healing', () {
-    test('isPlaying flips to false when engine stops out-of-band', () async {
+  group('engine is a pure follower (no write-back to state)', () {
+    test('engine playing event does NOT override a user pause intent',
+        () async {
       final session = _session(1);
       final snap = _snapshotWithItems(session,
           [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
@@ -500,32 +506,35 @@ void main() {
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
-      expect(cubit.state.isPlaying, isTrue);
-
-      // No cubit method called — simulates an OS-level interruption.
-      audioService.emitPlaying(false);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(cubit.state.isPlaying, isFalse);
-    });
-
-    test('isPlaying flips to true when engine resumes out-of-band', () async {
-      final session = _session(1);
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
-      final audioService = FakeAudioPlayerService();
-      final cubit = _makeCubit(snap, audioService: audioService);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-      cubit.togglePlay(); // pause
+      cubit.togglePlay(); // user pauses
       expect(cubit.state.isPlaying, isFalse);
 
-      // No cubit method called — simulates the OS resuming playback itself.
+      // A stray engine "playing" event (e.g. a loop-cycle transition) must
+      // NOT resurrect playing state — the user's pause intent is authoritative.
       audioService.emitPlaying(true);
       await Future<void>.delayed(Duration.zero);
 
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'cubit intent must win over engine state events');
+    });
+
+    test('engine stopped event does NOT override a play intent', () async {
+      final session = _session(1);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
       expect(cubit.state.isPlaying, isTrue);
+
+      // A loop-cycle "stopped" transition must not flip the icon to paused.
+      audioService.emitPlaying(false);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isTrue,
+          reason: 'engine transitions are not an authority over state');
     });
   });
 

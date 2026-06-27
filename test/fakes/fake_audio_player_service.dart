@@ -31,10 +31,10 @@ class FakeAudioPlayerService implements AudioPlayerService {
   void emitPosition(Duration d) => _positionCtrl.add(d);
   void emitDuration(Duration d) => _durationCtrl.add(d);
 
-  /// Simulates an out-of-band engine state change (OS audio-focus loss,
-  /// lock-screen hardware button, internal error) the cubit didn't itself
-  /// request — the scenario the [TrainingSessionPlayerCubit] must self-heal
-  /// from once it subscribes to [onPlayingChanged].
+  /// Simulates an engine playing/paused state event (including the engine's own
+  /// internal loop-cycle transitions). The cubit must NOT mirror these into its
+  /// state — it is the sole authority over isPlaying. Tests use this to assert
+  /// the cubit ignores engine-originated state changes.
   void emitPlaying(bool playing) => _playingCtrl.add(playing);
 
   @override

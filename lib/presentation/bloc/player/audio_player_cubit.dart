@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
@@ -98,7 +97,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
-  StreamSubscription<bool>? _playingSubscription;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
   Duration? _originalDuration;
@@ -139,17 +137,19 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       _startLogicalTimer();
     });
 
-    // Authoritative correction on top of the optimistic emits already done at
-    // each call site: heals isPlaying back in sync whenever the engine's real
-    // state changes for a reason this cubit didn't itself request (OS
-    // audio-focus interruption/resume, lock-screen hardware buttons, an
-    // engine-internal error after a failed play()).
-    _playingSubscription = _audioService.onPlayingChanged.listen((playing) {
-      AppLogger.d(
-          '[player-diag] onPlayingChanged stream fired: playing=$playing, '
-          'state.isPlaying=${state.isPlaying}');
-      if (state.isPlaying != playing) emit(state.copyWith(isPlaying: playing));
-    });
+    // NOTE: we deliberately do NOT subscribe to _audioService.onPlayingChanged.
+    // The cubit is the single source of truth for isPlaying — it is mutated
+    // only by intents (button taps, lock-screen commands via _notificationSub,
+    // track completion). The engine is a pure follower that receives play/pause
+    // commands but must never write back into state. Subscribing here would
+    // re-introduce the play/pause desync: the looping engine emits
+    // stopped→playing on every loop cycle, and those internal transitions would
+    // race with — and silently overwrite — a user's pause intent.
+    //
+    // Genuinely external events (OS audio-focus loss/regain) belong here too,
+    // but must arrive as explicit intents, not as raw engine-state writes. That
+    // routing is intentionally deferred (see backlog) rather than smuggled
+    // through onPlayingChanged.
 
     _audioService.setLooping(true);
   }
@@ -345,13 +345,10 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
 
       if (shouldPlay) {
-        // Optimistic emit: the engine's play() future, and the chain of
-        // awaits leading up to this call (download-path resolution etc.),
-        // can take noticeably longer than the lock-screen notification
-        // takes to flip to "playing" (it's driven straight off the audio
-        // engine's own event stream). Emitting here keeps the in-app icon
-        // from visibly lagging behind — same pattern setIndexAndPlay()
-        // already uses.
+        // The cubit is the authority: declare the intent (isPlaying: true)
+        // before commanding the engine, so every watcher (buttons, logical
+        // timer, notification) follows immediately rather than waiting on the
+        // engine's play() future to complete.
         emit(state.copyWith(isPlaying: true));
         await _audioService.play(sourcePath);
         emit(state.copyWith(isPlaying: true, isLoading: false));
@@ -400,9 +397,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   void togglePlay() {
-    AppLogger.d(
-        '[player-diag] togglePlay() called: isFinished=${state.isFinished}, '
-        'isPlaying=${state.isPlaying}');
     if (state.isFinished) {
       replay();
     } else if (state.isPlaying) {
@@ -498,7 +492,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();
-    await _playingSubscription?.cancel();
     await _audioService.dispose();
     return super.close();
   }
