@@ -69,7 +69,8 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> acceptPrivacyConsent() async {
     consentAccepted = true;
-    final user = _currentUser;
-    if (user != null) emitUser(user.copyWith(hasConsented: true));
+    // Mirrors the real SupabaseAuthRepository: writes to the DB but does NOT
+    // fire authStateChanges (Supabase only fires that stream on auth events,
+    // not on profile table writes). The cubit must self-emit after this call.
   }
 }

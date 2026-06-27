@@ -60,7 +60,16 @@ class AuthCubit extends Cubit<AuthState> {
 
   Future<void> signOut() => _repo.signOut();
 
-  Future<void> acceptConsent() => _repo.acceptPrivacyConsent();
+  Future<void> acceptConsent() async {
+    await _repo.acceptPrivacyConsent();
+    // Supabase's onAuthStateChange does not fire on profile table writes, so
+    // the _sub listener will never see this change. Emit directly so AuthGate
+    // transitions without requiring an auth event.
+    final current = state;
+    if (current is AuthAuthenticated) {
+      emit(AuthAuthenticated(user: current.user.copyWith(hasConsented: true)));
+    }
+  }
 
   @override
   Future<void> close() async {
