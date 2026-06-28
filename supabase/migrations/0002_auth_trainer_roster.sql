@@ -111,6 +111,9 @@ create index if not exists training_session_assigned_by_idx
 -- First-time RLS enablement on this table — see the note at the top of this file.
 alter table public.training_session enable row level security;
 
+-- In a fresh local env the baseline migration creates this broad policy first;
+-- drop it before installing the narrower user-scoped one.
+drop policy if exists "training_session_select_all" on public.training_session;
 drop policy if exists "training_session_select_visible" on public.training_session;
 create policy "training_session_select_visible" on public.training_session
   for select using (
