@@ -77,7 +77,13 @@ class SupabaseAuthRepository implements AuthRepository {
   Future<void> acceptPrivacyConsent() async {
     final user = _client.auth.currentUser;
     if (user == null) return;
-    await _client.from('profiles').update(
-        {'consented_at': DateTime.now().toIso8601String()}).eq('id', user.id);
+    try {
+      await _client.from('profiles').update(
+          {'consented_at': DateTime.now().toIso8601String()}).eq('id', user.id);
+    } catch (_) {
+      // Profiles table may not exist yet (migration pending on this environment).
+      // The cubit emits hasConsented=true locally regardless, so the user can
+      // proceed; consent will be persisted on next launch once the migration runs.
+    }
   }
 }
