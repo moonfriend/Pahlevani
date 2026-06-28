@@ -613,6 +613,7 @@ class _TrackListState extends State<_TrackList> {
         _itemKeys[i] ??= GlobalKey();
         final track = tracks[i];
         final active = i == activeIndex;
+        final done = widget.state.isTrackDone(track.id);
         final isCustom =
             track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
         final repFg = isCustom ? colors.repCustom : colors.repDefault;
@@ -636,17 +637,24 @@ class _TrackListState extends State<_TrackList> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: active ? widget.accent.fg : colors.surface3,
+                  color: done && !active
+                      ? colors.repDefaultBg
+                      : (active ? widget.accent.fg : colors.surface3),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 alignment: Alignment.center,
-                child: Text('${i + 1}',
-                    style: TextStyle(
-                        fontFamily: PFonts.ui,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: active ? cs.onPrimary : colors.onMuted,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
+                child: done && !active
+                    ? Icon(Icons.check_rounded,
+                        size: 17, color: colors.repDefault)
+                    : Text('${i + 1}',
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: active ? cs.onPrimary : colors.onMuted,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ])),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -660,7 +668,10 @@ class _TrackListState extends State<_TrackList> {
                           fontWeight:
                               active ? FontWeight.w700 : FontWeight.w600,
                           fontSize: 14.5,
-                          color: active ? cs.onSurface : colors.onMuted),
+                          color: active ? cs.onSurface : colors.onMuted,
+                          decoration: done && !active
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                   Text('${track.effectiveRepetitions} reps',
@@ -687,7 +698,10 @@ class _TrackListState extends State<_TrackList> {
                             : Icons.play_arrow_rounded,
                         size: 18,
                         color: widget.accent.fg)
-                    : const SizedBox.shrink(),
+                    : (done
+                        ? Icon(Icons.check_circle_rounded,
+                            size: 18, color: colors.repDefault)
+                        : const SizedBox.shrink()),
               ),
             ]),
           ),

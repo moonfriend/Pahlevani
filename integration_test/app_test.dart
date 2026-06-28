@@ -291,6 +291,39 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(currentIcon(), Icons.pause_rounded);
   });
+
+  // ── 10: A track that plays through is marked done in the list ───────────────
+  //
+  // The first track's logical timer runs to completion (driven by a short
+  // emitted duration), which advances to track 2 and marks track 1 done — a
+  // check-circle appears in the list for the completed track.
+
+  testWidgets('a track played to completion shows a done check in the list',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    final cards = find.descendant(
+        of: find.byType(ListView), matching: find.byType(GestureDetector));
+    await tester.tap(cards.first);
+    await pumpPlayer(tester);
+
+    // No track is done yet.
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+
+    // Drive the current track's logical timer to completion: emit a short
+    // duration (effective reps == default reps ⇒ target == emitted duration),
+    // then let the 200ms-tick timer fire next(completed: true).
+    lastFakeAudioService!.emitDuration(const Duration(milliseconds: 200));
+    await tester.pump(); // start logical timer
+    await tester.pump(const Duration(milliseconds: 400)); // timer fires
+    await tester.pump(); // rebuild list with the done state
+
+    // Track 1 (now scrolled-past, index 0) shows the done check.
+    expect(find.byIcon(Icons.check_circle_rounded), findsWidgets);
+    // And we advanced onto track 2 (Kabbadeh) which is not done.
+    expect(find.text('Kabbadeh'), findsWidgets);
+  });
 }
 
 // Pumps enough frames for loadTracks() to complete and the player UI to render.
