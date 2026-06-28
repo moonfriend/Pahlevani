@@ -23,6 +23,13 @@ class AudioPlayerState {
   final Duration logicalDuration;
   final bool isFinished;
 
+  /// Ids of tracks whose playback ran to completion this session. Manual skips
+  /// (next/prev taps) do NOT add to this set — only a track that played all the
+  /// way through its reps is marked done. Drives the per-item "done" checkmark.
+  final Set<String> completedTrackIds;
+
+  bool isTrackDone(String id) => completedTrackIds.contains(id);
+
   TrainingItemWithAudio? get currentTrack =>
       tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
           ? tracks[playingIndex]
@@ -47,6 +54,7 @@ class AudioPlayerState {
     this.logicalPosition = Duration.zero,
     this.logicalDuration = Duration.zero,
     this.isFinished = false,
+    this.completedTrackIds = const {},
   });
 
   AudioPlayerState copyWith({
@@ -60,6 +68,7 @@ class AudioPlayerState {
     Duration? logicalPosition,
     Duration? logicalDuration,
     bool? isFinished,
+    Set<String>? completedTrackIds,
   }) =>
       AudioPlayerState(
         playingIndex: playingIndex ?? this.playingIndex,
@@ -72,6 +81,7 @@ class AudioPlayerState {
         logicalPosition: logicalPosition ?? this.logicalPosition,
         logicalDuration: logicalDuration ?? this.logicalDuration,
         isFinished: isFinished ?? this.isFinished,
+        completedTrackIds: completedTrackIds ?? this.completedTrackIds,
       );
 
   AudioPlayerState withError(String message) => AudioPlayerState(
@@ -79,6 +89,7 @@ class AudioPlayerState {
         isPlaying: false,
         tracks: tracks,
         errorMessage: message,
+        completedTrackIds: completedTrackIds,
       );
 }
 
@@ -229,6 +240,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           duration: Duration.zero,
           isLoading: false,
           errorMessage: null,
+          completedTrackIds: const {},
         ));
         await _loadSourceAtIndex(0, shouldPlay: true);
       }
@@ -239,7 +251,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  void next() {
+  /// Advances to the next track. When [completed] is true the current track
+  /// played all the way through its reps, so it is marked done (the per-item
+  /// checkmark). Manual skips (transport tap, lock-screen skip) pass false and
+  /// leave the track unmarked — only a full play-through counts as done.
+  void next({bool completed = false}) {
+    final doneIds = completed && state.currentTrack != null
+        ? {...state.completedTrackIds, state.currentTrack!.id}
+        : state.completedTrackIds;
+
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
       emit(state.copyWith(
@@ -247,12 +267,17 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         position: Duration.zero,
         duration: Duration.zero,
         isFinished: false,
+        completedTrackIds: doneIds,
       ));
       _loadSourceAtIndex(nextIndex, shouldPlay: true);
     } else {
       _audioService.stop();
       _stopLogicalTimer();
-      emit(state.copyWith(isPlaying: false, isFinished: true));
+      emit(state.copyWith(
+        isPlaying: false,
+        isFinished: true,
+        completedTrackIds: doneIds,
+      ));
     }
   }
 
@@ -265,6 +290,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       logicalDuration: Duration.zero,
       isPlaying: false,
       isFinished: false,
+      completedTrackIds: const {},
     ));
     _loadSourceAtIndex(0, shouldPlay: true);
   }
@@ -478,7 +504,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       _logicalElapsed += const Duration(milliseconds: 200);
       if (_logicalElapsed >= _logicalTargetDuration!) {
         timer.cancel();
-        next();
+        // Track reached the end of its reps — it played through, so mark done.
+        next(completed: true);
         return;
       }
       emit(state.copyWith(logicalPosition: _logicalElapsed));
