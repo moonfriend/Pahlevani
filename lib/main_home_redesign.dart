@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/home/trainee_home_page.dart';
 import 'package:pahlevani/presentation/pages/home/trainer_home_page.dart';
@@ -28,10 +29,14 @@ class _HomeRedesignApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider<AuthCubit>.value(
       value: getIt<AuthCubit>(),
-      child: const MaterialApp(
+      child: MaterialApp(
         title: 'Pahlevani',
         debugShowCheckedModeBanner: false,
-        home: AuthGate(child: _RoleSwitcher()),
+        // The home pages use their own HomeColors tokens, but the training
+        // player resolves PahlevaniColors from the theme — without this the
+        // player would crash when launched from "Continue training".
+        theme: PahlevaniTheme.dark(),
+        home: const AuthGate(child: _RoleSwitcher()),
       ),
     );
   }
