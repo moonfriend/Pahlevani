@@ -35,6 +35,12 @@ create policy "app_release_gate_select_all" on public.app_release_gate
 -- No insert/update/delete policy for regular users — writable only via the
 -- service-role key (scripts/admin.py's "Release Gate" tab).
 
+-- Tables created via the SQL Editor do NOT inherit the blanket anon/authenticated
+-- GRANT that the Supabase dashboard auto-applies. Without this, PostgreSQL's
+-- table-level permission check fails before RLS even runs, so the anon user
+-- sees 0 rows and PostgREST throws PGRST116 on .single().
+grant select on public.app_release_gate to anon, authenticated;
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- HOW TO USE THIS FOR A FUTURE BREAKING MIGRATION
 --

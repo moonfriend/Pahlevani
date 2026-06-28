@@ -24,13 +24,15 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       createdAt: fields[4] as DateTime?,
       isUserCreated: fields[5] as bool,
       titleFa: fields[6] as String?,
+      assignedToUserId: fields[7] as String?,
+      assignedByTrainerId: fields[8] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +46,11 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(5)
       ..write(obj.isUserCreated)
       ..writeByte(6)
-      ..write(obj.titleFa);
+      ..write(obj.titleFa)
+      ..writeByte(7)
+      ..write(obj.assignedToUserId)
+      ..writeByte(8)
+      ..write(obj.assignedByTrainerId);
   }
 
   @override

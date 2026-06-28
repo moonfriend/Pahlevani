@@ -4,61 +4,125 @@ A Flutter application for training in Pahlevani, the art of Persian warriors' fi
 
 ## Features
 
-- Browse through Pahlevani movements with audio guidance
-- View images of each movement during practice
-- Play along with the movements in sequence
-- Navigate between different movements with Previous and Next buttons
+- Browse training sessions with audio guidance
+- Play sessions with repetition tracking and 4-track lookahead audio caching
+- Download sessions for offline use
+- Trainer-assignable individualized sessions (home redesign branch)
 
-## Recent Updates
+---
 
-### Movement Images
+## Development
 
-The app now displays images of each movement:
-- The current movement is shown prominently at the top of the screen
-- Each movement in the training_session has a thumbnail image
-- The training_session UI has been updated to match the Figma design
+### Prerequisites
 
-## Development Guide
+- Flutter SDK (see `.flutter-version` or `pubspec.yaml` for required version)
+- Dart ≥ 3.0
+- For Linux desktop: `libgtk-3-dev`, `libblkid-dev`, `liblzma-dev`
 
-### Adding Movement Images
+### Install dependencies
 
-To add actual images for each movement:
-
-1. Create image files with the same names as specified in `zarb_player_cubit.dart` (in the `imageList` array)
-2. Place these files in the `assets/images/` directory
-3. Make sure the images are in PNG format
-4. The files should be named according to the pattern in the `imageList` (e.g., `01_sheno_01_sarnavazi.png`)
-
-Example:
-```
-assets/images/
-  ├── 00_fath_besmel.png
-  ├── 01_sheno_01_sarnavazi.png
-  ├── 02_sheno_02_do_shallaghe.png
-  └── ...
+```bash
+flutter pub get
 ```
 
-### Placeholder Images
+### Run — shipped app (production Supabase)
 
-During development, a placeholder is shown when actual images are not available. To generate real placeholder images (instead of the current error fallback), you can:
+```bash
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -d linux
+```
 
-1. Uncomment the `generatePlaceholderImages` function call in `main.dart`
-2. Add code to generate actual images in the `generatePlaceholderImages` function
+### Run — home redesign (production Supabase)
 
-## Dependencies
+```bash
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -t lib/main_home_redesign.dart -d linux
+```
 
-- flutter_bloc: State management
-- audioplayers: For playing movement audio guides
+### Run — home redesign against **local Supabase** (recommended during development)
 
-## Getting Started
+Start the local Supabase stack once per boot:
 
-This project is a starting point for a Flutter application.
+```bash
+export PATH="$HOME/.hermes/node/bin:$PATH"   # add supabase CLI to PATH
+supabase start
+```
 
-A few resources to get you started if this is your first Flutter project:
+Then run the app:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+bash scripts/run_local.sh
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Which is equivalent to:
+
+```bash
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+flutter run \
+  -t lib/main_home_redesign.dart \
+  -d linux \
+  --dart-define="SUPABASE_URL=http://127.0.0.1:54321" \
+  --dart-define="SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+```
+
+To reset the local database (re-applies all migrations + seed data):
+
+```bash
+supabase db reset
+```
+
+### Tests
+
+```bash
+flutter test                # unit + widget tests
+flutter analyze             # lint
+```
+
+### Code generation (after changing Hive models)
+
+```bash
+dart run build_runner build --delete-conflicting-outputs
+```
+
+### Integration tests
+
+```bash
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+flutter test integration_test/app_test.dart -d linux --update-goldens
+```
+
+---
+
+## Architecture
+
+Clean Architecture — three layers: **Presentation → Domain ← Data**.
+
+State management: `flutter_bloc` Cubits only (no full Bloc events pattern).
+Dependency injection: `get_it` singleton via `lib/core/di/dependency_injection.dart`.
+Local DB: Hive. Remote: Supabase.
+
+See `CLAUDE.md` for full directory map, data-flow diagrams, and coding conventions.
+
+---
+
+## Local Supabase setup (first time)
+
+The Supabase CLI is installed via npm into `~/.hermes/node/bin/supabase`.
+
+```bash
+export PATH="$HOME/.hermes/node/bin:$PATH"
+supabase start   # pulls Docker images on first run (~1 GB), then starts containers
+supabase db reset  # applies migrations in supabase/migrations/ and seeds data
+```
+
+Migrations are applied in filename order:
+
+| File | Purpose |
+|---|---|
+| `0001_initial_schema.sql` | Base tables (movement, exercise, training_session, training_session_item) |
+| `0002_auth_trainer_roster.sql` | Auth tables (profiles, trainer_roster) + assignment columns + RLS |
+| `0003_app_release_gate.sql` | Version-gate table |
+
+Stop the local stack:
+
+```bash
+supabase stop
+```
