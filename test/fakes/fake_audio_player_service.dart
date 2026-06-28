@@ -19,6 +19,26 @@ class FakeAudioPlayerService implements AudioPlayerService {
   Duration? seekedTo;
   int playCallCount = 0;
 
+  /// When set, [resume] blocks until this completer is completed.
+  /// Use to test that callers declare intent before the engine catches up.
+  Completer<void>? resumeCompleter;
+
+  /// When true, models `just_audio` semantics: [play] and [resume] return a
+  /// future that completes only when playback later stops — i.e. when [pause]
+  /// or [stop] is called — NOT when playback starts. (audioplayers, by
+  /// contrast, completes these futures promptly once the command is dispatched.)
+  /// The cubit must remain correct under BOTH semantics; this flag lets a test
+  /// pin that the cubit never derives isPlaying from when these futures resolve.
+  bool completePlayOnPause = false;
+  final _pendingPlayCompleters = <Completer<void>>[];
+
+  void _resolvePendingPlays() {
+    for (final c in _pendingPlayCompleters) {
+      if (!c.isCompleted) c.complete();
+    }
+    _pendingPlayCompleters.clear();
+  }
+
   @override
   Stream<Duration> get onPositionChanged => _positionCtrl.stream;
 
@@ -43,6 +63,11 @@ class FakeAudioPlayerService implements AudioPlayerService {
     stopped = false;
     paused = false;
     playCallCount++;
+    if (completePlayOnPause) {
+      final c = Completer<void>();
+      _pendingPlayCompleters.add(c);
+      await c.future;
+    }
   }
 
   @override
@@ -53,16 +78,27 @@ class FakeAudioPlayerService implements AudioPlayerService {
   @override
   Future<void> pause() async {
     paused = true;
+    // just_audio's play() future resolves when playback stops — pause is one
+    // such moment. Mirror that so a blocked play()/resume() unblocks here.
+    _resolvePendingPlays();
   }
 
   @override
   Future<void> resume() async {
+    if (resumeCompleter != null) await resumeCompleter!.future;
     resumed = true;
+    paused = false;
+    if (completePlayOnPause) {
+      final c = Completer<void>();
+      _pendingPlayCompleters.add(c);
+      await c.future;
+    }
   }
 
   @override
   Future<void> stop() async {
     stopped = true;
+    _resolvePendingPlays();
   }
 
   @override

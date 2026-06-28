@@ -349,9 +349,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // before commanding the engine, so every watcher (buttons, logical
         // timer, notification) follows immediately rather than waiting on the
         // engine's play() future to complete.
-        emit(state.copyWith(isPlaying: true));
-        await _audioService.play(sourcePath);
+        //
+        // We deliberately do NOT re-emit isPlaying after the await. The play()
+        // future's completion timing is backend-dependent: audioplayers resolves
+        // it when the command is dispatched, but just_audio resolves it only when
+        // playback later STOPS (e.g. on the user's next pause). Emitting
+        // isPlaying:true after that await would resurrect a pause the user just
+        // made — the play/pause desync. isLoading is cleared up-front instead.
         emit(state.copyWith(isPlaying: true, isLoading: false));
+        await _audioService.play(sourcePath);
       } else {
         await _audioService.stop();
         await _audioService.setSource(sourcePath);
@@ -388,11 +394,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   Future<void> play() async {
     if (state.currentTrack != null) {
-      await _audioService.resume();
+      // Declare intent before commanding the engine — same pattern as
+      // _loadSourceAtIndex. The UI updates immediately; the engine catches up.
       emit(state.copyWith(isPlaying: true));
       if (_logicalTimer == null || !_logicalTimer!.isActive) {
         _startLogicalTimer();
       }
+      await _audioService.resume();
     }
   }
 

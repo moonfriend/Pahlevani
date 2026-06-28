@@ -251,6 +251,46 @@ void main() {
     // Back to track 1: Shena appears in stage + transport label + track list.
     expect(find.text('Shena'), findsWidgets);
   });
+
+  // ── 9: Play/pause button syncs to the tap intent ────────────────────────────
+  //
+  // Regression guard for the play/pause desync: tapping the transport button
+  // must flip the icon immediately and STAY flipped. The transport button is
+  // the only Icon rendered at size 30, which makes it unambiguous to target
+  // (the stage centre play overlay is 34, the track-row icon is 18).
+
+  testWidgets('transport play/pause button toggles and stays in sync',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    final cards = find.descendant(
+        of: find.byType(ListView), matching: find.byType(GestureDetector));
+    await tester.tap(cards.first);
+    await pumpPlayer(tester);
+
+    final transportIcon =
+        find.byWidgetPredicate((w) => w is Icon && w.size == 30);
+    IconData currentIcon() => tester.widget<Icon>(transportIcon).icon!;
+
+    // After load the session auto-plays → button shows the pause glyph.
+    expect(currentIcon(), Icons.pause_rounded);
+
+    // Tap to pause → must show play glyph, and stay there across extra frames.
+    await tester.tap(transportIcon);
+    await tester.pump();
+    expect(currentIcon(), Icons.play_arrow_rounded);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(currentIcon(), Icons.play_arrow_rounded,
+        reason: 'pause must not be resurrected by a late engine callback');
+
+    // Tap to resume → must show pause glyph again.
+    await tester.tap(transportIcon);
+    await tester.pump();
+    expect(currentIcon(), Icons.pause_rounded);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(currentIcon(), Icons.pause_rounded);
+  });
 }
 
 // Pumps enough frames for loadTracks() to complete and the player UI to render.

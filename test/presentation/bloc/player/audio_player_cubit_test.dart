@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
@@ -647,6 +649,77 @@ void main() {
       await cubit.play(); // should not throw
 
       expect(cubit.state.isPlaying, isFalse);
+    });
+
+    test('emits isPlaying true before resume completes (intent-first)',
+        () async {
+      final session = _session(1);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final completer = Completer<void>();
+      audioService.resumeCompleter = completer;
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.togglePlay(); // pause
+      expect(cubit.state.isPlaying, isFalse);
+
+      // Start play but do NOT await — resume() will block on the completer.
+      final playFuture = cubit.play();
+
+      // isPlaying must be true immediately, before the engine resumes.
+      // If play() awaits resume() first, this will still be false → RED.
+      expect(cubit.state.isPlaying, isTrue,
+          reason:
+              'play() must declare intent (isPlaying=true) before resume completes');
+
+      completer.complete();
+      await playFuture;
+      expect(audioService.resumed, isTrue);
+    });
+  });
+
+  // ---------- engine future timing (backend-agnostic isPlaying authority) ----
+
+  group('engine future timing (isPlaying authority under just_audio semantics)',
+      () {
+    test(
+        'pausing during initial load stays paused after the play() future resolves',
+        () async {
+      final session = _session(1);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
+      // just_audio-style: play()/resume() futures resolve on pause, not on start.
+      final audioService = FakeAudioPlayerService()..completePlayOnPause = true;
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      // loadTracks() suspends inside _loadSourceAtIndex at `await play()`; the
+      // fake won't resolve that future until pause/stop. Fire-and-forget, then
+      // drain microtasks until tracks are loaded and the engine is "playing".
+      unawaited(cubit.loadTracks());
+      for (var i = 0; i < 12; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(cubit.state.tracks, isNotEmpty);
+      expect(cubit.state.isPlaying, isTrue);
+
+      // User pauses — this resolves the blocked play() future.
+      cubit.togglePlay();
+      expect(cubit.state.isPlaying, isFalse);
+
+      // Drain microtasks so the previously-blocked _loadSourceAtIndex resumes.
+      for (var i = 0; i < 12; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      // The engine future resolving must NOT flip isPlaying back to true.
+      expect(cubit.state.isPlaying, isFalse,
+          reason:
+              'cubit is the sole authority for isPlaying; an engine play() future '
+              'completing (which just_audio does on pause) must never re-emit playing');
     });
   });
 
