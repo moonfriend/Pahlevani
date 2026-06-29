@@ -16,7 +16,7 @@ import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
+import 'package:pahlevani/presentation/pages/home/trainee_home_page.dart';
 import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -133,7 +133,7 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
-          home: const VersionGate(child: TrainingSessionPage()),
+          home: const VersionGate(child: TraineeHomePage()),
         ),
       ),
     );
