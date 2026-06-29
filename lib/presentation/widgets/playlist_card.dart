@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 /// A card widget to display information about a single session.
 class TrainingSessionCard extends StatelessWidget {

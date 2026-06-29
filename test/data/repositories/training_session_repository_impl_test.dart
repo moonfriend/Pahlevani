@@ -96,15 +96,6 @@ class _FakeLocalDataSource implements TrainingSessionLocalDataSource {
   @override
   Future<void> downloadFile(String url, String savePath,
       Function(int, int) onReceiveProgress) async {}
-
-  @override
-  Future<List<Map<String, dynamic>>> getTrainingSessionsTable() async => [];
-
-  @override
-  Future<List<Map<String, dynamic>>> getExerciseTable() async => [];
-
-  @override
-  Future<List<Map<String, dynamic>>> getTrainingSessionItemTable() async => [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

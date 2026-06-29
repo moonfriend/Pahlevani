@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 /// 34px circular download-status button per the design spec.
 class DownloadRing extends StatelessWidget {

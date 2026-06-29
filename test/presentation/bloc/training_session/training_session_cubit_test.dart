@@ -7,7 +7,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 

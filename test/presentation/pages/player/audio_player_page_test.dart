@@ -204,6 +204,10 @@ void main() {
     // Pressing Next should mark track 0 as done.
     expect(cubit.state.completedTrackIds, contains('10001'));
     expect(cubit.state.playingIndex, 1);
+
+    // UI sync: done checkmark should appear in the track list for track 0.
+    await tester.pump();
+    expect(find.byIcon(Icons.check_rounded), findsWidgets);
   });
 
   testWidgets('play/pause icon shows playing after next() from a paused state',

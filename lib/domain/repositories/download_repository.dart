@@ -1,5 +1,5 @@
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 abstract class DownloadRepository {
   /// Initial download statuses for all known sessions (from SharedPreferences).
