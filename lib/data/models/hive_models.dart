@@ -200,6 +200,30 @@ class HiveExercise extends HiveObject {
       );
 }
 
+/// Tracks every image that has been downloaded to the local media cache.
+/// Box is keyed by [urlHash] so lookups are O(1) without filesystem I/O.
+@HiveType(typeId: 3)
+class HiveCachedImage extends HiveObject {
+  /// djb2 hex of the **original** image URL — stable even if the Supabase
+  /// transform params change, and deduplicates images shared across sessions.
+  @HiveField(0)
+  String urlHash;
+
+  /// Absolute path to the cached file on this device.
+  @HiveField(1)
+  String localPath;
+
+  /// Milliseconds since epoch — reserved for future cache eviction policies.
+  @HiveField(2)
+  int cachedAtMs;
+
+  HiveCachedImage({
+    required this.urlHash,
+    required this.localPath,
+    required this.cachedAtMs,
+  });
+}
+
 @HiveType(typeId: 2)
 class HiveTrainingSessionItem extends HiveObject {
   @HiveField(0)
