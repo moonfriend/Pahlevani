@@ -183,6 +183,29 @@ void main() {
     expect(find.text('Kabbadeh'), findsWidgets);
   });
 
+  testWidgets('tapping Next transport button marks previous track as done',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final cubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+
+    // First track is playing at index 0 (id "10001").
+    expect(cubit.state.playingIndex, 0);
+    expect(cubit.state.completedTrackIds, isEmpty);
+
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Pressing Next should mark track 0 as done.
+    expect(cubit.state.completedTrackIds, contains('10001'));
+    expect(cubit.state.playingIndex, 1);
+  });
+
   testWidgets('play/pause icon shows playing after next() from a paused state',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));

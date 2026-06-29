@@ -772,7 +772,7 @@ class _Transport extends StatelessWidget {
             icon: Icons.keyboard_arrow_down_rounded,
             enabled: !atEnd,
             colors: colors,
-            onTap: cubit.next),
+            onTap: () => cubit.next(completed: true)),
       ]),
     );
   }
