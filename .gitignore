@@ -72,3 +72,10 @@ supabase/.db.env
 
 # Supabase snapshot — table data + media files downloaded by scripts/dump_supabase.py
 supabase/dump/
+
+# Python virtual environment and version pin (used by scripts/)
+.venv/
+.python-version
+
+# Claude Code internal files (worktrees, session state)
+.claude/
