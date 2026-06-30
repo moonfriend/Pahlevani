@@ -83,6 +83,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     expect(find.text('Beginner Warm-up'), findsOneWidget);
     expect(find.text('Advanced Drill'), findsOneWidget);
@@ -96,6 +97,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     // The outer GestureDetector for the first card is the first one inside ListView.
     final listView = find.byType(ListView);
@@ -116,6 +118,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     // First more_vert icon belongs to 'Beginner Warm-up' (server session, id=1).
     await tester.tap(find.byIcon(Icons.more_vert).first);
@@ -134,6 +137,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     // Last more_vert icon belongs to 'Advanced Drill' (isUserCreated: true, id=2).
     await tester.tap(find.byIcon(Icons.more_vert).last);
@@ -148,6 +152,7 @@ void main() {
   testWidgets('confirming delete removes session from list', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     // Open overflow for 'Advanced Drill' (user-created).
     await tester.tap(find.byIcon(Icons.more_vert).last);
@@ -172,6 +177,7 @@ void main() {
   testWidgets('tapping next advances to second track', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
     final cards = find.descendant(
@@ -199,6 +205,7 @@ void main() {
   testWidgets('prev button is no-op on first track', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     final cards = find.descendant(
         of: find.byType(ListView), matching: find.byType(GestureDetector));
@@ -219,6 +226,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     final cards = find.descendant(
         of: find.byType(ListView), matching: find.byType(GestureDetector));
@@ -263,6 +271,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     final cards = find.descendant(
         of: find.byType(ListView), matching: find.byType(GestureDetector));
@@ -302,6 +311,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await navigateToTrainerView(tester);
 
     final cards = find.descendant(
         of: find.byType(ListView), matching: find.byType(GestureDetector));
@@ -332,4 +342,13 @@ Future<void> pumpPlayer(WidgetTester tester) async {
   await tester.pump(); // schedule loadTracks
   await tester.pump(); // complete async work
   await tester.pump(const Duration(milliseconds: 400)); // navigation animation
+}
+
+// The home page is now TraineeHomePage. Tests that exercise the sessions list
+// or player must navigate to the trainer view first via the ··· menu.
+Future<void> navigateToTrainerView(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.more_vert));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Trainer view'));
+  await tester.pumpAndSettle();
 }
