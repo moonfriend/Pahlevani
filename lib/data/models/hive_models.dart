@@ -35,8 +35,10 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(8)
   final String? assignedByTrainerId;
 
+  // Nullable so the Hive adapter safely reads null for boxes written before
+  // field 9 existed — toDomain() defaults to true (all legacy sessions public).
   @HiveField(9)
-  final bool isPublic;
+  final bool? isPublic;
 
   HiveTrainingSession({
     required this.id,
@@ -48,7 +50,7 @@ class HiveTrainingSession extends HiveObject {
     this.titleFa,
     this.assignedToUserId,
     this.assignedByTrainerId,
-    this.isPublic = true,
+    this.isPublic,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -61,7 +63,7 @@ class HiveTrainingSession extends HiveObject {
           ? null
           : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
-      isPublic: json['is_public'] as bool? ?? true,
+      isPublic: json['is_public'] as bool?,
       titleFa: json['title_fa'] as String?,
       assignedToUserId: json['assigned_to_user_id'] as String?,
       assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
@@ -75,7 +77,7 @@ class HiveTrainingSession extends HiveObject {
         'difficulty': difficulty,
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
-        'is_public': isPublic,
+        'is_public': isPublic ?? true,
         if (titleFa != null) 'title_fa': titleFa,
         if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
         if (assignedByTrainerId != null)
@@ -90,7 +92,7 @@ class HiveTrainingSession extends HiveObject {
       difficulty: s.difficulty,
       createdAt: s.createdAt,
       isUserCreated: s.isUserCreated,
-      isPublic: s.isPublic,
+      isPublic: s.isPublic, // bool — stored as bool? in Hive, defaulted on read
       titleFa: s.titleFa,
       assignedToUserId: s.assignedToUserId,
       assignedByTrainerId: s.assignedByTrainerId,
@@ -106,7 +108,7 @@ class HiveTrainingSession extends HiveObject {
       difficulty: difficulty,
       createdAt: createdAt,
       isUserCreated: isUserCreated,
-      isPublic: isPublic,
+      isPublic: isPublic ?? true,
       assignedToUserId: assignedToUserId,
       assignedByTrainerId: assignedByTrainerId,
     );

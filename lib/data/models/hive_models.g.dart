@@ -26,7 +26,7 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       titleFa: fields[6] as String?,
       assignedToUserId: fields[7] as String?,
       assignedByTrainerId: fields[8] as String?,
-      isPublic: fields[9] as bool,
+      isPublic: fields[9] as bool?,
     );
   }
 
