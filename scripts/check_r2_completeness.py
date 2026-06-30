@@ -1,28 +1,86 @@
 """
-R2 completeness check — verifies that every audio and image URL stored in
-the Supabase DB has a corresponding object in the Cloudflare R2 bucket.
+check_r2_completeness.py
+════════════════════════
+Verifies that every audio and image file referenced in the Supabase database
+is present in the Cloudflare R2 bucket. Run this after uploading files to R2
+and before updating the DB URLs, so you know nothing was missed.
 
-Usage:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
     cd scripts
+    export SUPABASE_URL=https://<project-ref>.supabase.co
+    export SUPABASE_KEY=<service-role-key>      # NOT the anon key
+    export R2_ACCESS_KEY_ID=<r2-token-id>
+    export R2_SECRET_ACCESS_KEY=<r2-token-secret>
     uv run python check_r2_completeness.py
 
-Required environment variables:
-    SUPABASE_URL          — e.g. https://REDACTED-PROJECT.supabase.co
-    SUPABASE_KEY          — service-role key (needs SELECT on exercise + movement)
-    R2_ACCESS_KEY_ID      — R2 API token with Object Read permissions
-    R2_SECRET_ACCESS_KEY  — (paired with the above)
+Exit code 0 = all files present. Exit code 1 = one or more files missing.
 
-Optional:
-    R2_ACCOUNT_ID         — defaults to 52a61783f2d01cd161e65ac58f130716
-    R2_BUCKET             — defaults to morshed-sounds
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENVIRONMENT VARIABLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-What it checks:
-    • exercise.url         → audio files (bucket was "tracks" in Supabase)
-    • movement.media_src   → image files (bucket was "movement-media" in Supabase)
+Required:
+    SUPABASE_URL          Full project URL, e.g. https://abc123.supabase.co
+    SUPABASE_KEY          Service-role key (Settings → API → service_role).
+                          Needs SELECT on 'exercise' and 'movement' tables.
+    R2_ACCESS_KEY_ID      R2 API token ID with at least Object Read + List
+                          permissions on the target bucket.
+    R2_SECRET_ACCESS_KEY  Matching secret for the above token.
 
-The script extracts the path segment from each Supabase Storage URL and
-compares it to the list of R2 object keys. Files that are missing from R2
-are printed so you can upload them.
+Optional (defaults already set for this project):
+    R2_ACCOUNT_ID         Cloudflare account ID (default: 52a61783f2d01cd161e65ac58f130716)
+    R2_BUCKET             R2 bucket name (default: morshed-sounds)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO GET R2 CREDENTIALS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Cloudflare Dashboard → R2 → Manage R2 API Tokens → Create API Token.
+2. Set permissions: Object Read and List on the 'morshed-sounds' bucket.
+3. Copy "Access Key ID" → R2_ACCESS_KEY_ID
+   Copy "Secret Access Key" → R2_SECRET_ACCESS_KEY
+   (The secret is shown only once — save it somewhere safe.)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT IT CHECKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    exercise.url         → audio files  (source bucket in Supabase: "tracks")
+    movement.media_src   → image files  (source bucket in Supabase: "movement-media")
+
+The script extracts the path segment from each Supabase Storage URL
+(the part after the bucket name) and looks for a matching object key in R2.
+Files that are missing are printed with their original Supabase URL so you
+know exactly what to re-upload.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPICAL WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Upload audio and image files to R2 (via Cloudflare dashboard or rclone).
+2. Run this script. Fix any missing files reported.
+3. Re-run until exit code 0.
+4. Update DB: replace Supabase Storage URLs with R2 public URLs using SQL:
+
+       UPDATE exercise
+       SET url = replace(url,
+         'https://<project>.supabase.co/storage/v1/object/public/tracks/',
+         'https://pub-<token>.r2.dev/'
+       )
+       WHERE url LIKE '%supabase.co%';
+
+       UPDATE movement
+       SET media_src = replace(media_src,
+         'https://<project>.supabase.co/storage/v1/object/public/movement-media/',
+         'https://pub-<token>.r2.dev/'
+       )
+       WHERE media_src LIKE '%supabase.co%';
+
+5. Run the app with staging Supabase (`SUPABASE_URL` + `SUPABASE_KEY` dart-
+   defines) to verify playback before touching production.
 """
 
 import os

@@ -126,3 +126,58 @@ Stop the local stack:
 ```bash
 supabase stop
 ```
+
+---
+
+## Media infrastructure — Cloudflare R2
+
+Audio files (~220 MB per session) and exercise images are hosted on
+Cloudflare R2 (`morshed-sounds` bucket) for zero-egress delivery.
+The Supabase DB stores the public R2 URLs in `exercise.url` and
+`movement.media_src`.
+
+### Verify R2 completeness
+
+After uploading files to R2, run the completeness check to confirm every
+file referenced in the DB is present in the bucket:
+
+```bash
+cd scripts
+
+export SUPABASE_URL=https://<project-ref>.supabase.co
+export SUPABASE_KEY=<service-role-key>      # Settings → API → service_role
+export R2_ACCESS_KEY_ID=<r2-token-id>       # Cloudflare → R2 → API Tokens
+export R2_SECRET_ACCESS_KEY=<r2-token-secret>
+
+uv run python check_r2_completeness.py
+```
+
+- **Exit 0** — all files present in R2. Safe to update DB URLs.
+- **Exit 1** — missing files listed with their original Supabase URL.
+
+The script checks both `exercise.url` (audio) and `movement.media_src`
+(images). See the docstring in `scripts/check_r2_completeness.py` for the
+full workflow including the SQL to swap Supabase URLs for R2 URLs.
+
+#### How to get R2 API credentials
+
+1. Cloudflare Dashboard → **R2** → **Manage R2 API Tokens** → Create API Token.
+2. Set permissions: **Object Read** + **List** on the `morshed-sounds` bucket.
+3. Copy **Access Key ID** → `R2_ACCESS_KEY_ID`
+   Copy **Secret Access Key** → `R2_SECRET_ACCESS_KEY` (shown once only).
+
+### Run against staging Supabase
+
+Use `--dart-define` to point the app at the staging project during R2
+migration testing. The `.vscode/launch.json` has a pre-configured
+"Pahlevani (staging)" entry — fill in the staging URL and key there, or
+pass them on the command line:
+
+```bash
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -d linux \
+  --dart-define=SUPABASE_URL=https://<staging-ref>.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<staging-anon-key>
+```
+
+Release builds fall back to the hardcoded production values in
+`lib/core/config.dart` (no dart-defines needed).
