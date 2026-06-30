@@ -31,6 +31,17 @@ flutter pub get
 PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -d linux
 ```
 
+### Run — on Chrome (web)
+
+```bash
+flutter run -d chrome
+```
+
+Audio playback uses `audioplayers` via `HTMLAudioElement` on web. Local file
+paths (downloaded sessions) are not available in the browser — tracks always
+stream from their HTTPS URL. See the R2 CORS section below if audio fails to
+load cross-origin.
+
 ### Run — home redesign (production Supabase)
 
 ```bash

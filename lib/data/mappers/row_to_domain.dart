@@ -5,6 +5,7 @@ import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 /// Maps an exercise row, joined with its movement row when available.
@@ -35,6 +36,7 @@ TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
       description: r.description ?? 'Description',
       difficulty: r.difficulty ?? 5,
       createdAt: r.createdAt,
+      isPublic: r.isPublic ?? true,
       assignedToUserId: r.assignedToUserId,
       assignedByTrainerId: r.assignedByTrainerId,
     );
@@ -47,4 +49,5 @@ TrainingItem mapItem(TrainingItemRow r) => TrainingItem(
       exerciseId: r.exerciseId,
       position: r.position,
       prescription: RepsPresc(r.repsToDo),
+      section: TrainingSection.fromString(r.section),
     );

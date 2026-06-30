@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 part 'hive_models.g.dart';
@@ -34,6 +35,9 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(8)
   final String? assignedByTrainerId;
 
+  @HiveField(9)
+  final bool isPublic;
+
   HiveTrainingSession({
     required this.id,
     required this.title,
@@ -44,6 +48,7 @@ class HiveTrainingSession extends HiveObject {
     this.titleFa,
     this.assignedToUserId,
     this.assignedByTrainerId,
+    this.isPublic = true,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -56,6 +61,7 @@ class HiveTrainingSession extends HiveObject {
           ? null
           : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
+      isPublic: json['is_public'] as bool? ?? true,
       titleFa: json['title_fa'] as String?,
       assignedToUserId: json['assigned_to_user_id'] as String?,
       assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
@@ -69,6 +75,7 @@ class HiveTrainingSession extends HiveObject {
         'difficulty': difficulty,
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
+        'is_public': isPublic,
         if (titleFa != null) 'title_fa': titleFa,
         if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
         if (assignedByTrainerId != null)
@@ -83,6 +90,7 @@ class HiveTrainingSession extends HiveObject {
       difficulty: s.difficulty,
       createdAt: s.createdAt,
       isUserCreated: s.isUserCreated,
+      isPublic: s.isPublic,
       titleFa: s.titleFa,
       assignedToUserId: s.assignedToUserId,
       assignedByTrainerId: s.assignedByTrainerId,
@@ -98,6 +106,7 @@ class HiveTrainingSession extends HiveObject {
       difficulty: difficulty,
       createdAt: createdAt,
       isUserCreated: isUserCreated,
+      isPublic: isPublic,
       assignedToUserId: assignedToUserId,
       assignedByTrainerId: assignedByTrainerId,
     );
@@ -234,12 +243,15 @@ class HiveTrainingSessionItem extends HiveObject {
   final int position;
   @HiveField(3)
   final int repsToDo;
+  @HiveField(4)
+  final String? section; // TrainingSection.value — nullable for legacy rows
 
   HiveTrainingSessionItem({
     required this.trainingSessionId,
     required this.itemId,
     required this.position,
     required this.repsToDo,
+    this.section,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) =>
@@ -248,6 +260,7 @@ class HiveTrainingSessionItem extends HiveObject {
         itemId: json['exercise_id'] as int,
         position: json['position'] as int,
         repsToDo: json['reps_to_do'] as int,
+        section: json['section'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -255,5 +268,8 @@ class HiveTrainingSessionItem extends HiveObject {
         'exercise_id': itemId,
         'position': position,
         'reps_to_do': repsToDo,
+        if (section != null) 'section': section,
       };
+
+  TrainingSection get trainingSection => TrainingSection.fromString(section);
 }

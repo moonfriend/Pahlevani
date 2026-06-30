@@ -7,6 +7,10 @@ class TrainingSession {
   final DateTime? createdAt;
   final bool isUserCreated;
 
+  /// Whether this session is visible in the public library (all trainees).
+  /// false = private, visible only to the assigned trainee.
+  final bool isPublic;
+
   /// Null = an "original training" — public, visible to every signed-in
   /// user. Set = an individualized session, visible only to this trainee
   /// (enforced server-side by RLS once the auth migration is applied).
@@ -25,6 +29,7 @@ class TrainingSession {
     required this.difficulty,
     this.createdAt,
     this.isUserCreated = false,
+    this.isPublic = true,
     this.assignedToUserId,
     this.assignedByTrainerId,
   });
@@ -39,6 +44,7 @@ class TrainingSession {
     int? difficulty,
     DateTime? createdAt,
     bool? isUserCreated,
+    bool? isPublic,
     String? assignedToUserId,
     String? assignedByTrainerId,
   }) {
@@ -50,6 +56,7 @@ class TrainingSession {
       difficulty: difficulty ?? this.difficulty,
       createdAt: createdAt ?? this.createdAt,
       isUserCreated: isUserCreated ?? this.isUserCreated,
+      isPublic: isPublic ?? this.isPublic,
       assignedToUserId: assignedToUserId ?? this.assignedToUserId,
       assignedByTrainerId: assignedByTrainerId ?? this.assignedByTrainerId,
     );

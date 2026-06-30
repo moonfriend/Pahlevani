@@ -26,13 +26,14 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       titleFa: fields[6] as String?,
       assignedToUserId: fields[7] as String?,
       assignedByTrainerId: fields[8] as String?,
+      isPublic: fields[9] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +51,9 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(7)
       ..write(obj.assignedToUserId)
       ..writeByte(8)
-      ..write(obj.assignedByTrainerId);
+      ..write(obj.assignedByTrainerId)
+      ..writeByte(9)
+      ..write(obj.isPublic);
   }
 
   @override
@@ -193,13 +196,14 @@ class HiveTrainingSessionItemAdapter
       itemId: fields[1] as int,
       position: fields[2] as int,
       repsToDo: fields[3] as int,
+      section: fields[4] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSessionItem obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.trainingSessionId)
       ..writeByte(1)
@@ -207,7 +211,9 @@ class HiveTrainingSessionItemAdapter
       ..writeByte(2)
       ..write(obj.position)
       ..writeByte(3)
-      ..write(obj.repsToDo);
+      ..write(obj.repsToDo)
+      ..writeByte(4)
+      ..write(obj.section);
   }
 
   @override

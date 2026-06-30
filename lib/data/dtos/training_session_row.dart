@@ -6,6 +6,7 @@ class TrainingSessionRow {
   final int? difficulty;
   final DateTime? createdAt;
   final bool? isUserCreated;
+  final bool? isPublic;
   final String? assignedToUserId;
   final String? assignedByTrainerId;
 
@@ -17,6 +18,7 @@ class TrainingSessionRow {
     this.difficulty,
     this.createdAt,
     this.isUserCreated,
+    this.isPublic,
     this.assignedToUserId,
     this.assignedByTrainerId,
   });
@@ -34,6 +36,7 @@ class TrainingSessionRow {
       difficulty: json['difficulty'] as int? ?? 1,
       createdAt: parsedDate,
       isUserCreated: json['is_user_created'] as bool? ?? false,
+      isPublic: json['is_public'] as bool? ?? true,
       assignedToUserId: json['assigned_to_user_id'] as String?,
       assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
     );
