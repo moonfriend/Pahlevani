@@ -70,6 +70,9 @@ class _FakeRemoteDataSource implements TrainingSessionRemoteDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> fetchMovementTable() async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMovementInfoTable() async => [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
