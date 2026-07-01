@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/presentation/pages/trainer/student_detail_page.dart';
 
@@ -56,46 +58,110 @@ class _TrainerStudentListPageState extends State<TrainerStudentListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Trainer · Students')),
+      backgroundColor: colors.bg,
+      appBar: AppBar(
+        backgroundColor: colors.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(color: cs.onSurface),
+        title: Text('Trainer · Students',
+            style: PTextStyles.of(context)
+                .appBarTitle
+                .copyWith(color: cs.onSurface)),
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Student ID',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
+            Text('STUDENT ID',
+                style: PTextStyles.of(context)
+                    .sectionLabel
+                    .copyWith(color: colors.onFaint)),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    decoration: const InputDecoration(
+                    style: PTextStyles.of(context)
+                        .editFieldValue
+                        .copyWith(color: cs.onSurface),
+                    decoration: InputDecoration(
                       hintText: 'Enter a student id',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(
+                          fontFamily: PFonts.ui, color: colors.onFaint),
                       isDense: true,
+                      filled: true,
+                      fillColor: colors.surface2,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: colors.borderSoft),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: cs.primary),
+                      ),
                     ),
                     onSubmitted: (_) => _saveStudent(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _saveStudent,
-                  child: const Text('Set'),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: _saveStudent,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                    decoration: BoxDecoration(
+                        color: cs.primary,
+                        borderRadius: BorderRadius.circular(12)),
+                    alignment: Alignment.center,
+                    child: Text('Set',
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.5,
+                            color: cs.onPrimary)),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            const Text('Roster', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 26),
+            Text('ROSTER',
+                style: PTextStyles.of(context)
+                    .sectionLabel
+                    .copyWith(color: colors.onFaint)),
+            const SizedBox(height: 10),
             if (_studentId != null)
-              Card(
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.person)),
-                  title: Text(_studentId!),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openStudent(_studentId!),
+              GestureDetector(
+                onTap: () => _openStudent(_studentId!),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                  decoration: BoxDecoration(
+                    color: colors.surface2,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: colors.borderSoft),
+                  ),
+                  child: Row(children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: colors.tealBg,
+                      child: Icon(Icons.person, color: colors.teal),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(_studentId!,
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: cs.onSurface)),
+                    ),
+                    Icon(Icons.chevron_right, color: colors.onFaint),
+                  ]),
                 ),
               ),
           ],

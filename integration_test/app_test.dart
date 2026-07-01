@@ -222,7 +222,7 @@ void main() {
     await openMenu(tester, 'Trainer view');
 
     // Student roster is seeded with the current user id.
-    expect(find.text('Roster'), findsOneWidget);
+    expect(find.text('ROSTER'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.chevron_right));
     await tester.pumpAndSettle();
 

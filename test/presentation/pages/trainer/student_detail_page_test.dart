@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
@@ -38,7 +39,10 @@ Future<TrainingSessionCubit> _loadedCubit(DomainSnapshot snap) async {
 Widget _harness(TrainingSessionCubit cubit, String studentId) =>
     BlocProvider.value(
       value: cubit,
-      child: MaterialApp(home: StudentDetailPage(studentId: studentId)),
+      child: MaterialApp(
+        theme: PahlevaniTheme.dark(),
+        home: StudentDetailPage(studentId: studentId),
+      ),
     );
 
 void main() {

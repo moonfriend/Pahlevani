@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -39,6 +40,7 @@ Widget _harness({
   ValueChanged<Map<String, dynamic>?>? onPop,
 }) =>
     MaterialApp(
+      theme: PahlevaniTheme.dark(),
       home: Builder(
         builder: (context) => Scaffold(
           body: Center(

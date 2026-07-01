@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
@@ -94,31 +96,53 @@ class StudentDetailPage extends StatelessWidget {
   }
 
   Future<void> _showAddSheet(BuildContext context) async {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
     final templates = _templates(context.read<TrainingSessionCubit>());
     await showModalBottomSheet<void>(
       context: context,
+      backgroundColor: colors.bg,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Build a training',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                    color: colors.border,
+                    borderRadius: BorderRadius.circular(9))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Build a training',
+                    style: PTextStyles.of(context)
+                        .dialogTitle
+                        .copyWith(color: cs.onSurface)),
+              ),
             ),
             ListTile(
-              leading: const Icon(Icons.note_add_outlined),
-              title: const Text('Start from scratch'),
+              leading: Icon(Icons.note_add_outlined, color: colors.teal),
+              title: const Text('Start from scratch',
+                  style: TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _startFromScratch(context);
               },
             ),
-            if (templates.isNotEmpty) const Divider(height: 1),
+            if (templates.isNotEmpty)
+              Divider(height: 1, color: colors.borderSoft),
             for (final t in templates)
               ListTile(
-                leading: const Icon(Icons.copy_all_outlined),
-                title: Text('Use "${t.title}" as a template'),
+                leading: Icon(Icons.copy_all_outlined, color: colors.onMuted),
+                title: Text('Use "${t.title}" as a template',
+                    style: const TextStyle(
+                        fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _startFromTemplate(context, t);
@@ -135,12 +159,24 @@ class StudentDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
       builder: (context, _) {
+        final colors = Theme.of(context).extension<PahlevaniColors>()!;
+        final cs = Theme.of(context).colorScheme;
         final cubit = context.read<TrainingSessionCubit>();
         final assigned = _assignedSession(cubit);
         return Scaffold(
-          appBar: AppBar(title: Text('Student · $studentId')),
+          backgroundColor: colors.bg,
+          appBar: AppBar(
+            backgroundColor: colors.bg,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: IconThemeData(color: cs.onSurface),
+            title: Text('Student · $studentId',
+                style: PTextStyles.of(context)
+                    .appBarTitle
+                    .copyWith(color: cs.onSurface)),
+          ),
           body: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             child: assigned == null
                 ? _EmptyState(onAdd: () => _showAddSheet(context))
                 : _AssignedCard(
@@ -165,20 +201,41 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.fitness_center, size: 48),
-        const SizedBox(height: 12),
-        const Text('No training assigned yet',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: onAdd,
-          icon: const Icon(Icons.add),
-          label: const Text('Add training'),
-        ),
-      ],
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.fitness_center, size: 48, color: colors.onFaint),
+          const SizedBox(height: 14),
+          Text('No training assigned yet',
+              style: TextStyle(
+                  fontFamily: PFonts.ui,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: colors.onMuted)),
+          const SizedBox(height: 18),
+          GestureDetector(
+            onTap: onAdd,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+              decoration: BoxDecoration(
+                  color: cs.primary, borderRadius: BorderRadius.circular(99)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.add, size: 20, color: cs.onPrimary),
+                const SizedBox(width: 8),
+                Text('Add training',
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14.5,
+                        color: cs.onPrimary)),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -190,17 +247,48 @@ class _AssignedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        title: Text(session.title),
-        subtitle: Text(session.description.isEmpty
-            ? 'Assigned training'
-            : session.description),
-        trailing: TextButton.icon(
-          onPressed: onEdit,
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit'),
-        ),
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.borderSoft),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(session.title,
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        color: cs.onSurface)),
+                const SizedBox(height: 3),
+                Text(
+                    session.description.isEmpty
+                        ? 'Assigned training'
+                        : session.description,
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontSize: 12.5,
+                        color: colors.onMuted)),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onEdit,
+            style: TextButton.styleFrom(foregroundColor: colors.teal),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Edit',
+                style: TextStyle(
+                    fontFamily: PFonts.ui, fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }

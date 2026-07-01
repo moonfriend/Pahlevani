@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -184,24 +186,63 @@ class _SectionedEditTrainingSessionPageState
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
+      backgroundColor: colors.bg,
       appBar: AppBar(
+        backgroundColor: colors.bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        leading: IconButton(
+          icon: Icon(Icons.close_rounded, color: cs.onSurface),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: TextField(
           controller: _titleCtrl,
-          decoration: const InputDecoration(
+          style: PTextStyles.of(context)
+              .editFieldValue
+              .copyWith(color: cs.onSurface),
+          decoration: InputDecoration(
             hintText: 'Session title',
             border: InputBorder.none,
+            hintStyle: TextStyle(fontFamily: PFonts.ui, color: colors.onFaint),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _canSave ? _save : null,
-            child: const Text('Save'),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: _canSave ? _save : null,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: _canSave ? cs.primary : colors.surface3,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                alignment: Alignment.center,
+                child: Text('Save',
+                    style: TextStyle(
+                        fontFamily: PFonts.ui,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14.5,
+                        color: _canSave ? cs.onPrimary : colors.onFaint)),
+              ),
+            ),
           ),
         ],
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
+          labelColor: cs.primary,
+          unselectedLabelColor: colors.onFaint,
+          indicatorColor: cs.primary,
+          dividerColor: colors.borderSoft,
+          labelStyle: const TextStyle(
+              fontFamily: PFonts.ui, fontWeight: FontWeight.w700, fontSize: 13),
           tabs: [
             for (final d in _disciplines)
               Tab(text: '${_sectionLabels[d]} (${_inSection(d).length})'),
@@ -220,6 +261,7 @@ class _SectionedEditTrainingSessionPageState
   }
 
   Widget _sectionTab(TrainingSection section) {
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final items = _inSection(section);
     return Column(
       children: [
@@ -227,9 +269,12 @@ class _SectionedEditTrainingSessionPageState
           child: items.isEmpty
               ? Center(
                   child: Text('No ${_sectionLabels[section]} exercises yet',
-                      style: Theme.of(context).textTheme.bodyMedium))
+                      style: PTextStyles.of(context)
+                          .cardDescription
+                          .copyWith(color: colors.onFaint)))
               : ReorderableListView.builder(
-                  padding: const EdgeInsets.only(bottom: 80),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 80),
+                  buildDefaultDragHandles: false,
                   itemCount: items.length,
                   onReorder: (o, n) => _reorderWithin(section, o, n),
                   itemBuilder: (context, i) =>
@@ -237,13 +282,22 @@ class _SectionedEditTrainingSessionPageState
                 ),
         ),
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () => _addExercise(section),
-              icon: const Icon(Icons.add),
-              label: Text('Add exercise to ${_sectionLabels[section]}'),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: colors.borderSoft),
+                foregroundColor: colors.teal,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.add, size: 20),
+              label: Text('Add exercise to ${_sectionLabels[section]}',
+                  style: const TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w700)),
             ),
           ),
         ),
@@ -252,37 +306,96 @@ class _SectionedEditTrainingSessionPageState
   }
 
   Widget _itemTile(_EditItem item, {required Key key}) {
-    return ListTile(
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    final isCustom = item.reps != item.exercise.repetitionsDefault;
+    final stepFg = isCustom ? colors.repCustom : colors.repDefault;
+    final stepBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+
+    return Container(
       key: key,
-      title: Text(item.exercise.name),
-      subtitle: Row(
-        children: [
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.remove_circle_outline),
-            onPressed: () => _setReps(item, -1),
-          ),
-          Text('${item.reps} reps'),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: () => _setReps(item, 1),
-          ),
-          const SizedBox(width: 8),
-          DropdownButton<TrainingSection>(
-            value: item.section,
-            underline: const SizedBox.shrink(),
-            onChanged: (s) => s == null ? null : _moveToSection(item, s),
-            items: [
-              for (final d in _disciplines)
-                DropdownMenuItem(value: d, child: Text(_sectionLabels[d]!)),
-            ],
-          ),
-        ],
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.borderSoft),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete_outline),
-        onPressed: () => _remove(item),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(item.exercise.name,
+                  style: TextStyle(
+                      fontFamily: PFonts.ui,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14.5,
+                      color: cs.onSurface)),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.delete_outline, size: 20, color: colors.onFaint),
+              onPressed: () => _remove(item),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            // Rep stepper — green (default) / orange (customised), like the
+            // flat editor.
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                  color: stepBg, borderRadius: BorderRadius.circular(99)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _RepBtn(
+                    label: '−', color: stepFg, onTap: () => _setReps(item, -1)),
+                SizedBox(
+                  width: 34,
+                  child: Text('${item.reps}',
+                      textAlign: TextAlign.center,
+                      style: PTextStyles.of(context)
+                          .stepperNumber
+                          .copyWith(color: stepFg)),
+                ),
+                _RepBtn(
+                    label: '+', color: stepFg, onTap: () => _setReps(item, 1)),
+              ]),
+            ),
+            const Spacer(),
+            // Section reassignment.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: colors.surface3,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colors.borderSoft),
+              ),
+              child: DropdownButton<TrainingSection>(
+                value: item.section,
+                underline: const SizedBox.shrink(),
+                isDense: true,
+                icon: Icon(Icons.expand_more_rounded, color: colors.onMuted),
+                dropdownColor: colors.surface2,
+                style: TextStyle(
+                    fontFamily: PFonts.ui,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: cs.onSurface),
+                onChanged: (s) => s == null ? null : _moveToSection(item, s),
+                items: [
+                  for (final d in _disciplines)
+                    DropdownMenuItem(value: d, child: Text(_sectionLabels[d]!)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            ReorderableDragStartListener(
+              index: _inSection(item.section).indexOf(item),
+              child: Icon(Icons.drag_handle_rounded, color: colors.onFaint),
+            ),
+          ]),
+        ],
       ),
     );
   }
@@ -303,27 +416,94 @@ class _SectionedEditTrainingSessionPageState
       total += seconds;
     }
     final minutes = (total / 60).ceil();
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Summary', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 16),
-          Text('${_items.length} exercises'),
-          const SizedBox(height: 8),
-          Text(allKnown
-              ? 'Total ≈ $minutes min'
-              : 'Total ≈ $minutes min (some track lengths unknown)'),
-          const SizedBox(height: 24),
-          for (final d in _disciplines)
-            if (_inSection(d).isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                    '${_sectionLabels[d]}: ${_inSection(d).length} exercises'),
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: colors.tealBg,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${_items.length} exercises',
+                  style: TextStyle(
+                      fontFamily: PFonts.ui,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: colors.teal)),
+              const SizedBox(height: 6),
+              Text(
+                  allKnown
+                      ? 'Total ≈ $minutes min'
+                      : 'Total ≈ $minutes min (some track lengths unknown)',
+                  style: TextStyle(
+                      fontFamily: PFonts.ui,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: colors.teal)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text('BREAKDOWN',
+            style: PTextStyles.of(context)
+                .sectionLabel
+                .copyWith(color: colors.onFaint)),
+        const SizedBox(height: 10),
+        for (final d in _disciplines)
+          if (_inSection(d).isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_sectionLabels[d]!,
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface)),
+                  Text('${_inSection(d).length}',
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w700,
+                          color: colors.onMuted)),
+                ],
               ),
-        ],
+            ),
+      ],
+    );
+  }
+}
+
+class _RepBtn extends StatelessWidget {
+  const _RepBtn(
+      {required this.label, required this.color, required this.onTap});
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(color: cs.surface, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Text(label,
+            style: TextStyle(
+                fontFamily: PFonts.ui,
+                fontWeight: FontWeight.w700,
+                fontSize: 19,
+                color: color,
+                height: 1)),
       ),
     );
   }
@@ -336,29 +516,49 @@ class _ExercisePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: exercises.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No exercises available'),
-            )
-          : ListView(
-              shrinkWrap: true,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Add an exercise',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                ),
-                for (final e in exercises)
-                  ListTile(
-                    title: Text(e.name),
-                    subtitle: e.titleFa != null ? Text(e.titleFa!) : null,
-                    onTap: () => Navigator.pop(context, e),
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: exercises.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('No exercises available',
+                    style: TextStyle(
+                        fontFamily: PFonts.ui, color: colors.onMuted)),
+              )
+            : ListView(
+                shrinkWrap: true,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                    child: Text('Add an exercise',
+                        style: PTextStyles.of(context)
+                            .dialogTitle
+                            .copyWith(color: cs.onSurface)),
                   ),
-              ],
-            ),
+                  for (final e in exercises)
+                    ListTile(
+                      title: Text(e.name,
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface)),
+                      subtitle: e.titleFa != null
+                          ? Text(e.titleFa!,
+                              style: TextStyle(
+                                  fontFamily: PFonts.farsi,
+                                  color: colors.onFaint))
+                          : null,
+                      onTap: () => Navigator.pop(context, e),
+                    ),
+                ],
+              ),
+      ),
     );
   }
 }
