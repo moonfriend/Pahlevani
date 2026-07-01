@@ -73,11 +73,19 @@ class _TraineeHomeView extends StatelessWidget {
                   BlocBuilder<SessionSelectionCubit, SessionSelectionState>(
                     builder: (context, state) {
                       final session = state.yourTraining;
+                      final selection = context.read<SessionSelectionCubit>();
+                      Future<void> startAt(int position) async {
+                        await startTraining(context,
+                            session: session, startPosition: position);
+                        await selection.refresh();
+                      }
+
                       return TodaysTrainingCard(
                         sections: HomePreviewData.todaysSections,
+                        realSections: session == null ? null : state.sections,
                         sessionTitle: session?.title,
-                        onContinue: () =>
-                            startTraining(context, session: session),
+                        onSectionTap: (s) => startAt(s.startPosition),
+                        onContinue: () => startAt(0),
                       );
                     },
                   ),

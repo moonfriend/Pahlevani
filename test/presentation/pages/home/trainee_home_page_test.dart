@@ -67,11 +67,30 @@ void main() {
     // "Your training" resolves to the first public session (Beginner Warm-up)
     // and its title is surfaced on the Today's Training card.
     expect(find.text('Beginner Warm-up'), findsOneWidget);
+    // The card shows the session's real disciplines (Sheno + Kabbade).
+    expect(find.text('Sheno'), findsOneWidget);
+    expect(find.text('Kabbade'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Continue training ▸'));
     await tester.tap(find.text('Continue training ▸'));
     // startTraining awaits getTrainingSessions() then pushes the route; pump
     // frames manually (the player's equalizer animates forever — no settle).
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(AudioPlayerPage), findsOneWidget);
+  });
+
+  testWidgets('tapping a section row starts the player', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: PahlevaniTheme.dark(),
+      home: const TraineeHomePage(),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Sheno'));
+    await tester.tap(find.text('Sheno'));
     await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));

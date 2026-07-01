@@ -15,6 +15,7 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 Future<void> startTraining(
   BuildContext context, {
   TrainingSession? session,
+  int startPosition = 0,
 }) async {
   var target = session;
   if (target == null) {
@@ -39,7 +40,10 @@ Future<void> startTraining(
     MaterialPageRoute(
       builder: (_) => BlocProvider<TrainingSessionCubit>.value(
         value: getIt<TrainingSessionCubit>(),
-        child: AudioPlayerPage(trainingSession: target!),
+        child: AudioPlayerPage(
+          trainingSession: target!,
+          initialIndex: startPosition,
+        ),
       ),
     ),
   );

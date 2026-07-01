@@ -95,6 +95,20 @@ void main() {
     await pumpHome(tester);
     // Beginner Warm-up is the first public session → the Today's Training card.
     expect(find.text('Beginner Warm-up'), findsWidgets);
+    // Its real disciplines are listed as tappable sections.
+    expect(find.text('Sheno'), findsWidgets);
+    expect(find.text('Kabbade'), findsWidgets);
+  });
+
+  testWidgets('tapping a section row starts the player at that section',
+      (tester) async {
+    await pumpHome(tester);
+    await tester.ensureVisible(find.text('Kabbade'));
+    await tester.tap(find.text('Kabbade'));
+    await pumpPlayer(tester);
+    // Kabbade is track 2 (Kabbadeh) — deep-linked as the current track.
+    expect(find.byType(AudioPlayerPage), findsOneWidget);
+    expect(find.text('Kabbadeh'), findsWidgets);
   });
 
   // ── Player journey (reached via the home "Continue training" button) ─────────

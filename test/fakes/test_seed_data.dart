@@ -2,6 +2,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ const testItem1 = TrainingItem(
   exerciseId: 101,
   position: 1,
   prescription: RepsPresc(3),
+  section: TrainingSection.sheno,
 );
 const testItem2 = TrainingItem(
   id: 10002,
@@ -59,6 +61,7 @@ const testItem2 = TrainingItem(
   exerciseId: 102,
   position: 2,
   prescription: RepsPresc(1),
+  section: TrainingSection.kabbade,
 );
 const testItem3 = TrainingItem(
   id: 20001,
