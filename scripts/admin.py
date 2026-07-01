@@ -104,6 +104,17 @@ def load_movements() -> pd.DataFrame:
         st.warning(f"Could not load movement table ({e}). Run the DB migration first.")
         return pd.DataFrame()
 
+@st.cache_data(ttl=30)
+def load_movement_info() -> dict[int, dict]:
+    """Per-move info-page content, keyed by movement_id. Empty if 0005 not applied."""
+    try:
+        rows = get_client().table("movement_info").select("*").execute().data
+        return {int(r["movement_id"]): r for r in (rows or [])}
+    except Exception:
+        # movement_info table may not exist yet (pre-0005) — treat as no content.
+        return {}
+
+
 def bust_cache():
     load_exercises.clear()
     load_sessions.clear()
@@ -858,6 +869,42 @@ def tab_movement_media():
             st.caption(f"Video URL: {cur_src}")
     else:
         st.info("No media currently assigned to this movement.")
+
+    # ── Info-page content (movement_info) ─────────────────────────────────────
+    st.subheader("Info page content")
+    st.caption(
+        "Shown on the in-app move info page (opened via the ⓘ on a track). "
+        "Video is optional — a placeholder is shown until the app plays it."
+    )
+    info_map = load_movement_info()
+    cur_info = info_map.get(int(movement_id), {})
+    with st.form(f"movement_info_{movement_id}"):
+        desc = st.text_area(
+            "Description",
+            value=cur_info.get("description") or "",
+            height=160,
+            help="How to perform the move — cues, technique, breathing, etc.",
+        )
+        video_url = st.text_input(
+            "Video URL (optional)",
+            value=cur_info.get("video_url") or "",
+        )
+        if st.form_submit_button("💾 Save info"):
+            try:
+                get_client().table("movement_info").upsert(
+                    {
+                        "movement_id": int(movement_id),
+                        "description": desc.strip() or None,
+                        "video_url": video_url.strip() or None,
+                    },
+                    on_conflict="movement_id",
+                ).execute()
+                load_movement_info.clear()
+                st.success("Saved move info.")
+            except Exception as e:
+                st.error(f"Could not save (is migration 0005 applied?): {e}")
+
+    st.divider()
 
     tab_upload, tab_url, tab_clear = st.tabs(["📤 Upload image", "🔗 Set URL", "🗑️ Clear"])
 
