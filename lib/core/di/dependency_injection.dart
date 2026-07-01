@@ -18,6 +18,7 @@ import '../../data/repositories_impl/version_gate_repository_impl.dart';
 import '../../data/services/audio_players_service_impl.dart';
 import '../../data/services/connectivity_service_impl.dart';
 import '../../data/services/current_user_service_impl.dart';
+import '../../data/services/training_progress_service_impl.dart';
 import '../../data/services/image_cache_service_impl.dart';
 import '../../data/services/just_audio_player_service.dart';
 import '../../data/services/no_op_notification_service.dart';
@@ -30,6 +31,7 @@ import '../../domain/repositories/version_gate_repository.dart';
 import '../../domain/services/audio_player_service.dart';
 import '../../domain/services/connectivity_service.dart';
 import '../../domain/services/current_user_service.dart';
+import '../../domain/services/training_progress_service.dart';
 import '../../domain/services/image_cache_service.dart';
 import '../../domain/services/player_notification_service.dart';
 import '../../presentation/bloc/auth/auth_cubit.dart';
@@ -104,6 +106,9 @@ class DependencyInjection {
 
     getIt.registerLazySingleton<CurrentUserService>(
         () => CurrentUserServiceImpl());
+
+    getIt.registerLazySingleton<TrainingProgressService>(
+        () => TrainingProgressServiceImpl());
 
     getIt.registerFactory<SessionSelectionCubit>(
       () => SessionSelectionCubit(
