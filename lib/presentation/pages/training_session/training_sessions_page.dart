@@ -13,6 +13,7 @@ import 'package:pahlevani/domain/entities/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/presentation/widgets/training_session/session_banner_card.dart';
 import 'package:pahlevani/presentation/widgets/training_session/session_compact_card.dart';
 
@@ -20,7 +21,13 @@ import 'package:pahlevani/presentation/widgets/training_session/session_compact_
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 class TrainingSessionPage extends StatefulWidget {
-  const TrainingSessionPage({super.key});
+  const TrainingSessionPage({super.key, this.onSelect});
+
+  /// When set, the page acts as the trainee's "Select training" picker:
+  /// the list is filtered to public + assigned sessions, tapping a card calls
+  /// [onSelect] with its id (instead of opening the player), and the
+  /// trainer/management affordances (New / Edit / Delete) are hidden.
+  final ValueChanged<int>? onSelect;
 
   @override
   State<TrainingSessionPage> createState() => _TrainingSessionPageState();
@@ -33,12 +40,30 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     duration: const Duration(milliseconds: 800),
   );
 
+  /// Current user id — only loaded in selection mode, to surface a trainee's
+  /// own assigned (private) sessions alongside the public library.
+  String? _currentUserId;
+
+  bool get _selectionMode => widget.onSelect != null;
+
   @override
   void initState() {
     super.initState();
+    if (_selectionMode) _loadCurrentUser();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _checkConnectivityOnce());
   }
+
+  Future<void> _loadCurrentUser() async {
+    final id = await getIt<CurrentUserService>().getUserId();
+    if (mounted) setState(() => _currentUserId = id);
+  }
+
+  /// In selection mode, a trainee may only pick public sessions or ones a
+  /// trainer assigned to them.
+  bool _isSelectable(TrainingSession s) =>
+      s.isPublic ||
+      (_currentUserId != null && s.assignedToUserId == _currentUserId);
 
   @override
   void dispose() {
@@ -155,16 +180,18 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               decoration: BoxDecoration(
                   color: colors.border,
                   borderRadius: BorderRadius.circular(9))),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: Text(session.isUserCreated ? 'Edit session' : 'Edit a copy',
-                style: const TextStyle(
-                    fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
-            onTap: () {
-              Navigator.pop(context);
-              _openEdit(session);
-            },
-          ),
+          if (!_selectionMode)
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(
+                  session.isUserCreated ? 'Edit session' : 'Edit a copy',
+                  style: const TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                _openEdit(session);
+              },
+            ),
           if (dlStatus != DownloadStatus.downloaded)
             ListTile(
               leading: const Icon(Icons.download_rounded),
@@ -176,7 +203,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                 cubit.downloadTrainingSession(session.id);
               },
             ),
-          if (session.isUserCreated)
+          if (session.isUserCreated && !_selectionMode)
             ListTile(
               leading: Icon(Icons.delete_outline,
                   color: Theme.of(context).colorScheme.error),
@@ -235,7 +262,10 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
         };
         final isLoading =
             state is TrainingSessionLoading || state is TrainingSessionInitial;
-        final sessions = uiModel?.trainingSessions ?? [];
+        final allSessions = uiModel?.trainingSessions ?? [];
+        final sessions = _selectionMode
+            ? allSessions.where(_isSelectable).toList()
+            : allSessions;
         final dlStatuses = uiModel?.downloadStatuses ?? {};
         final dlProgress = state is TrainingSessionDownloading
             ? state.downloadProgress
@@ -269,7 +299,9 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                             dlProgress: dlProgress,
                             itemCounts: itemCounts,
                             durations: durations,
-                            onOpen: _openPlayer,
+                            onOpen: _selectionMode
+                                ? (s) => widget.onSelect!(s.id)
+                                : _openPlayer,
                             onMenu: (s) => _showOverflowSheet(
                                 context,
                                 s,
@@ -283,20 +315,22 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                       ),
                   ],
                 ),
-                // FAB
-                Positioned(
-                  right: 18,
-                  bottom: 16,
-                  child: FloatingActionButton.extended(
-                    onPressed: _openNew,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
+                // FAB — creating sessions is a trainer action, hidden while
+                // the trainee is only picking a training to follow.
+                if (!_selectionMode)
+                  Positioned(
+                    right: 18,
+                    bottom: 16,
+                    child: FloatingActionButton.extended(
+                      onPressed: _openNew,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New',
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

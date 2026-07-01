@@ -39,6 +39,21 @@ class _TraineeHomeView extends StatelessWidget {
     );
   }
 
+  Future<void> _openSelectTraining(BuildContext context) async {
+    final selection = context.read<SessionSelectionCubit>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TrainingSessionPage(
+          onSelect: (sessionId) {
+            selection.select(sessionId);
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,8 +94,17 @@ class _TraineeHomeView extends StatelessWidget {
                 color: HomeColors.card,
                 onSelected: (value) {
                   if (value == 'trainer') _openTrainerView(context);
+                  if (value == 'select') _openSelectTraining(context);
                 },
                 itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'select',
+                    child: Row(children: [
+                      Icon(Icons.list_alt_rounded, size: 18),
+                      SizedBox(width: 10),
+                      Text('Select training'),
+                    ]),
+                  ),
                   PopupMenuItem(
                     value: 'trainer',
                     child: Row(children: [
