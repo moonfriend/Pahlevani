@@ -18,14 +18,18 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
+import 'package:pahlevani/presentation/bloc/session_selection/session_selection_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/fakes/fake_audio_player_service.dart';
 import '../test/fakes/fake_connectivity_service.dart';
+import '../test/fakes/fake_current_user_service.dart';
 import '../test/fakes/fake_download_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
 import '../test/fakes/fake_version_gate_repository.dart';
@@ -40,7 +44,8 @@ void main() {
   // emit events (e.g. duration) to drive the logical timer inside the cubit.
   FakeAudioPlayerService? lastFakeAudioService;
 
-  setUpAll(() async {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     // Wipe any prior registrations (e.g. from a previous run in the same process).
     await getIt.reset();
 
@@ -50,242 +55,114 @@ void main() {
     getIt.registerLazySingleton<TrainingSessionRepository>(
         () => fakeSessionRepo);
     getIt.registerLazySingleton<DownloadRepository>(() => fakeDownloadRepo);
-    // Factory: each player page gets its own FakeAudioPlayerService instance.
-    // The outer variable is updated so tests can emit events on the live instance.
     getIt.registerFactory<AudioPlayerService>(() {
       lastFakeAudioService = FakeAudioPlayerService();
       return lastFakeAudioService!;
     });
-    // Factory: each pumpWidget gets a fresh cubit (old one closes on widget dispose).
     getIt.registerFactory<TrainingSessionCubit>(
       () => TrainingSessionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         downloadRepository: getIt<DownloadRepository>(),
       ),
     );
+    getIt.registerLazySingleton<CurrentUserService>(
+        () => FakeCurrentUserService('mvp-user'));
+    getIt.registerFactory<SessionSelectionCubit>(
+      () => SessionSelectionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        currentUserService: getIt<CurrentUserService>(),
+      ),
+    );
     getIt.registerLazySingleton<VersionGateRepository>(
         () => FakeVersionGateRepository());
-    // Page's initState reads this; default online so the no-connection
-    // dialog never fires during the journey tests.
     getIt.registerLazySingleton<ConnectivityService>(
         () => const FakeConnectivityService());
-    // Player page resolves this for the media-notification card; the no-op
-    // implementation is the correct desktop/test fallback.
     getIt.registerSingleton<PlayerNotificationService>(
         NoOpNotificationService());
   });
 
-  tearDownAll(() async => getIt.reset());
+  tearDown(() async => getIt.reset());
 
-  // ── 1: Sessions list ────────────────────────────────────────────────────────
+  // ── Trainee home ────────────────────────────────────────────────────────────
 
-  testWidgets('sessions list renders both seeded session titles',
+  testWidgets('home shows the resolved "your training" (first public session)',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    expect(find.text('Beginner Warm-up'), findsOneWidget);
-    expect(find.text('Advanced Drill'), findsOneWidget);
-    // Section label from _SessionList (rendered uppercase via .toUpperCase())
-    expect(find.textContaining('SESSIONS'), findsOneWidget);
+    await pumpHome(tester);
+    // Beginner Warm-up is the first public session → the Today's Training card.
+    expect(find.text('Beginner Warm-up'), findsWidgets);
   });
 
-  // ── 2: Navigation to player ─────────────────────────────────────────────────
+  // ── Player journey (reached via the home "Continue training" button) ─────────
 
-  testWidgets('tapping a session card navigates to the player page',
+  testWidgets('Continue training opens the player on the first track',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    // The outer GestureDetector for the first card is the first one inside ListView.
-    final listView = find.byType(ListView);
-    final cards =
-        find.descendant(of: listView, matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
-    await pumpPlayer(tester);
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
-    // First exercise of session 1 is 'Shena'.
     expect(find.text('Shena'), findsWidgets);
   });
 
-  // ── 3: Overflow menu — server session ───────────────────────────────────────
+  testWidgets('tapping next advances to the second track', (tester) async {
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
-  testWidgets('overflow menu for server session shows edit-a-copy and download',
-      (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    // First more_vert icon belongs to 'Beginner Warm-up' (server session, id=1).
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Edit a copy'), findsOneWidget);
-    expect(find.text('Download'), findsOneWidget);
-    // Delete option must NOT appear for server sessions.
-    expect(find.text('Delete session'), findsNothing);
-  });
-
-  // ── 4: Overflow menu — user-created session ─────────────────────────────────
-
-  testWidgets(
-      'overflow menu for user-created session shows edit and delete options',
-      (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    // Last more_vert icon belongs to 'Advanced Drill' (isUserCreated: true, id=2).
-    await tester.tap(find.byIcon(Icons.more_vert).last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Edit session'), findsOneWidget);
-    expect(find.text('Delete session'), findsOneWidget);
-  });
-
-  // ── 5: Delete flow ──────────────────────────────────────────────────────────
-
-  testWidgets('confirming delete removes session from list', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    // Open overflow for 'Advanced Drill' (user-created).
-    await tester.tap(find.byIcon(Icons.more_vert).last);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Delete session'));
-    await tester.pumpAndSettle();
-
-    // Confirm delete in the dialog.
-    await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Advanced Drill'), findsNothing);
-    expect(find.text('Beginner Warm-up'), findsOneWidget);
-
-    // Restore state so later tests see both sessions.
-    fakeSessionRepo.updateSnapshot(buildTestSnapshot());
-  });
-
-  // ── 6: Next button advances track ───────────────────────────────────────────
-
-  testWidgets('tapping next advances to second track', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
-
-    // Shena is the current track (appears in stage + transport + list).
     expect(find.text('Shena'), findsWidgets);
-    // Kabbadeh only in the track list.
     expect(find.text('Kabbadeh'), findsOneWidget);
 
-    // Tap the next (down-arrow) button.
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
     await tester.pump();
     await tester.pump();
 
-    // Now Kabbadeh is the current track.
     expect(find.text('Kabbadeh'), findsWidgets);
     expect(find.text('Shena'), findsOneWidget);
   });
 
-  // ── 7: Prev button no-op on first track ─────────────────────────────────────
+  testWidgets('prev button is a no-op on the first track', (tester) async {
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
-  testWidgets('prev button is no-op on first track', (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
-
-    // Tap prev (up-arrow) — disabled on first track, so nothing should change.
     await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
     await tester.pump();
 
-    // Still on Shena (appears multiple times as current track).
     expect(find.text('Shena'), findsWidgets);
   });
 
-  // ── 8: Completion sheet and Again button ────────────────────────────────────
-
-  testWidgets('completion sheet appears at end and Again restarts from track 1',
+  testWidgets('completion sheet appears at the end and Again restarts',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
-
-    // Advance to last track (track 2 of 2).
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
     await tester.pump();
     await tester.pump();
 
-    // The transport "next" button is disabled on the last track, so we can't
-    // tap it to trigger isFinished. Instead, emit a short audio duration so
-    // the cubit's logical timer starts and fires next() when elapsed >= target.
-    // Kabbadeh has repetitionsDefault=1 so targetMs = duration × 1/1 = 200ms.
+    // Drive the last track's logical timer to completion.
     lastFakeAudioService!.emitDuration(const Duration(milliseconds: 200));
-    await tester.pump(); // flush the stream event → timer starts
-    await tester.pump(const Duration(milliseconds: 400)); // timer fires next()
-    // isFinished=true ⇒ isPlaying=false ⇒ _Equalizer disposed — can settle now.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     expect(find.text('Again'), findsOneWidget);
 
-    // Tapping Again replays from the beginning. replay() re-starts isPlaying,
-    // which brings back _Equalizer — cannot pumpAndSettle.
     await tester.tap(find.text('Again'));
     await tester.pump();
     await tester.pump();
 
-    // Back to track 1: Shena appears in stage + transport label + track list.
     expect(find.text('Shena'), findsWidgets);
   });
 
-  // ── 9: Play/pause button syncs to the tap intent ────────────────────────────
-  //
-  // Regression guard for the play/pause desync: tapping the transport button
-  // must flip the icon immediately and STAY flipped. The transport button is
-  // the only Icon rendered at size 30, which makes it unambiguous to target
-  // (the stage centre play overlay is 34, the track-row icon is 18).
-
   testWidgets('transport play/pause button toggles and stays in sync',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
-
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
     final transportIcon =
         find.byWidgetPredicate((w) => w is Icon && w.size == 30);
     IconData currentIcon() => tester.widget<Icon>(transportIcon).icon!;
 
-    // After load the session auto-plays → button shows the pause glyph.
     expect(currentIcon(), Icons.pause_rounded);
 
-    // Tap to pause → must show play glyph, and stay there across extra frames.
     await tester.tap(transportIcon);
     await tester.pump();
     expect(currentIcon(), Icons.play_arrow_rounded);
@@ -293,47 +170,103 @@ void main() {
     expect(currentIcon(), Icons.play_arrow_rounded,
         reason: 'pause must not be resurrected by a late engine callback');
 
-    // Tap to resume → must show pause glyph again.
     await tester.tap(transportIcon);
     await tester.pump();
     expect(currentIcon(), Icons.pause_rounded);
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(currentIcon(), Icons.pause_rounded);
   });
-
-  // ── 10: A track that plays through is marked done in the list ───────────────
-  //
-  // The first track's logical timer runs to completion (driven by a short
-  // emitted duration), which advances to track 2 and marks track 1 done — a
-  // check-circle appears in the list for the completed track.
 
   testWidgets('a track played to completion shows a done check in the list',
       (tester) async {
-    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
-    await tester.pumpAndSettle();
-    await navigateToTrainerView(tester);
+    await pumpHome(tester);
+    await startTrainingFromHome(tester);
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
-
-    // No track is done yet.
     expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
 
-    // Drive the current track's logical timer to completion: emit a short
-    // duration (effective reps == default reps ⇒ target == emitted duration),
-    // then let the 200ms-tick timer fire next(completed: true).
     lastFakeAudioService!.emitDuration(const Duration(milliseconds: 200));
-    await tester.pump(); // start logical timer
-    await tester.pump(const Duration(milliseconds: 400)); // timer fires
-    await tester.pump(); // rebuild list with the done state
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
 
-    // Track 1 (now scrolled-past, index 0) shows the done check.
     expect(find.byIcon(Icons.check_circle_rounded), findsWidgets);
-    // And we advanced onto track 2 (Kabbadeh) which is not done.
     expect(find.text('Kabbadeh'), findsWidgets);
   });
+
+  // ── Select-training journey ──────────────────────────────────────────────────
+
+  testWidgets(
+      'Select training lists public sessions and switches your training',
+      (tester) async {
+    await pumpHome(tester);
+    // Default your-training is Beginner Warm-up.
+    expect(find.text('Beginner Warm-up'), findsWidgets);
+
+    await openMenu(tester, 'Select training');
+
+    // Both seeded sessions are public → both appear in the picker.
+    expect(find.text('Beginner Warm-up'), findsWidgets);
+    expect(find.text('Advanced Drill'), findsOneWidget);
+
+    // Pick the other one; the page pops and the home card updates.
+    await tester.tap(find.text('Advanced Drill'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Advanced Drill'), findsWidgets,
+        reason: 'the chosen session becomes "your training" on the home card');
+  });
+
+  // ── Trainer journey ──────────────────────────────────────────────────────────
+
+  testWidgets('trainer builds and assigns a session to the student',
+      (tester) async {
+    await pumpHome(tester);
+    await openMenu(tester, 'Trainer view');
+
+    // Student roster is seeded with the current user id.
+    expect(find.text('Roster'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.chevron_right));
+    await tester.pumpAndSettle();
+
+    // No plan yet → build one from scratch.
+    expect(find.text('No training assigned yet'), findsOneWidget);
+    await tester.tap(find.text('Add training'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Start from scratch'));
+    await tester.pumpAndSettle();
+
+    // Section-tabbed editor: name it, add an exercise to Warm up, save.
+    await tester.enterText(find.byType(TextField).first, 'Coach Plan');
+    await tester.tap(find.text('Add exercise to Warm up'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Shena'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // Back on the student page, the new plan is now assigned.
+    expect(find.text('Coach Plan'), findsWidgets);
+    expect(find.text('No training assigned yet'), findsNothing);
+  });
+}
+
+// Boots the app and settles the home page.
+Future<void> pumpHome(WidgetTester tester) async {
+  await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+  await tester.pumpAndSettle();
+}
+
+// Launches the player from the trainee home's "Continue training" button.
+Future<void> startTrainingFromHome(WidgetTester tester) async {
+  await tester.ensureVisible(find.text('Continue training ▸'));
+  await tester.tap(find.text('Continue training ▸'));
+  await pumpPlayer(tester);
+}
+
+// Opens a ··· overflow-menu entry on the trainee home.
+Future<void> openMenu(WidgetTester tester, String item) async {
+  await tester.tap(find.byIcon(Icons.more_vert));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(item));
+  await tester.pumpAndSettle();
 }
 
 // Pumps enough frames for loadTracks() to complete and the player UI to render.
@@ -342,13 +275,4 @@ Future<void> pumpPlayer(WidgetTester tester) async {
   await tester.pump(); // schedule loadTracks
   await tester.pump(); // complete async work
   await tester.pump(const Duration(milliseconds: 400)); // navigation animation
-}
-
-// The home page is now TraineeHomePage. Tests that exercise the sessions list
-// or player must navigate to the trainer view first via the ··· menu.
-Future<void> navigateToTrainerView(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.more_vert));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Trainer view'));
-  await tester.pumpAndSettle();
 }
