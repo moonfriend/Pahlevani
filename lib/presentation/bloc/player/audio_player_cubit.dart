@@ -172,6 +172,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _audioService.setLooping(true);
   }
 
+  /// The full [Exercise] behind the track at [index] (for the info page +
+  /// per-item length). Null if the index is out of range.
+  Exercise? exerciseAt(int index) => (index >= 0 && index < _itemDetails.length)
+      ? _itemDetails[index].exercise
+      : null;
+
   /// Loads the session's tracks and begins at [initialIndex] (clamped) — the
   /// home's "start this section" deep-link passes the section's first track.
   Future<void> loadTracks({int initialIndex = 0}) async {
