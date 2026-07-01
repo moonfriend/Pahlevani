@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_info_row.dart';
 import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
@@ -130,6 +131,25 @@ void main() {
         movement: baseMovement(id: 55),
       );
       expect(ex.movementId, 55);
+    });
+
+    test('description and videoUrl come from movement_info when present', () {
+      final ex = mapExercise(
+        baseRow(),
+        movementInfo: MovementInfoRow(
+          movementId: 10,
+          description: 'How to perform the move…',
+          videoUrl: 'https://r2/clip.mp4',
+        ),
+      );
+      expect(ex.description, 'How to perform the move…');
+      expect(ex.videoUrl, 'https://r2/clip.mp4');
+    });
+
+    test('description and videoUrl are null when no movement_info', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.description, isNull);
+      expect(ex.videoUrl, isNull);
     });
   });
 

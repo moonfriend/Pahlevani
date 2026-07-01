@@ -3,6 +3,7 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_info_row.dart';
 import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
@@ -62,6 +63,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
       final sessionItemMaps =
           await remoteDataSource.fetchTrainingSessionItemTable();
       final movementMaps = await remoteDataSource.fetchMovementTable();
+      final movementInfoMaps = await remoteDataSource.fetchMovementInfoTable();
 
       final snap = buildDomainSnapshot(
         sessionRows:
@@ -71,6 +73,8 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         exerciseRows:
             exercisesMaps.map((e) => ExerciseRow.fromJson(e)).toList(),
         movementRows: movementMaps.map((e) => MovementRow.fromJson(e)).toList(),
+        movementInfoRows:
+            movementInfoMaps.map((e) => MovementInfoRow.fromJson(e)).toList(),
       );
 
       // Cache to Hive — movement data denormalized in by buildDomainSnapshot.

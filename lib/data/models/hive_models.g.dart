@@ -83,13 +83,15 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       mediaSrc: fields[11] as String?,
       mediaPoster: fields[12] as String?,
       movementId: fields[13] as int?,
+      description: fields[14] as String?,
+      videoUrl: fields[15] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -117,7 +119,11 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(12)
       ..write(obj.mediaPoster)
       ..writeByte(13)
-      ..write(obj.movementId);
+      ..write(obj.movementId)
+      ..writeByte(14)
+      ..write(obj.description)
+      ..writeByte(15)
+      ..write(obj.videoUrl);
   }
 
   @override

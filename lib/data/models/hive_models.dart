@@ -131,6 +131,14 @@ class HiveExercise extends HiveObject {
   @HiveField(13)
   final int? movementId;
 
+  // Nullable so the adapter safely reads null for boxes written before these
+  // fields existed (per-move info page content — from movement_info).
+  @HiveField(14)
+  final String? description;
+
+  @HiveField(15)
+  final String? videoUrl;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -146,6 +154,8 @@ class HiveExercise extends HiveObject {
     this.mediaSrc,
     this.mediaPoster,
     this.movementId,
+    this.description,
+    this.videoUrl,
   });
 
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
@@ -162,6 +172,8 @@ class HiveExercise extends HiveObject {
         mediaType: e.media.type,
         mediaSrc: e.media.src,
         mediaPoster: e.media.poster,
+        description: e.description,
+        videoUrl: e.videoUrl,
       );
 
   Exercise toDomain() => Exercise(
@@ -175,6 +187,8 @@ class HiveExercise extends HiveObject {
         audioFileUrl: url,
         repetitionsDefault: repetitions ?? 1,
         durationSeconds: durationSeconds,
+        description: description,
+        videoUrl: videoUrl,
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,

@@ -24,6 +24,12 @@ class Exercise {
   final int? durationSeconds;
   final ExerciseMedia media;
 
+  /// Long-form description for the move's info page (from `movement_info`).
+  final String? description;
+
+  /// Demonstration video URL for the info page (from `movement_info`).
+  final String? videoUrl;
+
   const Exercise({
     required this.id,
     this.movementId,
@@ -36,5 +42,7 @@ class Exercise {
     this.repetitionsDefault = 1,
     this.durationSeconds,
     this.media = ExerciseMedia.none,
+    this.description,
+    this.videoUrl,
   });
 }
