@@ -104,6 +104,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                     exerciseId: i.itemId,
                     position: i.position,
                     prescription: RepsPresc(i.repsToDo),
+                    section: i.trainingSection,
                   ))
               .toList()
             ..sort((a, b) => a.position.compareTo(b.position));
@@ -135,6 +136,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 exerciseId: i.itemId,
                 position: i.position,
                 prescription: RepsPresc(i.repsToDo),
+                section: i.trainingSection,
               ))
           .toList(),
     );
@@ -263,6 +265,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         itemId: detail.item.exerciseId,
         position: position,
         repsToDo: reps,
+        section: detail.item.section.value,
       );
     }).toList();
     await itemBox.addAll(hiveItems);
