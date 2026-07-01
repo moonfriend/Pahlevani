@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -170,16 +172,20 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       var allKnown = true;
       for (final item in items) {
         final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
-        final trackDuration = exercise?.durationSeconds;
         final defaultReps = exercise?.repetitionsDefault ?? 1;
-        if (trackDuration == null) {
-          allKnown = false;
-          continue;
-        }
         final repsToDo = item.prescription is RepsPresc
             ? (item.prescription as RepsPresc).count
             : defaultReps;
-        total += (trackDuration / defaultReps * repsToDo).round();
+        final seconds = trackDurationSeconds(
+          audioSeconds: exercise?.durationSeconds,
+          defaultReps: defaultReps,
+          reps: repsToDo,
+        );
+        if (seconds == null) {
+          allKnown = false;
+          continue;
+        }
+        total += seconds;
       }
       if (allKnown) durations[sessionId] = total;
     }
@@ -190,6 +196,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       sessionDurations: durations,
     );
   }
+
+  /// All exercises known to the snapshot — the catalogue a trainer picks from
+  /// when building a session.
+  List<Exercise> get availableExercises =>
+      _currentTSSnapshot.exercisesById.values.toList();
 
   /// Returns the detailed item list for a session, built from the in-memory snapshot.
   /// Returns null if the snapshot hasn't loaded yet.

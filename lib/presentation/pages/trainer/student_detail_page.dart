@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/sectioned_edit_training_session_page.dart';
 
 /// Stamps the assignment metadata that turns any edited session into a private
 /// training assigned to [studentId]. Extracted for unit testing.
@@ -55,9 +55,10 @@ class StudentDetailPage extends StatelessWidget {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (_) => EditTrainingSessionPage(
+        builder: (_) => SectionedEditTrainingSessionPage(
           trainingSession: seed,
           items: items,
+          availableExercises: cubit.availableExercises,
         ),
       ),
     );
