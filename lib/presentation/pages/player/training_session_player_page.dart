@@ -7,6 +7,7 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -14,6 +15,7 @@ import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
@@ -617,6 +619,12 @@ class _TrackListState extends State<_TrackList> {
             track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
         final repFg = isCustom ? colors.repCustom : colors.repDefault;
         final repBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+        final exercise = widget.cubit.exerciseAt(i);
+        final lengthSeconds = trackDurationSeconds(
+          audioSeconds: exercise?.durationSeconds,
+          defaultReps: track.defaultRepetitions ?? 1,
+          reps: track.effectiveRepetitions,
+        );
 
         return GestureDetector(
           key: _itemKeys[i],
@@ -663,12 +671,31 @@ class _TrackListState extends State<_TrackList> {
                           color: active ? cs.onSurface : colors.onMuted),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
-                  Text('${track.effectiveRepetitions} reps',
+                  Text(
+                      lengthSeconds != null
+                          ? '${_formatLength(lengthSeconds)} · ${track.effectiveRepetitions} reps'
+                          : '${track.effectiveRepetitions} reps',
                       style: PTextStyles.of(context)
                           .trackRowGloss
                           .copyWith(color: colors.onFaint)),
                 ],
               )),
+              // ⓘ — opens the move's info page.
+              if (exercise != null)
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ExerciseInfoPage(exercise: exercise)),
+                  ),
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Icon(Icons.info_outline_rounded,
+                        size: 18, color: colors.onFaint),
+                  ),
+                ),
+              const SizedBox(width: 2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
@@ -1045,4 +1072,13 @@ class _EqualizerState extends State<_Equalizer> with TickerProviderStateMixin {
                   )),
         ),
       );
+}
+
+/// Formats a track's play length for the row: seconds under a minute as "45s",
+/// otherwise "M:SS".
+String _formatLength(int seconds) {
+  if (seconds < 60) return '${seconds}s';
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
 }
