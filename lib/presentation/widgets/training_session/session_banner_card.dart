@@ -6,6 +6,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/training_session/session_card_shared.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_tools.dart';
 
 class SessionBannerCard extends StatelessWidget {
   const SessionBannerCard({
@@ -19,6 +20,7 @@ class SessionBannerCard extends StatelessWidget {
     required this.onTap,
     required this.onMenu,
     required this.onDownload,
+    this.tools = const [],
   });
 
   final TrainingSession session;
@@ -30,6 +32,7 @@ class SessionBannerCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onMenu;
   final VoidCallback onDownload;
+  final List<SessionTool> tools;
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +123,17 @@ class SessionBannerCard extends StatelessWidget {
                           itemCount: itemCount,
                           duration: duration,
                           difficulty: session.difficulty),
+                      if (tools.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          Text('NEEDS',
+                              style: PTextStyles.of(context)
+                                  .sectionLabel
+                                  .copyWith(color: colors.onFaint)),
+                          const SizedBox(width: 10),
+                          Expanded(child: SessionToolsRow(tools: tools)),
+                        ]),
+                      ],
                       const SizedBox(height: 14),
                       Row(children: [
                         DownloadRing(

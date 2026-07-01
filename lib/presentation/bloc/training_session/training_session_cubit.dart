@@ -11,6 +11,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_tools.dart';
 import 'package:pahlevani/domain/entities/download_status.dart';
 
 part 'training_session_state.dart';
@@ -164,10 +165,12 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   TrainingSessionsUiModel buildTrainingSessionsUiModel() {
     final itemCounts = <int, int>{};
     final durations = <int, int>{};
+    final tools = <int, List<SessionTool>>{};
     for (final entry in _currentTSSnapshot.itemsBySessionId.entries) {
       final sessionId = entry.key;
       final items = entry.value;
       itemCounts[sessionId] = items.length;
+      tools[sessionId] = toolsForSections(items.map((i) => i.section));
       var total = 0;
       var allKnown = true;
       for (final item in items) {
@@ -194,6 +197,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       downloadStatuses: _currentDownloadStatus,
       sessionItemCounts: itemCounts,
       sessionDurations: durations,
+      sessionTools: tools,
     );
   }
 

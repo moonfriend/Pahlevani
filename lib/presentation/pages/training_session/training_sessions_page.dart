@@ -16,6 +16,7 @@ import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/presentation/widgets/training_session/session_banner_card.dart';
 import 'package:pahlevani/presentation/widgets/training_session/session_compact_card.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_tools.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -272,6 +273,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
             : <int, double>{};
         final itemCounts = uiModel?.sessionItemCounts ?? {};
         final durations = uiModel?.sessionDurations ?? {};
+        final tools = uiModel?.sessionTools ?? {};
 
         return Scaffold(
           backgroundColor: colors.bg,
@@ -299,6 +301,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                             dlProgress: dlProgress,
                             itemCounts: itemCounts,
                             durations: durations,
+                            sessionTools: tools,
                             onOpen: _selectionMode
                                 ? (s) => widget.onSelect!(s.id)
                                 : _openPlayer,
@@ -484,6 +487,7 @@ class _SessionList extends StatelessWidget {
     required this.dlProgress,
     required this.itemCounts,
     required this.durations,
+    required this.sessionTools,
     required this.onOpen,
     required this.onMenu,
     required this.onDownload,
@@ -494,6 +498,7 @@ class _SessionList extends StatelessWidget {
   final Map<int, double> dlProgress;
   final Map<int, int> itemCounts;
   final Map<int, int> durations;
+  final Map<int, List<SessionTool>> sessionTools;
   final ValueChanged<TrainingSession> onOpen;
   final ValueChanged<TrainingSession> onMenu;
   final ValueChanged<TrainingSession> onDownload;
@@ -525,6 +530,8 @@ class _SessionList extends StatelessWidget {
         final progress = dlProgress[session.id] ?? 0.0;
         final count = itemCounts[session.id] ?? 0;
         final dur = durations[session.id];
+        final toolsForSession =
+            sessionTools[session.id] ?? const <SessionTool>[];
         final accent = colors.accentFor(session.id);
 
         if (density == ListDensity.compact) {
@@ -535,6 +542,7 @@ class _SessionList extends StatelessWidget {
             dlProgress: progress,
             itemCount: count,
             duration: dur,
+            tools: toolsForSession,
             onTap: () => onOpen(session),
             onMenu: () => onMenu(session),
             onDownload: () => onDownload(session),
@@ -547,6 +555,7 @@ class _SessionList extends StatelessWidget {
           dlProgress: progress,
           itemCount: count,
           duration: dur,
+          tools: toolsForSession,
           onTap: () => onOpen(session),
           onMenu: () => onMenu(session),
           onDownload: () => onDownload(session),
