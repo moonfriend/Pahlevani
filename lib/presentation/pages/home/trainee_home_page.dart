@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/presentation/bloc/session_selection/session_selection_cubit.dart';
 import 'package:pahlevani/presentation/pages/home/training_launcher.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:pahlevani/presentation/widgets/home/home_bottom_nav.dart';
@@ -10,11 +13,24 @@ import 'package:pahlevani/presentation/widgets/home/todays_training_card.dart';
 import 'package:pahlevani/presentation/widgets/home/trainee_card.dart';
 
 /// Trainee Home — daily scroll: who you are → progress → today's training
-/// → what's next to learn. The header cards are still [HomePreviewData] (Track
-/// 1 visual shell); the "Today's Training" card's action now launches the real
-/// player via [startTraining].
+/// → what's next to learn. The identity/progress/learn cards are still
+/// [HomePreviewData] (Track 1 visual shell); the "Today's Training" card is
+/// wired to the real [SessionSelectionCubit] — it shows the resolved "your
+/// training" and launches it via [startTraining].
 class TraineeHomePage extends StatelessWidget {
   const TraineeHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider<SessionSelectionCubit>(
+      create: (_) => getIt<SessionSelectionCubit>()..load(),
+      child: const _TraineeHomeView(),
+    );
+  }
+}
+
+class _TraineeHomeView extends StatelessWidget {
+  const _TraineeHomeView();
 
   void _openTrainerView(BuildContext context) {
     Navigator.push(
@@ -38,9 +54,16 @@ class TraineeHomePage extends StatelessWidget {
                   const SizedBox(height: 13),
                   const HouseProgressCard(profile: HomePreviewData.trainee),
                   const SizedBox(height: 13),
-                  TodaysTrainingCard(
-                    sections: HomePreviewData.todaysSections,
-                    onContinue: () => startTraining(context),
+                  BlocBuilder<SessionSelectionCubit, SessionSelectionState>(
+                    builder: (context, state) {
+                      final session = state.yourTraining;
+                      return TodaysTrainingCard(
+                        sections: HomePreviewData.todaysSections,
+                        sessionTitle: session?.title,
+                        onContinue: () =>
+                            startTraining(context, session: session),
+                      );
+                    },
                   ),
                   const SizedBox(height: 13),
                   const LearnCard(modules: HomePreviewData.learnModules),

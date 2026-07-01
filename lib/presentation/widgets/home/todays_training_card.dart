@@ -10,10 +10,15 @@ class TodaysTrainingCard extends StatelessWidget {
     super.key,
     required this.sections,
     this.onContinue,
+    this.sessionTitle,
   });
 
   final List<SectionSummary> sections;
   final VoidCallback? onContinue;
+
+  /// The resolved "your training" session name, shown under the header.
+  /// Null keeps the card in its generic preview form.
+  final String? sessionTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +42,10 @@ class TodaysTrainingCard extends StatelessWidget {
                   style: HomeText.mono(size: 10)),
             ],
           ),
+          if (sessionTitle != null) ...[
+            const SizedBox(height: 3),
+            Text(sessionTitle!, style: HomeText.mono(size: 11)),
+          ],
           const SizedBox(height: 10),
           Column(
             children: [

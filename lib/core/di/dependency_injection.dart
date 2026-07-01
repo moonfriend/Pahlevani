@@ -33,6 +33,7 @@ import '../../domain/services/current_user_service.dart';
 import '../../domain/services/image_cache_service.dart';
 import '../../domain/services/player_notification_service.dart';
 import '../../presentation/bloc/auth/auth_cubit.dart';
+import '../../presentation/bloc/session_selection/session_selection_cubit.dart';
 import '../../presentation/bloc/trainer/trainer_roster_cubit.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
@@ -103,6 +104,13 @@ class DependencyInjection {
 
     getIt.registerLazySingleton<CurrentUserService>(
         () => CurrentUserServiceImpl());
+
+    getIt.registerFactory<SessionSelectionCubit>(
+      () => SessionSelectionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        currentUserService: getIt<CurrentUserService>(),
+      ),
+    );
 
     getIt.registerLazySingleton<TrainingSessionCubit>(
       () => TrainingSessionCubit(
