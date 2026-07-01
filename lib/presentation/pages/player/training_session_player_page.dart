@@ -12,6 +12,7 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
@@ -22,8 +23,16 @@ import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 // Page shell
 // ─────────────────────────────────────────────────────────────────────────────
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key, required this.trainingSession});
+  const AudioPlayerPage({
+    super.key,
+    required this.trainingSession,
+    this.initialIndex = 0,
+  });
   final TrainingSession trainingSession;
+
+  /// Track to start on — the home's "start this section" deep-link passes the
+  /// section's first play position.
+  final int initialIndex;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -43,8 +52,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       downloadRepository: getIt<DownloadRepository>(),
       sessionRepository: getIt<TrainingSessionRepository>(),
       notificationService: getIt<PlayerNotificationService>(),
+      progressService: getIt.isRegistered<TrainingProgressService>()
+          ? getIt<TrainingProgressService>()
+          : null,
     );
-    _cubit.loadTracks();
+    _cubit.loadTracks(initialIndex: widget.initialIndex);
   }
 
   @override

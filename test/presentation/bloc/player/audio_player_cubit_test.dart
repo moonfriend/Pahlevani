@@ -13,8 +13,10 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/entities/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_player_notification_service.dart';
+import '../../../fakes/fake_training_progress_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -114,6 +116,7 @@ TrainingSessionPlayerCubit _makeCubit(
   DomainSnapshot snapshot, {
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
+  TrainingProgressService? progressService,
 }) {
   final session = snapshot.sessionsById.values.first;
   return TrainingSessionPlayerCubit(
@@ -122,6 +125,7 @@ TrainingSessionPlayerCubit _makeCubit(
     downloadRepository: downloadRepo ?? _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
     notificationService: FakePlayerNotificationService(),
+    progressService: progressService,
   );
 }
 
@@ -328,6 +332,36 @@ void main() {
 
       expect(cubit.state.isTrackDone(firstId), isFalse);
       expect(cubit.state.playingIndex, 1);
+    });
+
+    test('loadTracks(initialIndex:) starts on that track', () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks(initialIndex: 1);
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test('next(completed: true) records completion in the progress service',
+        () async {
+      final progress = FakeTrainingProgressService();
+      final cubit = _makeCubit(twoTrackSnap(), progressService: progress);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next(completed: true); // completes position 0
+
+      expect(await progress.completedToday(1), contains(0));
+    });
+
+    test('manual next() does NOT record completion', () async {
+      final progress = FakeTrainingProgressService();
+      final cubit = _makeCubit(twoTrackSnap(), progressService: progress);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next(); // skip, not a completion
+
+      expect(await progress.completedToday(1), isEmpty);
     });
 
     test('completing the last track marks it done and finishes', () async {

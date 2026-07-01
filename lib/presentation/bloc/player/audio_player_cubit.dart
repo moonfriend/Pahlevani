@@ -9,6 +9,7 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 
 /// State for the audio player.
 class AudioPlayerState {
@@ -100,6 +101,10 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
 
+  /// Optional — records daily completion. Null in tests that don't care about
+  /// progress persistence.
+  final TrainingProgressService? _progressService;
+
   final List<ItemDetail> _itemDetails = [];
 
   // Tracks which track indices have already been scheduled for background
@@ -123,11 +128,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     required DownloadRepository downloadRepository,
     required TrainingSessionRepository sessionRepository,
     required PlayerNotificationService notificationService,
+    TrainingProgressService? progressService,
   })  : _trainingSession = trainingSession,
         _audioService = audioPlayerService,
         _downloadRepo = downloadRepository,
         _sessionRepo = sessionRepository,
         _notification = notificationService,
+        _progressService = progressService,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _initListeners();
@@ -165,7 +172,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _audioService.setLooping(true);
   }
 
-  Future<void> loadTracks() async {
+  /// Loads the session's tracks and begins at [initialIndex] (clamped) — the
+  /// home's "start this section" deep-link passes the section's first track.
+  Future<void> loadTracks({int initialIndex = 0}) async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
     _cachedIndices.clear();
@@ -233,16 +242,17 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
             playingIndex: -1,
             errorMessage: 'Selected training_session is empty'));
       } else {
+        final startIndex = initialIndex.clamp(0, tracksToLoad.length - 1);
         emit(state.copyWith(
           tracks: tracksToLoad,
-          playingIndex: 0,
+          playingIndex: startIndex,
           position: Duration.zero,
           duration: Duration.zero,
           isLoading: false,
           errorMessage: null,
           completedTrackIds: const {},
         ));
-        await _loadSourceAtIndex(0, shouldPlay: true);
+        await _loadSourceAtIndex(startIndex, shouldPlay: true);
       }
     } catch (e) {
       emit(state.copyWith(
@@ -259,6 +269,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     final doneIds = completed && state.currentTrack != null
         ? {...state.completedTrackIds, state.currentTrack!.id}
         : state.completedTrackIds;
+
+    // Persist today's completion. playingIndex is the track's 0-based play
+    // position — the same key the home's progress reads back.
+    if (completed && state.currentTrack != null) {
+      _progressService?.markCompletedToday(
+          _trainingSession.id, state.playingIndex);
+    }
 
     if (state.playingIndex < state.tracks.length - 1) {
       final nextIndex = state.playingIndex + 1;
