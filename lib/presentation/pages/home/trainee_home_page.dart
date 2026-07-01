@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/presentation/bloc/session_selection/session_selection_cubit.dart';
 import 'package:pahlevani/presentation/pages/home/training_launcher.dart';
+import 'package:pahlevani/presentation/pages/trainer/trainer_student_list_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:pahlevani/presentation/widgets/home/home_bottom_nav.dart';
 import 'package:pahlevani/presentation/widgets/home/home_design_tokens.dart';
@@ -35,7 +36,7 @@ class _TraineeHomeView extends StatelessWidget {
   void _openTrainerView(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const TrainingSessionPage()),
+      MaterialPageRoute(builder: (_) => const TrainerStudentListPage()),
     );
   }
 
