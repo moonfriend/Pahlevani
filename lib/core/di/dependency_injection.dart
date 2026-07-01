@@ -114,6 +114,7 @@ class DependencyInjection {
       () => SessionSelectionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         currentUserService: getIt<CurrentUserService>(),
+        progressService: getIt<TrainingProgressService>(),
       ),
     );
 

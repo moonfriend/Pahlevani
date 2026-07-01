@@ -20,6 +20,7 @@ import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
 import 'package:pahlevani/presentation/bloc/session_selection/session_selection_cubit.dart';
@@ -31,6 +32,7 @@ import '../test/fakes/fake_audio_player_service.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_current_user_service.dart';
 import '../test/fakes/fake_download_repository.dart';
+import '../test/fakes/fake_training_progress_service.dart';
 import '../test/fakes/fake_training_session_repository.dart';
 import '../test/fakes/fake_version_gate_repository.dart';
 import '../test/fakes/test_seed_data.dart';
@@ -67,10 +69,13 @@ void main() {
     );
     getIt.registerLazySingleton<CurrentUserService>(
         () => FakeCurrentUserService('mvp-user'));
+    getIt.registerLazySingleton<TrainingProgressService>(
+        () => FakeTrainingProgressService());
     getIt.registerFactory<SessionSelectionCubit>(
       () => SessionSelectionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         currentUserService: getIt<CurrentUserService>(),
+        progressService: getIt<TrainingProgressService>(),
       ),
     );
     getIt.registerLazySingleton<VersionGateRepository>(
