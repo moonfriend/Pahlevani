@@ -7,13 +7,16 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
@@ -22,8 +25,16 @@ import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 // Page shell
 // ─────────────────────────────────────────────────────────────────────────────
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key, required this.trainingSession});
+  const AudioPlayerPage({
+    super.key,
+    required this.trainingSession,
+    this.initialIndex = 0,
+  });
   final TrainingSession trainingSession;
+
+  /// Track to start on — the home's "start this section" deep-link passes the
+  /// section's first play position.
+  final int initialIndex;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -43,8 +54,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       downloadRepository: getIt<DownloadRepository>(),
       sessionRepository: getIt<TrainingSessionRepository>(),
       notificationService: getIt<PlayerNotificationService>(),
+      progressService: getIt.isRegistered<TrainingProgressService>()
+          ? getIt<TrainingProgressService>()
+          : null,
     );
-    _cubit.loadTracks();
+    _cubit.loadTracks(initialIndex: widget.initialIndex);
   }
 
   @override
@@ -613,10 +627,17 @@ class _TrackListState extends State<_TrackList> {
         _itemKeys[i] ??= GlobalKey();
         final track = tracks[i];
         final active = i == activeIndex;
+        final done = widget.state.isTrackDone(track.id);
         final isCustom =
             track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
         final repFg = isCustom ? colors.repCustom : colors.repDefault;
         final repBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+        final exercise = widget.cubit.exerciseAt(i);
+        final lengthSeconds = trackDurationSeconds(
+          audioSeconds: exercise?.durationSeconds,
+          defaultReps: track.defaultRepetitions ?? 1,
+          reps: track.effectiveRepetitions,
+        );
 
         return GestureDetector(
           key: _itemKeys[i],
@@ -636,17 +657,24 @@ class _TrackListState extends State<_TrackList> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: active ? widget.accent.fg : colors.surface3,
+                  color: done && !active
+                      ? colors.repDefaultBg
+                      : (active ? widget.accent.fg : colors.surface3),
                   borderRadius: BorderRadius.circular(9),
                 ),
                 alignment: Alignment.center,
-                child: Text('${i + 1}',
-                    style: TextStyle(
-                        fontFamily: PFonts.ui,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: active ? cs.onPrimary : colors.onMuted,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
+                child: done && !active
+                    ? Icon(Icons.check_rounded,
+                        size: 17, color: colors.repDefault)
+                    : Text('${i + 1}',
+                        style: TextStyle(
+                            fontFamily: PFonts.ui,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: active ? cs.onPrimary : colors.onMuted,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ])),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -660,15 +688,37 @@ class _TrackListState extends State<_TrackList> {
                           fontWeight:
                               active ? FontWeight.w700 : FontWeight.w600,
                           fontSize: 14.5,
-                          color: active ? cs.onSurface : colors.onMuted),
+                          color: active ? cs.onSurface : colors.onMuted,
+                          decoration: done && !active
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
-                  Text('${track.effectiveRepetitions} reps',
+                  Text(
+                      lengthSeconds != null
+                          ? '${_formatLength(lengthSeconds)} · ${track.effectiveRepetitions} reps'
+                          : '${track.effectiveRepetitions} reps',
                       style: PTextStyles.of(context)
                           .trackRowGloss
                           .copyWith(color: colors.onFaint)),
                 ],
               )),
+              // ⓘ — opens the move's info page.
+              if (exercise != null)
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ExerciseInfoPage(exercise: exercise)),
+                  ),
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Icon(Icons.info_outline_rounded,
+                        size: 18, color: colors.onFaint),
+                  ),
+                ),
+              const SizedBox(width: 2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
@@ -687,7 +737,10 @@ class _TrackListState extends State<_TrackList> {
                             : Icons.play_arrow_rounded,
                         size: 18,
                         color: widget.accent.fg)
-                    : const SizedBox.shrink(),
+                    : (done
+                        ? Icon(Icons.check_circle_rounded,
+                            size: 18, color: colors.repDefault)
+                        : const SizedBox.shrink()),
               ),
             ]),
           ),
@@ -758,7 +811,7 @@ class _Transport extends StatelessWidget {
             icon: Icons.keyboard_arrow_down_rounded,
             enabled: !atEnd,
             colors: colors,
-            onTap: cubit.next),
+            onTap: () => cubit.next(completed: true)),
       ]),
     );
   }
@@ -1045,4 +1098,13 @@ class _EqualizerState extends State<_Equalizer> with TickerProviderStateMixin {
                   )),
         ),
       );
+}
+
+/// Formats a track's play length for the row: seconds under a minute as "45s",
+/// otherwise "M:SS".
+String _formatLength(int seconds) {
+  if (seconds < 60) return '${seconds}s';
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
 }

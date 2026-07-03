@@ -2,17 +2,20 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:get_it/get_it.dart';
 
 import '../../core/utils/image_transform.dart';
+import '../../domain/services/image_cache_service.dart';
 
 /// Resolves a still-image source to the right Flutter [ImageProvider].
 ///
-/// - Paths starting with `/` → [FileImage] (on-disk cache).
-/// - Everything else → [NetworkImage] with Supabase transform params applied
-///   (500×500 / quality 80). Non-Supabase URLs are passed through unchanged.
+/// Resolution order for remote URLs:
+///   1. In-memory cache index (synchronous, no I/O) → [FileImage]
+///   2. Background [prefetch] triggered so subsequent renders use the cache
+///   3. [NetworkImage] as the immediate fallback (Supabase transform applied)
 ///
+/// Paths starting with `/` are served directly as [FileImage].
 /// This is the single place that owns the local-vs-remote decision.
-/// All image-rendering widgets use `Image(image: ExerciseImageProvider(src))`.
 class ExerciseImageProvider extends ImageProvider<ExerciseImageProvider> {
   final String src;
 
@@ -20,7 +23,6 @@ class ExerciseImageProvider extends ImageProvider<ExerciseImageProvider> {
 
   bool get isLocalFile => src.startsWith('/');
 
-  /// The URL/path actually used when fetching — transform applied for remote URLs.
   String get effectiveSrc => isLocalFile ? src : supabaseImageTransformUrl(src);
 
   @override
@@ -35,6 +37,25 @@ class ExerciseImageProvider extends ImageProvider<ExerciseImageProvider> {
       // ignore: invalid_use_of_protected_member
       return delegate.loadImage(delegate, decode);
     }
+
+    // Synchronous lookup from in-memory index — zero I/O.
+    ImageCacheService? cache;
+    try {
+      if (GetIt.instance.isRegistered<ImageCacheService>()) {
+        cache = GetIt.instance<ImageCacheService>();
+      }
+    } catch (_) {}
+
+    final localPath = cache?.lookup(key.src);
+    if (localPath != null) {
+      final delegate = FileImage(File(localPath));
+      // ignore: invalid_use_of_protected_member
+      return delegate.loadImage(delegate, decode);
+    }
+
+    // Not cached yet — trigger background download for next render cycle.
+    cache?.prefetch(key.src);
+
     final delegate = NetworkImage(key.effectiveSrc);
     // ignore: invalid_use_of_protected_member
     return delegate.loadImage(delegate, decode);

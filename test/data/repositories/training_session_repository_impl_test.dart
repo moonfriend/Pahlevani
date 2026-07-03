@@ -21,7 +21,11 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/data/repositories_impl/training_session_repository_impl.dart';
 
@@ -66,6 +70,9 @@ class _FakeRemoteDataSource implements TrainingSessionRemoteDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> fetchMovementTable() async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMovementInfoTable() async => [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,15 +103,6 @@ class _FakeLocalDataSource implements TrainingSessionLocalDataSource {
   @override
   Future<void> downloadFile(String url, String savePath,
       Function(int, int) onReceiveProgress) async {}
-
-  @override
-  Future<List<Map<String, dynamic>>> getTrainingSessionsTable() async => [];
-
-  @override
-  Future<List<Map<String, dynamic>>> getExerciseTable() async => [];
-
-  @override
-  Future<List<Map<String, dynamic>>> getTrainingSessionItemTable() async => [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -595,6 +593,70 @@ void main() {
         (snap.itemsBySessionId[999]!.first.prescription as RepsPresc).count,
         3,
       );
+    });
+  });
+
+  // ── 5. section persists through the Hive save + read paths ───────────────────
+  group('section persistence', () {
+    ItemDetail detail(int exerciseId, int position, TrainingSection section) =>
+        ItemDetail(
+          item: TrainingItem(
+            id: 500 * 10000 + position,
+            sessionId: 500,
+            exerciseId: exerciseId,
+            position: position,
+            prescription: const RepsPresc(3),
+            section: section,
+          ),
+          exercise: Exercise(id: exerciseId, name: 'Ex $exerciseId'),
+        );
+
+    test('saveTrainingSession writes each item section to Hive (write path)',
+        () async {
+      final db = _FakeLocalDatabase();
+      final repo = _makeRepo(db: db);
+      final session = TrainingSession(
+        id: 500,
+        title: 'Sectioned',
+        description: '',
+        difficulty: 1,
+        isUserCreated: true,
+      );
+
+      await repo.saveTrainingSession(session, items: [
+        detail(10, 0, TrainingSection.meel),
+        detail(11, 1, TrainingSection.kabbade),
+      ]);
+
+      final box = await db.getTrainingSessionItemBox();
+      final stored = box.values.toList()
+        ..sort((a, b) => a.position.compareTo(b.position));
+      expect(stored.map((i) => i.section), ['meel', 'kabbade'],
+          reason: 'the discipline section must be persisted, not dropped');
+    });
+
+    test('Hive-backed snapshot restores item section (read path)', () async {
+      final snap = await _makeRepo(
+        remote: _FakeRemoteDataSource(shouldThrow: true),
+        db: _FakeLocalDatabase(
+          sessions: [
+            TrainingSession(id: 500, title: 'S', description: '', difficulty: 1)
+          ],
+          exercises: [HiveExercise(id: 10, name: 'Meel', repetitions: 3)],
+          items: [
+            HiveTrainingSessionItem(
+              trainingSessionId: 500,
+              itemId: 10,
+              position: 0,
+              repsToDo: 3,
+              section: 'meel',
+            )
+          ],
+        ),
+      ).fetchTrainingSessions();
+
+      expect(snap.itemsBySessionId[500]!.first.section, TrainingSection.meel,
+          reason: 'section string from Hive must map back to the enum');
     });
   });
 }

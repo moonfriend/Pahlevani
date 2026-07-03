@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Pahlevani (staging)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=SUPABASE_URL=REPLACE_WITH_STAGING_URL",
+        "--dart-define=SUPABASE_ANON_KEY=REPLACE_WITH_STAGING_ANON_KEY"
+      ]
+    },
+    {
+      "name": "Pahlevani (prod — use sparingly)",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}

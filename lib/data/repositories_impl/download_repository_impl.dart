@@ -7,7 +7,7 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 class DownloadRepositoryImpl implements DownloadRepository {
   final TrainingSessionLocalDataSource localDataSource;

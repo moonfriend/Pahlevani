@@ -10,11 +10,13 @@ import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/services/training_progress_service.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_player_notification_service.dart';
+import '../../../fakes/fake_training_progress_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -114,6 +116,7 @@ TrainingSessionPlayerCubit _makeCubit(
   DomainSnapshot snapshot, {
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
+  TrainingProgressService? progressService,
 }) {
   final session = snapshot.sessionsById.values.first;
   return TrainingSessionPlayerCubit(
@@ -122,6 +125,7 @@ TrainingSessionPlayerCubit _makeCubit(
     downloadRepository: downloadRepo ?? _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
     notificationService: FakePlayerNotificationService(),
+    progressService: progressService,
   );
 }
 
@@ -288,6 +292,117 @@ void main() {
 
       expect(cubit.state.isFinished, isTrue);
       expect(cubit.state.isPlaying, isFalse);
+    });
+  });
+
+  // ---------- per-item "done" marking ----------
+
+  group('per-item done marking', () {
+    DomainSnapshot twoTrackSnap() {
+      final session = _session(1);
+      final items = [
+        _item(sessionId: 1, exerciseId: 10, position: 0),
+        _item(sessionId: 1, exerciseId: 11, position: 1),
+      ];
+      return _snapshotWithItems(session, items, [_exercise(10), _exercise(11)]);
+    }
+
+    test('next(completed: true) marks the played track done and advances',
+        () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      final firstId = cubit.state.tracks[0].id;
+
+      cubit.next(completed: true);
+
+      expect(cubit.state.isTrackDone(firstId), isTrue);
+      expect(cubit.state.playingIndex, 1);
+      // The newly-current track is not done yet.
+      expect(cubit.state.isTrackDone(cubit.state.tracks[1].id), isFalse);
+    });
+
+    test('manual next() does NOT mark the skipped track done', () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      final firstId = cubit.state.tracks[0].id;
+
+      cubit.next(); // user skipped — not a completion
+
+      expect(cubit.state.isTrackDone(firstId), isFalse);
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test('loadTracks(initialIndex:) starts on that track', () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks(initialIndex: 1);
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test('next(completed: true) records completion in the progress service',
+        () async {
+      final progress = FakeTrainingProgressService();
+      final cubit = _makeCubit(twoTrackSnap(), progressService: progress);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next(completed: true); // completes position 0
+
+      expect(await progress.completedToday(1), contains(0));
+    });
+
+    test('manual next() does NOT record completion', () async {
+      final progress = FakeTrainingProgressService();
+      final cubit = _makeCubit(twoTrackSnap(), progressService: progress);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next(); // skip, not a completion
+
+      expect(await progress.completedToday(1), isEmpty);
+    });
+
+    test('completing the last track marks it done and finishes', () async {
+      final session = _session(1);
+      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
+      final cubit = _makeCubit(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      final onlyId = cubit.state.tracks[0].id;
+
+      cubit.next(completed: true);
+
+      expect(cubit.state.isTrackDone(onlyId), isTrue);
+      expect(cubit.state.isFinished, isTrue);
+    });
+
+    test('completing both tracks accumulates both ids', () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      final firstId = cubit.state.tracks[0].id;
+      final secondId = cubit.state.tracks[1].id;
+
+      cubit.next(completed: true); // finish track 1 → advance to track 2
+      cubit.next(completed: true); // finish track 2 → session done
+
+      expect(cubit.state.completedTrackIds, containsAll([firstId, secondId]));
+      expect(cubit.state.isFinished, isTrue);
+    });
+
+    test('replay() clears the done set', () async {
+      final cubit = _makeCubit(twoTrackSnap());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next(completed: true);
+      expect(cubit.state.completedTrackIds, isNotEmpty);
+
+      cubit.replay();
+
+      expect(cubit.state.completedTrackIds, isEmpty);
     });
   });
 

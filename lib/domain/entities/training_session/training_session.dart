@@ -7,6 +7,20 @@ class TrainingSession {
   final DateTime? createdAt;
   final bool isUserCreated;
 
+  /// Whether this session is visible in the public library (all trainees).
+  /// false = private, visible only to the assigned trainee.
+  final bool isPublic;
+
+  /// Null = an "original training" — public, visible to every signed-in
+  /// user. Set = an individualized session, visible only to this trainee
+  /// (enforced server-side by RLS once the auth migration is applied).
+  final String? assignedToUserId;
+
+  /// Which trainer built this individualized session — null for original
+  /// trainings. Lets a trainer's app list "sessions I assigned" via this
+  /// column without needing a separate query parameter.
+  final String? assignedByTrainerId;
+
   TrainingSession({
     required this.id,
     required this.title,
@@ -15,7 +29,12 @@ class TrainingSession {
     required this.difficulty,
     this.createdAt,
     this.isUserCreated = false,
+    this.isPublic = true,
+    this.assignedToUserId,
+    this.assignedByTrainerId,
   });
+
+  bool get isIndividualized => assignedToUserId != null;
 
   TrainingSession copyWith({
     int? id,
@@ -25,6 +44,9 @@ class TrainingSession {
     int? difficulty,
     DateTime? createdAt,
     bool? isUserCreated,
+    bool? isPublic,
+    String? assignedToUserId,
+    String? assignedByTrainerId,
   }) {
     return TrainingSession(
       id: id ?? this.id,
@@ -34,6 +56,9 @@ class TrainingSession {
       difficulty: difficulty ?? this.difficulty,
       createdAt: createdAt ?? this.createdAt,
       isUserCreated: isUserCreated ?? this.isUserCreated,
+      isPublic: isPublic ?? this.isPublic,
+      assignedToUserId: assignedToUserId ?? this.assignedToUserId,
+      assignedByTrainerId: assignedByTrainerId ?? this.assignedByTrainerId,
     );
   }
 }

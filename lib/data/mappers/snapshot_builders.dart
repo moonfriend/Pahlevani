@@ -1,4 +1,5 @@
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_info_row.dart';
 import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
@@ -46,10 +47,12 @@ DomainSnapshot buildDomainSnapshot({
   required List<TrainingItemRow> itemRows,
   required List<ExerciseRow> exerciseRows,
   List<MovementRow> movementRows = const [],
+  List<MovementInfoRow> movementInfoRows = const [],
 }) {
   final sessionsById = {for (final s in sessionRows.map(mapSession)) s.id: s};
 
   final movementsById = {for (final m in movementRows) m.id: m};
+  final movementInfoById = {for (final m in movementInfoRows) m.movementId: m};
 
   final grouped = <int, List<TrainingItem>>{};
   for (final row in itemRows) {
@@ -62,8 +65,12 @@ DomainSnapshot buildDomainSnapshot({
 
   final exercisesById = {
     for (final e in exerciseRows)
-      e.id: mapExercise(e,
-          movement: e.movementId != null ? movementsById[e.movementId] : null)
+      e.id: mapExercise(
+        e,
+        movement: e.movementId != null ? movementsById[e.movementId] : null,
+        movementInfo:
+            e.movementId != null ? movementInfoById[e.movementId] : null,
+      )
   };
 
   return DomainSnapshot(

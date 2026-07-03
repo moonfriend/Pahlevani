@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_tools.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 
 part 'training_session_state.dart';
 
@@ -162,24 +165,30 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   TrainingSessionsUiModel buildTrainingSessionsUiModel() {
     final itemCounts = <int, int>{};
     final durations = <int, int>{};
+    final tools = <int, List<SessionTool>>{};
     for (final entry in _currentTSSnapshot.itemsBySessionId.entries) {
       final sessionId = entry.key;
       final items = entry.value;
       itemCounts[sessionId] = items.length;
+      tools[sessionId] = toolsForSections(items.map((i) => i.section));
       var total = 0;
       var allKnown = true;
       for (final item in items) {
         final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
-        final trackDuration = exercise?.durationSeconds;
         final defaultReps = exercise?.repetitionsDefault ?? 1;
-        if (trackDuration == null) {
-          allKnown = false;
-          continue;
-        }
         final repsToDo = item.prescription is RepsPresc
             ? (item.prescription as RepsPresc).count
             : defaultReps;
-        total += (trackDuration / defaultReps * repsToDo).round();
+        final seconds = trackDurationSeconds(
+          audioSeconds: exercise?.durationSeconds,
+          defaultReps: defaultReps,
+          reps: repsToDo,
+        );
+        if (seconds == null) {
+          allKnown = false;
+          continue;
+        }
+        total += seconds;
       }
       if (allKnown) durations[sessionId] = total;
     }
@@ -188,8 +197,14 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       downloadStatuses: _currentDownloadStatus,
       sessionItemCounts: itemCounts,
       sessionDurations: durations,
+      sessionTools: tools,
     );
   }
+
+  /// All exercises known to the snapshot — the catalogue a trainer picks from
+  /// when building a session.
+  List<Exercise> get availableExercises =>
+      _currentTSSnapshot.exercisesById.values.toList();
 
   /// Returns the detailed item list for a session, built from the in-memory snapshot.
   /// Returns null if the snapshot hasn't loaded yet.

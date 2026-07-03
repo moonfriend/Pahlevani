@@ -99,5 +99,22 @@ void main() {
           TrainingSessionRow.fromJson({'id': 1, 'is_user_created': true});
       expect(userCreated.isUserCreated, isTrue);
     });
+
+    test('parses assigned_to_user_id and assigned_by_trainer_id when present',
+        () {
+      final row = TrainingSessionRow.fromJson({
+        'id': 1,
+        'assigned_to_user_id': 'trainee-uuid',
+        'assigned_by_trainer_id': 'trainer-uuid',
+      });
+      expect(row.assignedToUserId, 'trainee-uuid');
+      expect(row.assignedByTrainerId, 'trainer-uuid');
+    });
+
+    test('assigned_to_user_id and assigned_by_trainer_id default to null', () {
+      final row = TrainingSessionRow.fromJson({'id': 1});
+      expect(row.assignedToUserId, isNull);
+      expect(row.assignedByTrainerId, isNull);
+    });
   });
 }

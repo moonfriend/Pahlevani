@@ -21,12 +21,18 @@ class TrainingSessionLocalDatabase {
 
   /// Initialize Hive and register adapters.
   /// Deletes all typed boxes when the cache version changes (schema migration).
+  static const String _imageCacheBoxName = 'image_cache';
+
   static Future<void> init() async {
     await Hive.initFlutter();
     Hive.registerAdapter(HiveTrainingSessionAdapter());
     Hive.registerAdapter(HiveExerciseAdapter());
     Hive.registerAdapter(HiveTrainingSessionItemAdapter());
+    Hive.registerAdapter(HiveCachedImageAdapter());
     await _migrateIfNeeded();
+    // Image cache is independent of the session schema — do not wipe on
+    // version bump; open it unconditionally so it is ready before DI wires up.
+    await Hive.openBox<HiveCachedImage>(_imageCacheBoxName);
   }
 
   // Uses the untyped 'settings' box (primitive values only) to detect stale

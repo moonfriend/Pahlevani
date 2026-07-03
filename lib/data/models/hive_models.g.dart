@@ -24,13 +24,16 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       createdAt: fields[4] as DateTime?,
       isUserCreated: fields[5] as bool,
       titleFa: fields[6] as String?,
+      assignedToUserId: fields[7] as String?,
+      assignedByTrainerId: fields[8] as String?,
+      isPublic: fields[9] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +47,13 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(5)
       ..write(obj.isUserCreated)
       ..writeByte(6)
-      ..write(obj.titleFa);
+      ..write(obj.titleFa)
+      ..writeByte(7)
+      ..write(obj.assignedToUserId)
+      ..writeByte(8)
+      ..write(obj.assignedByTrainerId)
+      ..writeByte(9)
+      ..write(obj.isPublic);
   }
 
   @override
@@ -83,13 +92,15 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       mediaSrc: fields[11] as String?,
       mediaPoster: fields[12] as String?,
       movementId: fields[13] as int?,
+      description: fields[14] as String?,
+      videoUrl: fields[15] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -117,7 +128,11 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(12)
       ..write(obj.mediaPoster)
       ..writeByte(13)
-      ..write(obj.movementId);
+      ..write(obj.movementId)
+      ..writeByte(14)
+      ..write(obj.description)
+      ..writeByte(15)
+      ..write(obj.videoUrl);
   }
 
   @override
@@ -127,6 +142,46 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is HiveExerciseAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class HiveCachedImageAdapter extends TypeAdapter<HiveCachedImage> {
+  @override
+  final int typeId = 3;
+
+  @override
+  HiveCachedImage read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return HiveCachedImage(
+      urlHash: fields[0] as String,
+      localPath: fields[1] as String,
+      cachedAtMs: fields[2] as int,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, HiveCachedImage obj) {
+    writer
+      ..writeByte(3)
+      ..writeByte(0)
+      ..write(obj.urlHash)
+      ..writeByte(1)
+      ..write(obj.localPath)
+      ..writeByte(2)
+      ..write(obj.cachedAtMs);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HiveCachedImageAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
@@ -147,13 +202,14 @@ class HiveTrainingSessionItemAdapter
       itemId: fields[1] as int,
       position: fields[2] as int,
       repsToDo: fields[3] as int,
+      section: fields[4] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSessionItem obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.trainingSessionId)
       ..writeByte(1)
@@ -161,7 +217,9 @@ class HiveTrainingSessionItemAdapter
       ..writeByte(2)
       ..write(obj.position)
       ..writeByte(3)
-      ..write(obj.repsToDo);
+      ..write(obj.repsToDo)
+      ..writeByte(4)
+      ..write(obj.section);
   }
 
   @override

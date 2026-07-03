@@ -1,4 +1,4 @@
-/// Represents the download state of a training_session.
+/// Represents the download state of a training session.
 enum DownloadStatus {
   notDownloaded,
   downloading,

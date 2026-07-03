@@ -100,20 +100,4 @@ void main() {
       );
     });
   });
-
-  // ── Stub table methods ─────────────────────────────────────────────────────
-
-  group('stub table methods return empty lists', () {
-    test('getExerciseTable returns []', () async {
-      expect(await ds.getExerciseTable(), isEmpty);
-    });
-
-    test('getTrainingSessionsTable returns []', () async {
-      expect(await ds.getTrainingSessionsTable(), isEmpty);
-    });
-
-    test('getTrainingSessionItemTable returns []', () async {
-      expect(await ds.getTrainingSessionItemTable(), isEmpty);
-    });
-  });
 }

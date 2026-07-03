@@ -9,19 +9,26 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
-import 'package:pahlevani/presentation/widgets/common/difficulty_pips.dart';
-import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
-import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
+import 'package:pahlevani/domain/services/current_user_service.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_banner_card.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_compact_card.dart';
+import 'package:pahlevani/presentation/widgets/training_session/session_tools.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 class TrainingSessionPage extends StatefulWidget {
-  const TrainingSessionPage({super.key});
+  const TrainingSessionPage({super.key, this.onSelect});
+
+  /// When set, the page acts as the trainee's "Select training" picker:
+  /// the list is filtered to public + assigned sessions, tapping a card calls
+  /// [onSelect] with its id (instead of opening the player), and the
+  /// trainer/management affordances (New / Edit / Delete) are hidden.
+  final ValueChanged<int>? onSelect;
 
   @override
   State<TrainingSessionPage> createState() => _TrainingSessionPageState();
@@ -34,12 +41,30 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     duration: const Duration(milliseconds: 800),
   );
 
+  /// Current user id — only loaded in selection mode, to surface a trainee's
+  /// own assigned (private) sessions alongside the public library.
+  String? _currentUserId;
+
+  bool get _selectionMode => widget.onSelect != null;
+
   @override
   void initState() {
     super.initState();
+    if (_selectionMode) _loadCurrentUser();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _checkConnectivityOnce());
   }
+
+  Future<void> _loadCurrentUser() async {
+    final id = await getIt<CurrentUserService>().getUserId();
+    if (mounted) setState(() => _currentUserId = id);
+  }
+
+  /// In selection mode, a trainee may only pick public sessions or ones a
+  /// trainer assigned to them.
+  bool _isSelectable(TrainingSession s) =>
+      s.isPublic ||
+      (_currentUserId != null && s.assignedToUserId == _currentUserId);
 
   @override
   void dispose() {
@@ -156,16 +181,18 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               decoration: BoxDecoration(
                   color: colors.border,
                   borderRadius: BorderRadius.circular(9))),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: Text(session.isUserCreated ? 'Edit session' : 'Edit a copy',
-                style: const TextStyle(
-                    fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
-            onTap: () {
-              Navigator.pop(context);
-              _openEdit(session);
-            },
-          ),
+          if (!_selectionMode)
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text(
+                  session.isUserCreated ? 'Edit session' : 'Edit a copy',
+                  style: const TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                _openEdit(session);
+              },
+            ),
           if (dlStatus != DownloadStatus.downloaded)
             ListTile(
               leading: const Icon(Icons.download_rounded),
@@ -177,7 +204,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                 cubit.downloadTrainingSession(session.id);
               },
             ),
-          if (session.isUserCreated)
+          if (session.isUserCreated && !_selectionMode)
             ListTile(
               leading: Icon(Icons.delete_outline,
                   color: Theme.of(context).colorScheme.error),
@@ -236,13 +263,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
         };
         final isLoading =
             state is TrainingSessionLoading || state is TrainingSessionInitial;
-        final sessions = uiModel?.trainingSessions ?? [];
+        final allSessions = uiModel?.trainingSessions ?? [];
+        final sessions = _selectionMode
+            ? allSessions.where(_isSelectable).toList()
+            : allSessions;
         final dlStatuses = uiModel?.downloadStatuses ?? {};
         final dlProgress = state is TrainingSessionDownloading
             ? state.downloadProgress
             : <int, double>{};
         final itemCounts = uiModel?.sessionItemCounts ?? {};
         final durations = uiModel?.sessionDurations ?? {};
+        final tools = uiModel?.sessionTools ?? {};
 
         return Scaffold(
           backgroundColor: colors.bg,
@@ -270,7 +301,10 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                             dlProgress: dlProgress,
                             itemCounts: itemCounts,
                             durations: durations,
-                            onOpen: _openPlayer,
+                            sessionTools: tools,
+                            onOpen: _selectionMode
+                                ? (s) => widget.onSelect!(s.id)
+                                : _openPlayer,
                             onMenu: (s) => _showOverflowSheet(
                                 context,
                                 s,
@@ -284,20 +318,22 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
                       ),
                   ],
                 ),
-                // FAB
-                Positioned(
-                  right: 18,
-                  bottom: 16,
-                  child: FloatingActionButton.extended(
-                    onPressed: _openNew,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
+                // FAB — creating sessions is a trainer action, hidden while
+                // the trainee is only picking a training to follow.
+                if (!_selectionMode)
+                  Positioned(
+                    right: 18,
+                    bottom: 16,
+                    child: FloatingActionButton.extended(
+                      onPressed: _openNew,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New',
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -451,6 +487,7 @@ class _SessionList extends StatelessWidget {
     required this.dlProgress,
     required this.itemCounts,
     required this.durations,
+    required this.sessionTools,
     required this.onOpen,
     required this.onMenu,
     required this.onDownload,
@@ -461,6 +498,7 @@ class _SessionList extends StatelessWidget {
   final Map<int, double> dlProgress;
   final Map<int, int> itemCounts;
   final Map<int, int> durations;
+  final Map<int, List<SessionTool>> sessionTools;
   final ValueChanged<TrainingSession> onOpen;
   final ValueChanged<TrainingSession> onMenu;
   final ValueChanged<TrainingSession> onDownload;
@@ -492,361 +530,37 @@ class _SessionList extends StatelessWidget {
         final progress = dlProgress[session.id] ?? 0.0;
         final count = itemCounts[session.id] ?? 0;
         final dur = durations[session.id];
+        final toolsForSession =
+            sessionTools[session.id] ?? const <SessionTool>[];
         final accent = colors.accentFor(session.id);
 
         if (density == ListDensity.compact) {
-          return _CompactCard(
+          return SessionCompactCard(
             session: session,
             accent: accent,
             dlStatus: status,
             dlProgress: progress,
             itemCount: count,
             duration: dur,
+            tools: toolsForSession,
             onTap: () => onOpen(session),
             onMenu: () => onMenu(session),
             onDownload: () => onDownload(session),
           );
         }
-        return _BannerCard(
+        return SessionBannerCard(
           session: session,
           accent: accent,
           dlStatus: status,
           dlProgress: progress,
           itemCount: count,
           duration: dur,
+          tools: toolsForSession,
           onTap: () => onOpen(session),
           onMenu: () => onMenu(session),
           onDownload: () => onDownload(session),
         );
       },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Banner Card
-// ─────────────────────────────────────────────────────────────────────────────
-class _BannerCard extends StatelessWidget {
-  const _BannerCard({
-    required this.session,
-    required this.accent,
-    required this.dlStatus,
-    required this.dlProgress,
-    required this.itemCount,
-    required this.duration,
-    required this.onTap,
-    required this.onMenu,
-    required this.onDownload,
-  });
-
-  final TrainingSession session;
-  final SessionAccent accent;
-  final DownloadStatus dlStatus;
-  final double dlProgress;
-  final int itemCount;
-  final int? duration;
-  final VoidCallback onTap;
-  final VoidCallback onMenu;
-  final VoidCallback onDownload;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colors.borderSoft),
-          boxShadow: colors.shadowCard,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Banner strip
-          SizedBox(
-            height: 104,
-            child: Stack(children: [
-              Positioned.fill(child: ColoredBox(color: accent.bg)),
-              Positioned.fill(
-                  child: PersianPattern(
-                      color: accent.fg, opacity: 0.5, tileSize: 120)),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        cs.surface.withValues(alpha: 0.55),
-                        Colors.transparent
-                      ],
-                      stops: const [0.0, 0.7],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 18,
-                bottom: 12,
-                right: 48,
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (session.isUserCreated) ...[
-                        _YoursChip(colors: colors),
-                        const SizedBox(height: 4),
-                      ],
-                      Text(session.title,
-                          style: PTextStyles.of(context)
-                              .cardTitleBanner
-                              .copyWith(color: cs.onSurface),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ]),
-              ),
-              Positioned(
-                top: 12,
-                right: 16,
-                child: Text(
-                  session.titleFa ?? 'زورخانه',
-                  style:
-                      PTextStyles.of(context).cardFa.copyWith(color: accent.fg),
-                  textDirection: TextDirection.rtl,
-                ),
-              ),
-            ]),
-          ),
-          // Body — explicit opaque surface so the banner pattern never bleeds through
-          ColoredBox(
-              color: cs.surface,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(session.description,
-                          style: PTextStyles.of(context)
-                              .cardDescription
-                              .copyWith(color: colors.onMuted),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 12),
-                      _MetaRow(
-                          itemCount: itemCount,
-                          duration: duration,
-                          difficulty: session.difficulty),
-                      const SizedBox(height: 14),
-                      Row(children: [
-                        DownloadRing(
-                          status: dlStatus,
-                          progress: dlProgress,
-                          accentFg: accent.fg,
-                          accentBg: accent.bg,
-                          onTap: onDownload,
-                        ),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: onMenu,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            child: Icon(Icons.more_vert,
-                                size: 20, color: colors.onMuted),
-                          ),
-                        ),
-                      ]),
-                    ]),
-              )), // ColoredBox + Padding
-        ]),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Compact Card
-// ─────────────────────────────────────────────────────────────────────────────
-class _CompactCard extends StatelessWidget {
-  const _CompactCard({
-    required this.session,
-    required this.accent,
-    required this.dlStatus,
-    required this.dlProgress,
-    required this.itemCount,
-    required this.duration,
-    required this.onTap,
-    required this.onMenu,
-    required this.onDownload,
-  });
-
-  final TrainingSession session;
-  final SessionAccent accent;
-  final DownloadStatus dlStatus;
-  final double dlProgress;
-  final int itemCount;
-  final int? duration;
-  final VoidCallback onTap;
-  final VoidCallback onMenu;
-  final VoidCallback onDownload;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-    // Use Farsi title if available; fall back to placeholder until DB has the column
-    final thumbnailFa = (session.titleFa ?? 'زورخانه').split(' ').first;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: colors.borderSoft),
-          boxShadow: colors.shadowCard,
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Thumbnail
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              width: 92,
-              height: 92,
-              child: Stack(alignment: Alignment.center, children: [
-                Positioned.fill(child: ColoredBox(color: accent.bg)),
-                Positioned.fill(
-                    child: PersianPattern(
-                        color: accent.fg, opacity: 0.62, tileSize: 86)),
-                Text(thumbnailFa,
-                    style: PTextStyles.of(context).cardFa.copyWith(
-                        color: accent.fg,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700),
-                    textDirection: TextDirection.rtl),
-              ]),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(
-                    child: Row(children: [
-                  Flexible(
-                    child: Text(session.title,
-                        style: PTextStyles.of(context)
-                            .cardTitleCompact
-                            .copyWith(color: cs.onSurface),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  if (session.isUserCreated) ...[
-                    const SizedBox(width: 7),
-                    _YoursChip(colors: colors),
-                  ],
-                ])),
-                GestureDetector(
-                  onTap: onMenu,
-                  child: Icon(Icons.more_vert, size: 19, color: colors.onMuted),
-                ),
-              ]),
-              const SizedBox(height: 4),
-              Text(session.description,
-                  style: PTextStyles.of(context)
-                      .cardDescription
-                      .copyWith(color: colors.onMuted, fontSize: 12.5),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(
-                    child: _MetaRow(
-                        itemCount: itemCount,
-                        duration: duration,
-                        difficulty: session.difficulty)),
-                const SizedBox(width: 10),
-                DownloadRing(
-                  status: dlStatus,
-                  progress: dlProgress,
-                  accentFg: accent.fg,
-                  accentBg: accent.bg,
-                  onTap: onDownload,
-                ),
-              ]),
-            ]),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared sub-widgets
-// ─────────────────────────────────────────────────────────────────────────────
-class _MetaRow extends StatelessWidget {
-  const _MetaRow(
-      {required this.itemCount,
-      required this.duration,
-      required this.difficulty});
-  final int itemCount;
-  final int? duration;
-  final int difficulty;
-
-  String _fmt(int sec) {
-    final h = sec ~/ 3600;
-    final m = (sec % 3600) ~/ 60;
-    return h > 0 ? '${h}h ${m}m' : '${m}m';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final style =
-        PTextStyles.of(context).cardMeta.copyWith(color: colors.onMuted);
-    final dot = Container(
-        width: 3,
-        height: 3,
-        decoration:
-            BoxDecoration(color: colors.onFaint, shape: BoxShape.circle));
-
-    return Row(children: [
-      Icon(Icons.queue_music_rounded, size: 15, color: colors.onMuted),
-      const SizedBox(width: 5),
-      Text('$itemCount tracks', style: style),
-      if (duration != null) ...[
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: dot),
-        Text(_fmt(duration!), style: style),
-      ],
-      const Spacer(),
-      DifficultyPips(level: difficulty),
-    ]);
-  }
-}
-
-class _YoursChip extends StatelessWidget {
-  const _YoursChip({required this.colors});
-  final PahlevaniColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-          color: colors.tealBg, borderRadius: BorderRadius.circular(99)),
-      child: Text('Yours',
-          style: TextStyle(
-              fontFamily: PFonts.ui,
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-              color: colors.teal,
-              letterSpacing: 0.3)),
     );
   }
 }

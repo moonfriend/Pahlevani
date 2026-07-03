@@ -4,23 +4,39 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 
+import 'package:hive/hive.dart';
+
 import '../../data/datasources/training_session/training_session_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_datasource.dart';
+import '../../data/models/hive_models.dart';
 import '../../data/datasources/training_session/training_session_remote_datasource.dart';
+import '../../data/repositories_impl/auth_repository_impl.dart';
 import '../../data/repositories_impl/download_repository_impl.dart';
+import '../../data/repositories_impl/trainer_roster_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
 import '../../data/repositories_impl/version_gate_repository_impl.dart';
 import '../../data/services/audio_players_service_impl.dart';
 import '../../data/services/connectivity_service_impl.dart';
+import '../../data/services/current_user_service_impl.dart';
+import '../../data/services/training_progress_service_impl.dart';
+import '../../data/services/image_cache_service_impl.dart';
 import '../../data/services/just_audio_player_service.dart';
 import '../../data/services/no_op_notification_service.dart';
 import '../../data/services/pahlevani_audio_handler.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/download_repository.dart';
+import '../../domain/repositories/trainer_roster_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/repositories/version_gate_repository.dart';
 import '../../domain/services/audio_player_service.dart';
 import '../../domain/services/connectivity_service.dart';
+import '../../domain/services/current_user_service.dart';
+import '../../domain/services/training_progress_service.dart';
+import '../../domain/services/image_cache_service.dart';
 import '../../domain/services/player_notification_service.dart';
+import '../../presentation/bloc/auth/auth_cubit.dart';
+import '../../presentation/bloc/session_selection/session_selection_cubit.dart';
+import '../../presentation/bloc/trainer/trainer_roster_cubit.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 
 final getIt = GetIt.instance;
@@ -60,6 +76,14 @@ class DependencyInjection {
       ),
     );
 
+    // Image cache: Hive box is already open from TrainingSessionLocalDatabase.init().
+    getIt.registerLazySingleton<ImageCacheService>(
+      () => ImageCacheServiceImpl(
+        box: Hive.box<HiveCachedImage>('image_cache'),
+        localDataSource: getIt<TrainingSessionLocalDataSource>(),
+      ),
+    );
+
     // Audio service + notification: mobile uses just_audio + audio_service handler
     // registered in main.dart; Linux/Web fall back to audioplayers + no-op.
     final bool useMobileAudio =
@@ -80,6 +104,20 @@ class DependencyInjection {
     getIt.registerLazySingleton<ConnectivityService>(
         () => ConnectivityServiceImpl());
 
+    getIt.registerLazySingleton<CurrentUserService>(
+        () => CurrentUserServiceImpl());
+
+    getIt.registerLazySingleton<TrainingProgressService>(
+        () => TrainingProgressServiceImpl());
+
+    getIt.registerFactory<SessionSelectionCubit>(
+      () => SessionSelectionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        currentUserService: getIt<CurrentUserService>(),
+        progressService: getIt<TrainingProgressService>(),
+      ),
+    );
+
     getIt.registerLazySingleton<TrainingSessionCubit>(
       () => TrainingSessionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
@@ -89,6 +127,18 @@ class DependencyInjection {
 
     getIt.registerLazySingleton<VersionGateRepository>(
         () => SupabaseVersionGateRepository());
+
+    getIt.registerLazySingleton<AuthRepository>(() => SupabaseAuthRepository());
+    getIt.registerLazySingleton<AuthCubit>(
+      () => AuthCubit(authRepository: getIt<AuthRepository>()),
+    );
+
+    getIt.registerLazySingleton<TrainerRosterRepository>(
+        () => SupabaseTrainerRosterRepository());
+    getIt.registerFactory<TrainerRosterCubit>(
+      () => TrainerRosterCubit(
+          rosterRepository: getIt<TrainerRosterRepository>()),
+    );
   }
 
   Future<void> ensureInitialized() async {

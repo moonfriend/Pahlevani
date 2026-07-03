@@ -35,10 +35,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Flutter (stable)
+      - name: Set up Flutter 3.29.2
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.29.2'
           cache: true
 
       - name: Cache pub dependencies
@@ -67,14 +67,14 @@ jobs:
       - name: Run unit + widget tests with coverage
         run: flutter test --coverage
 
-      - name: Check coverage threshold (≥50%)
+      - name: Check coverage threshold (≥65%)
         run: |
           COVERED=$(grep "^DA:" coverage/lcov.info | grep -v ",0$" | wc -l)
           TOTAL=$(grep -c "^DA:" coverage/lcov.info)
           PCT=$((COVERED * 100 / TOTAL))
           echo "Coverage: ${PCT}% (${COVERED}/${TOTAL} lines)"
-          if [ "$PCT" -lt 50 ]; then
-            echo "FAIL: coverage ${PCT}% is below the 50% threshold."
+          if [ "$PCT" -lt 65 ]; then
+            echo "FAIL: coverage ${PCT}% is below the 65% threshold."
             exit 1
           fi
 
@@ -88,10 +88,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Flutter (stable)
+      - name: Set up Flutter 3.29.2
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.29.2'
           cache: true
 
       - name: Cache pub dependencies
@@ -135,10 +135,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Flutter (stable)
+      - name: Set up Flutter 3.29.2
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.29.2'
           cache: true
 
       - name: Cache pub dependencies

@@ -6,6 +6,7 @@ abstract class TrainingSessionRemoteDataSource {
   Future<List<Map<String, dynamic>>> fetchExerciseTable();
   Future<List<Map<String, dynamic>>> fetchTrainingSessionItemTable();
   Future<List<Map<String, dynamic>>> fetchMovementTable();
+  Future<List<Map<String, dynamic>>> fetchMovementInfoTable();
 }
 
 /// Implementation of [TrainingSessionRemoteDataSource] using Supabase.
@@ -58,6 +59,19 @@ class TrainingSessionRemoteDataSourceImpl
     } catch (e) {
       // Movement table may not exist yet (pre-migration). Return empty list so
       // the existing exercise-level media fields act as a fallback.
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMovementInfoTable() async {
+    try {
+      final response = await _client.from('movement_info').select();
+      return List<Map<String, dynamic>>.from(
+          response.cast<Map<String, dynamic>>());
+    } catch (e) {
+      // movement_info may not exist yet (pre-0005). Absence just means no
+      // extra detail on the info page — safe to ignore.
       return [];
     }
   }

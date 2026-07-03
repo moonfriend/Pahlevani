@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
 part 'hive_models.g.dart';
@@ -28,6 +29,17 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(6)
   final String? titleFa;
 
+  @HiveField(7)
+  final String? assignedToUserId;
+
+  @HiveField(8)
+  final String? assignedByTrainerId;
+
+  // Nullable so the Hive adapter safely reads null for boxes written before
+  // field 9 existed — toDomain() defaults to true (all legacy sessions public).
+  @HiveField(9)
+  final bool? isPublic;
+
   HiveTrainingSession({
     required this.id,
     required this.title,
@@ -36,6 +48,9 @@ class HiveTrainingSession extends HiveObject {
     this.createdAt,
     this.isUserCreated = false,
     this.titleFa,
+    this.assignedToUserId,
+    this.assignedByTrainerId,
+    this.isPublic,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -48,7 +63,10 @@ class HiveTrainingSession extends HiveObject {
           ? null
           : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
+      isPublic: json['is_public'] as bool?,
       titleFa: json['title_fa'] as String?,
+      assignedToUserId: json['assigned_to_user_id'] as String?,
+      assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
     );
   }
 
@@ -59,7 +77,11 @@ class HiveTrainingSession extends HiveObject {
         'difficulty': difficulty,
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
+        'is_public': isPublic ?? true,
         if (titleFa != null) 'title_fa': titleFa,
+        if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
+        if (assignedByTrainerId != null)
+          'assigned_by_trainer_id': assignedByTrainerId,
       };
 
   factory HiveTrainingSession.fromDomain(TrainingSession s) {
@@ -70,7 +92,10 @@ class HiveTrainingSession extends HiveObject {
       difficulty: s.difficulty,
       createdAt: s.createdAt,
       isUserCreated: s.isUserCreated,
+      isPublic: s.isPublic, // bool — stored as bool? in Hive, defaulted on read
       titleFa: s.titleFa,
+      assignedToUserId: s.assignedToUserId,
+      assignedByTrainerId: s.assignedByTrainerId,
     );
   }
 
@@ -83,6 +108,9 @@ class HiveTrainingSession extends HiveObject {
       difficulty: difficulty,
       createdAt: createdAt,
       isUserCreated: isUserCreated,
+      isPublic: isPublic ?? true,
+      assignedToUserId: assignedToUserId,
+      assignedByTrainerId: assignedByTrainerId,
     );
   }
 }
@@ -131,6 +159,14 @@ class HiveExercise extends HiveObject {
   @HiveField(13)
   final int? movementId;
 
+  // Nullable so the adapter safely reads null for boxes written before these
+  // fields existed (per-move info page content — from movement_info).
+  @HiveField(14)
+  final String? description;
+
+  @HiveField(15)
+  final String? videoUrl;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -146,6 +182,8 @@ class HiveExercise extends HiveObject {
     this.mediaSrc,
     this.mediaPoster,
     this.movementId,
+    this.description,
+    this.videoUrl,
   });
 
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
@@ -162,6 +200,8 @@ class HiveExercise extends HiveObject {
         mediaType: e.media.type,
         mediaSrc: e.media.src,
         mediaPoster: e.media.poster,
+        description: e.description,
+        videoUrl: e.videoUrl,
       );
 
   Exercise toDomain() => Exercise(
@@ -175,12 +215,38 @@ class HiveExercise extends HiveObject {
         audioFileUrl: url,
         repetitionsDefault: repetitions ?? 1,
         durationSeconds: durationSeconds,
+        description: description,
+        videoUrl: videoUrl,
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,
           poster: mediaPoster,
         ),
       );
+}
+
+/// Tracks every image that has been downloaded to the local media cache.
+/// Box is keyed by [urlHash] so lookups are O(1) without filesystem I/O.
+@HiveType(typeId: 3)
+class HiveCachedImage extends HiveObject {
+  /// djb2 hex of the **original** image URL — stable even if the Supabase
+  /// transform params change, and deduplicates images shared across sessions.
+  @HiveField(0)
+  String urlHash;
+
+  /// Absolute path to the cached file on this device.
+  @HiveField(1)
+  String localPath;
+
+  /// Milliseconds since epoch — reserved for future cache eviction policies.
+  @HiveField(2)
+  int cachedAtMs;
+
+  HiveCachedImage({
+    required this.urlHash,
+    required this.localPath,
+    required this.cachedAtMs,
+  });
 }
 
 @HiveType(typeId: 2)
@@ -193,12 +259,15 @@ class HiveTrainingSessionItem extends HiveObject {
   final int position;
   @HiveField(3)
   final int repsToDo;
+  @HiveField(4)
+  final String? section; // TrainingSection.value — nullable for legacy rows
 
   HiveTrainingSessionItem({
     required this.trainingSessionId,
     required this.itemId,
     required this.position,
     required this.repsToDo,
+    this.section,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) =>
@@ -207,6 +276,7 @@ class HiveTrainingSessionItem extends HiveObject {
         itemId: json['exercise_id'] as int,
         position: json['position'] as int,
         repsToDo: json['reps_to_do'] as int,
+        section: json['section'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -214,5 +284,8 @@ class HiveTrainingSessionItem extends HiveObject {
         'exercise_id': itemId,
         'position': position,
         'reps_to_do': repsToDo,
+        if (section != null) 'section': section,
       };
+
+  TrainingSection get trainingSection => TrainingSection.fromString(section);
 }

@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/dtos/exercise_row.dart';
+import 'package:pahlevani/data/dtos/movement_info_row.dart';
 import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/row_to_domain.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/training_section.dart';
 
 void main() {
   // ---------- mapExercise ----------
@@ -131,6 +133,25 @@ void main() {
       );
       expect(ex.movementId, 55);
     });
+
+    test('description and videoUrl come from movement_info when present', () {
+      final ex = mapExercise(
+        baseRow(),
+        movementInfo: MovementInfoRow(
+          movementId: 10,
+          description: 'How to perform the move…',
+          videoUrl: 'https://r2/clip.mp4',
+        ),
+      );
+      expect(ex.description, 'How to perform the move…');
+      expect(ex.videoUrl, 'https://r2/clip.mp4');
+    });
+
+    test('description and videoUrl are null when no movement_info', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.description, isNull);
+      expect(ex.videoUrl, isNull);
+    });
   });
 
   // ---------- mapSession ----------
@@ -180,6 +201,38 @@ void main() {
       final s = mapSession(row(createdAt: dt));
       expect(s.createdAt, dt);
     });
+
+    test('maps assignedToUserId and assignedByTrainerId when present', () {
+      final s = mapSession(TrainingSessionRow(
+        id: 1,
+        assignedToUserId: 'trainee-uuid',
+        assignedByTrainerId: 'trainer-uuid',
+      ));
+      expect(s.assignedToUserId, 'trainee-uuid');
+      expect(s.assignedByTrainerId, 'trainer-uuid');
+      expect(s.isIndividualized, isTrue);
+    });
+
+    test('isIndividualized is false for an original (unassigned) session', () {
+      final s = mapSession(row());
+      expect(s.assignedToUserId, isNull);
+      expect(s.isIndividualized, isFalse);
+    });
+
+    test('isPublic defaults to true when row has no is_public field', () {
+      final s = mapSession(row());
+      expect(s.isPublic, isTrue);
+    });
+
+    test('isPublic is false when row carries is_public=false', () {
+      final s = mapSession(TrainingSessionRow(id: 1, isPublic: false));
+      expect(s.isPublic, isFalse);
+    });
+
+    test('isPublic is true when row carries is_public=true', () {
+      final s = mapSession(TrainingSessionRow(id: 1, isPublic: true));
+      expect(s.isPublic, isTrue);
+    });
   });
 
   // ---------- mapItem ----------
@@ -190,12 +243,14 @@ void main() {
       int exerciseId = 10,
       int position = 0,
       int repsToDo = 3,
+      String? section,
     }) =>
         TrainingItemRow(
           trainingSessionId: sessionId,
           exerciseId: exerciseId,
           position: position,
           repsToDo: repsToDo,
+          section: section,
         );
 
     test('composes id as sessionId * 10000 + position', () {
@@ -232,6 +287,18 @@ void main() {
       final it = mapItem(item(sessionId: 2, position: 0));
       expect(it.id, 20000);
       expect(it.id, isNot(it.sessionId));
+    });
+
+    test('section defaults to TrainingSection.other when row has null section',
+        () {
+      final it = mapItem(item(section: null));
+      expect(it.section, TrainingSection.other);
+    });
+
+    test('section maps known string to correct enum variant', () {
+      expect(mapItem(item(section: 'meel')).section, TrainingSection.meel);
+      expect(mapItem(item(section: 'sang')).section, TrainingSection.sang);
+      expect(mapItem(item(section: 'warm_up')).section, TrainingSection.warmUp);
     });
   });
 }

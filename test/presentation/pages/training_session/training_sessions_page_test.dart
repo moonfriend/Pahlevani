@@ -9,13 +9,15 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/domain/services/current_user_service.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/domain/entities/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../fakes/fake_connectivity_service.dart';
+import '../../../fakes/fake_current_user_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -228,5 +230,98 @@ void main() {
     await tester.pump();
 
     expect(find.text('No internet connection'), findsNothing);
+  });
+
+  // ── Selection mode (trainee "Select training") ─────────────────────────────
+
+  group('selection mode', () {
+    final selectionSnapshot = DomainSnapshot(
+      sessionsById: {
+        1: TrainingSession(
+            id: 1, title: 'Public One', description: '', difficulty: 1),
+        2: TrainingSession(
+            id: 2,
+            title: 'Private Mine',
+            description: '',
+            difficulty: 1,
+            isPublic: false,
+            assignedToUserId: 'me'),
+        3: TrainingSession(
+            id: 3,
+            title: 'Private Theirs',
+            description: '',
+            difficulty: 1,
+            isPublic: false,
+            assignedToUserId: 'someone-else'),
+      },
+      itemsBySessionId: const {},
+      exercisesById: const {},
+    );
+
+    Widget buildSelectHarness(
+      TrainingSessionCubit cubit,
+      SettingsCubit settingsCubit,
+      ValueChanged<int> onSelect,
+    ) =>
+        MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: cubit),
+            BlocProvider.value(value: settingsCubit),
+          ],
+          child: MaterialApp(
+            theme: PahlevaniTheme.dark(),
+            home: TrainingSessionPage(onSelect: onSelect),
+          ),
+        );
+
+    testWidgets('shows only public + assigned sessions and no New FAB',
+        (tester) async {
+      getIt.registerLazySingleton<CurrentUserService>(
+          () => FakeCurrentUserService('me'));
+      final cubit = TrainingSessionCubit(
+        sessionRepository: _StubRepository(selectionSnapshot),
+        downloadRepository: _StubDownloadRepository(),
+      );
+      final settingsCubit = SettingsCubit();
+      addTearDown(cubit.close);
+      addTearDown(settingsCubit.close);
+      await cubit.fetchTrainingSessions();
+
+      await tester.pumpWidget(buildSelectHarness(cubit, settingsCubit, (_) {}));
+      await tester.pump(); // resolve current user id
+      await tester.pump();
+
+      expect(find.text('Public One'), findsOneWidget);
+      expect(find.text('Private Mine'), findsOneWidget);
+      expect(find.text('Private Theirs'), findsNothing,
+          reason: 'a session assigned to another user must be hidden');
+      expect(find.text('New'), findsNothing,
+          reason: 'creating sessions is a trainer action, hidden here');
+    });
+
+    testWidgets('tapping a card fires onSelect with that session id',
+        (tester) async {
+      getIt.registerLazySingleton<CurrentUserService>(
+          () => FakeCurrentUserService('me'));
+      final cubit = TrainingSessionCubit(
+        sessionRepository: _StubRepository(selectionSnapshot),
+        downloadRepository: _StubDownloadRepository(),
+      );
+      final settingsCubit = SettingsCubit();
+      addTearDown(cubit.close);
+      addTearDown(settingsCubit.close);
+      await cubit.fetchTrainingSessions();
+
+      int? selectedId;
+      await tester.pumpWidget(
+          buildSelectHarness(cubit, settingsCubit, (id) => selectedId = id));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('Public One'));
+      await tester.pump();
+
+      expect(selectedId, 1);
+    });
   });
 }
