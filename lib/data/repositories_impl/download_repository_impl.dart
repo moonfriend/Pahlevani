@@ -138,24 +138,39 @@ class DownloadRepositoryImpl implements DownloadRepository {
   @override
   Future<bool> isTrainingSessionDownloaded(
       int sessionId, List<ItemDetail> items) async {
-    final ids = await localDataSource.getDownloadedTrainingSessionIds();
-    if (!ids.contains(sessionId.toString())) return false;
-    return _allAudioCached(items);
+    try {
+      final ids = await localDataSource.getDownloadedTrainingSessionIds();
+      if (!ids.contains(sessionId.toString())) return false;
+      return await _allAudioCached(items);
+    } catch (_) {
+      // e.g. path_provider unavailable (Flutter Web has no local filesystem).
+      return false;
+    }
   }
 
   @override
   Future<String?> getLocalAudioPath(ItemDetail item) async {
-    final dir = await localDataSource.getMediaCacheDirectoryPath();
-    final path = '$dir/${_audioFilename(item.exercise)}';
-    return File(path).exists().then((e) => e ? path : null);
+    try {
+      final dir = await localDataSource.getMediaCacheDirectoryPath();
+      final path = '$dir/${_audioFilename(item.exercise)}';
+      return await File(path).exists().then((e) => e ? path : null);
+    } catch (_) {
+      // e.g. path_provider unavailable (Flutter Web has no local filesystem).
+      return null;
+    }
   }
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async {
     if (imageUrl.isEmpty) return null;
-    final dir = await localDataSource.getMediaCacheDirectoryPath();
-    final path = '$dir/img_${_urlHash(imageUrl)}';
-    return File(path).exists().then((e) => e ? path : null);
+    try {
+      final dir = await localDataSource.getMediaCacheDirectoryPath();
+      final path = '$dir/img_${_urlHash(imageUrl)}';
+      return await File(path).exists().then((e) => e ? path : null);
+    } catch (_) {
+      // e.g. path_provider unavailable (Flutter Web has no local filesystem).
+      return null;
+    }
   }
 
   @override
