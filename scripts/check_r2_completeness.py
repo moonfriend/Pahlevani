@@ -48,43 +48,34 @@ HOW TO GET R2 CREDENTIALS
 WHAT IT CHECKS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    exercise.url         → audio files  (source bucket in Supabase: "tracks")
-    movement.media_src   → image files  (source bucket in Supabase: "movement-media")
+    exercise.url         → audio files  (R2 bucket folder: "Sirvan/")
+    movement.media_src   → image files  (R2 bucket folder: "movement_images/")
 
-The script extracts the path segment from each Supabase Storage URL
-(the part after the bucket name) and looks for a matching object key in R2.
-Files that are missing are printed with their original Supabase URL so you
-know exactly what to re-upload.
+R2 files were uploaded manually into flat folders, not mirroring the Supabase
+bucket/path structure — matching is by filename only. The script extracts the
+filename from each Supabase Storage URL (handles both public and signed URL
+shapes, stripping any `?token=...`) and looks for a same-named object under
+the relevant R2 folder. Files that are missing are printed with their
+original Supabase URL so you know exactly what to re-upload.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TYPICAL WORKFLOW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. Upload audio and image files to R2 (via Cloudflare dashboard or rclone).
+1. Upload audio/image files to R2 (already done manually: "Sirvan/" for
+   audio, "movement_images/" for images).
 2. Run this script. Fix any missing files reported.
 3. Re-run until exit code 0.
-4. Update DB: replace Supabase Storage URLs with R2 public URLs using SQL:
-
-       UPDATE exercise
-       SET url = replace(url,
-         'https://<project>.supabase.co/storage/v1/object/public/tracks/',
-         'https://pub-<token>.r2.dev/'
-       )
-       WHERE url LIKE '%supabase.co%';
-
-       UPDATE movement
-       SET media_src = replace(media_src,
-         'https://<project>.supabase.co/storage/v1/object/public/movement-media/',
-         'https://pub-<token>.r2.dev/'
-       )
-       WHERE media_src LIKE '%supabase.co%';
-
-5. Run the app with staging Supabase (`SUPABASE_URL` + `SUPABASE_KEY` dart-
-   defines) to verify playback before touching production.
+4. Update the DB — see the SQL in supabase/migrations/ prepared alongside
+   this check (uses filename-based matching, not the literal-substring
+   replace this docstring used to suggest — that shape assumed public URLs,
+   but production URLs are signed).
 """
 
 import os
 import sys
+import tomllib
+from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import boto3
@@ -94,54 +85,61 @@ from supabase import create_client
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "52a61783f2d01cd161e65ac58f130716")
-R2_BUCKET = os.environ.get("R2_BUCKET", "morshed-sounds")
-R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
-R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+def _secret(key: str, default: str = "") -> str:
+    """env var first, falling back to scripts/.streamlit/secrets.toml."""
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    secrets_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
+    if secrets_path.exists():
+        with open(secrets_path, "rb") as f:
+            return tomllib.load(f).get(key, default)
+    return default
+
+
+SUPABASE_URL = _secret("SUPABASE_URL")
+SUPABASE_KEY = _secret("SUPABASE_KEY")
+R2_ACCOUNT_ID = _secret("R2_ACCOUNT_ID", "52a61783f2d01cd161e65ac58f130716")
+R2_BUCKET = _secret("R2_BUCKET", "morshed-sounds")
+R2_ACCESS_KEY_ID = _secret("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = _secret("R2_SECRET_ACCESS_KEY")
 
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-# Known Supabase bucket names — used to strip the bucket prefix from paths.
-SUPABASE_BUCKETS = {"tracks", "movement-media", "morshed-sounds"}
+# R2 bucket layout actually used (flat folders, not a mirror of the Supabase
+# bucket/path structure): audio under "Sirvan/", images under "movement_images/".
+# Matching is by filename (basename) within the relevant R2 prefix.
+R2_AUDIO_PREFIX = "Sirvan/"
+R2_IMAGE_PREFIX = "movement_images/"
 
 
 def _require_env() -> None:
-    missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY",
-                            "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
-               if not os.environ.get(k)]
+    missing = [name for name, val in (
+        ("SUPABASE_URL", SUPABASE_URL), ("SUPABASE_KEY", SUPABASE_KEY),
+        ("R2_ACCESS_KEY_ID", R2_ACCESS_KEY_ID),
+        ("R2_SECRET_ACCESS_KEY", R2_SECRET_ACCESS_KEY),
+    ) if not val]
     if missing:
-        print(f"ERROR: missing env vars: {', '.join(missing)}")
+        print(f"ERROR: missing credentials: {', '.join(missing)}")
+        print("Set as env vars or add to scripts/.streamlit/secrets.toml")
         sys.exit(1)
 
 
-# ── URL → R2 key ──────────────────────────────────────────────────────────────
+# ── URL → filename ────────────────────────────────────────────────────────────
 
-def _url_to_r2_key(url: str) -> str | None:
-    """Extract the object key from a Supabase Storage URL.
+def _filename_from_url(url: str) -> str | None:
+    """Extract just the filename (basename) from a Supabase Storage URL,
+    stripping any query string (e.g. signed-URL `?token=...`).
 
-    Supabase Storage URL shapes:
-      public:  .../storage/v1/object/public/<bucket>/<path>
-      signed:  .../storage/v1/object/sign/<bucket>/<path>?token=...
-      direct:  .../storage/v1/object/<bucket>/<path>
-
-    Returns just <path> (the part after the bucket name), since that is
-    what callers upload to R2 with the same relative structure.
-    Returns None if the URL is empty or not parseable.
+    The R2 bucket uses flat folders ("Sirvan/" for audio, "movement_images/"
+    for images) rather than mirroring the Supabase bucket/path structure, so
+    matching is done by filename only, not full relative path.
     """
     if not url or not url.strip():
         return None
     try:
         parsed = urlparse(url)
         parts = [p for p in parsed.path.split("/") if p]
-        # Strip /storage/v1/object/[public|sign]/<bucket>/<rest>
-        # Find the index of a known Supabase bucket name.
-        for i, part in enumerate(parts):
-            if part in SUPABASE_BUCKETS:
-                rest = "/".join(parts[i + 1:])
-                return unquote(rest) if rest else None
-        # Fallback: just use the last path segment (filename only).
         return unquote(parts[-1]) if parts else None
     except Exception:
         return None
@@ -150,7 +148,7 @@ def _url_to_r2_key(url: str) -> str | None:
 # ── Supabase queries ──────────────────────────────────────────────────────────
 
 def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
-    """Return two dicts: {r2_key: original_url} for audio and images."""
+    """Return two dicts: {filename: original_url} for audio and images."""
     client = create_client(supabase_url, supabase_key)
 
     audio: dict[str, str] = {}
@@ -168,9 +166,9 @@ def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
         ).data
         for row in rows:
             url = (row.get("url") or "").strip()
-            key = _url_to_r2_key(url)
-            if key:
-                audio[key] = url
+            name = _filename_from_url(url)
+            if name:
+                audio[name] = url
         if len(rows) < page_size:
             break
         page += 1
@@ -188,9 +186,9 @@ def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
         ).data
         for row in rows:
             url = (row.get("media_src") or "").strip()
-            key = _url_to_r2_key(url)
-            if key:
-                images[key] = url
+            name = _filename_from_url(url)
+            if name:
+                images[name] = url
         if len(rows) < page_size:
             break
         page += 1
@@ -200,8 +198,8 @@ def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
 
 # ── R2 listing ────────────────────────────────────────────────────────────────
 
-def list_r2_objects(access_key: str, secret_key: str) -> set[str]:
-    """List all object keys in the R2 bucket."""
+def list_r2_filenames(access_key: str, secret_key: str, prefix: str) -> set[str]:
+    """List object keys under `prefix` in the R2 bucket, returned as bare filenames."""
     s3 = boto3.client(
         "s3",
         endpoint_url=R2_ENDPOINT,
@@ -211,13 +209,15 @@ def list_r2_objects(access_key: str, secret_key: str) -> set[str]:
         region_name="auto",
     )
 
-    keys: set[str] = set()
+    names: set[str] = set()
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=R2_BUCKET):
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
         for obj in page.get("Contents", []):
-            keys.add(obj["Key"])
+            key = obj["Key"]
+            if key != prefix:  # skip the folder placeholder object itself, if any
+                names.add(key[len(prefix):])
 
-    return keys
+    return names
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
@@ -255,13 +255,15 @@ def main() -> None:
     audio, images = fetch_db_files(SUPABASE_URL, SUPABASE_KEY)
     print(f"  Found {len(audio)} audio URLs and {len(images)} image URLs in DB.")
 
-    print("\nListing R2 objects…")
-    r2_keys = list_r2_objects(R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)
-    print(f"  Found {len(r2_keys)} objects in R2.")
+    print(f"\nListing R2 objects under '{R2_AUDIO_PREFIX}' and '{R2_IMAGE_PREFIX}'…")
+    r2_audio = list_r2_filenames(R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_AUDIO_PREFIX)
+    r2_images = list_r2_filenames(R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_IMAGE_PREFIX)
+    print(f"  Found {len(r2_audio)} files under '{R2_AUDIO_PREFIX}', "
+          f"{len(r2_images)} under '{R2_IMAGE_PREFIX}'.")
 
     total_missing = 0
-    total_missing += report("AUDIO (exercise.url)", audio, r2_keys)
-    total_missing += report("IMAGES (movement.media_src)", images, r2_keys)
+    total_missing += report("AUDIO (exercise.url)", audio, r2_audio)
+    total_missing += report("IMAGES (movement.media_src)", images, r2_images)
 
     print(f"\n{'═' * 60}")
     if total_missing == 0:
