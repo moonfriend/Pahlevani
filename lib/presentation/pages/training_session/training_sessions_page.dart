@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
@@ -166,7 +167,10 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               _openEdit(session);
             },
           ),
-          if (dlStatus != DownloadStatus.downloaded)
+          // No local filesystem on Flutter Web (path_provider has no web
+          // implementation) — nothing to download to, so hide the entry
+          // point entirely rather than show a control that silently no-ops.
+          if (!kIsWeb && dlStatus != DownloadStatus.downloaded)
             ListTile(
               leading: const Icon(Icons.download_rounded),
               title: const Text('Download',
@@ -640,13 +644,16 @@ class _BannerCard extends StatelessWidget {
                           difficulty: session.difficulty),
                       const SizedBox(height: 14),
                       Row(children: [
-                        DownloadRing(
-                          status: dlStatus,
-                          progress: dlProgress,
-                          accentFg: accent.fg,
-                          accentBg: accent.bg,
-                          onTap: onDownload,
-                        ),
+                        // No local filesystem on Flutter Web — nothing to
+                        // download to (see the overflow-sheet gate above).
+                        if (!kIsWeb)
+                          DownloadRing(
+                            status: dlStatus,
+                            progress: dlProgress,
+                            accentFg: accent.fg,
+                            accentBg: accent.bg,
+                            onTap: onDownload,
+                          ),
                         const Spacer(),
                         GestureDetector(
                           onTap: onMenu,
@@ -771,13 +778,15 @@ class _CompactCard extends StatelessWidget {
                         duration: duration,
                         difficulty: session.difficulty)),
                 const SizedBox(width: 10),
-                DownloadRing(
-                  status: dlStatus,
-                  progress: dlProgress,
-                  accentFg: accent.fg,
-                  accentBg: accent.bg,
-                  onTap: onDownload,
-                ),
+                // No local filesystem on Flutter Web — nothing to download to.
+                if (!kIsWeb)
+                  DownloadRing(
+                    status: dlStatus,
+                    progress: dlProgress,
+                    accentFg: accent.fg,
+                    accentBg: accent.bg,
+                    onTap: onDownload,
+                  ),
               ]),
             ]),
           ),

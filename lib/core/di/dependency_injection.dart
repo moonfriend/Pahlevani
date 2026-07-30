@@ -13,6 +13,7 @@ import '../../data/repositories_impl/version_gate_repository_impl.dart';
 import '../../data/services/audio_players_service_impl.dart';
 import '../../data/services/connectivity_service_impl.dart';
 import '../../data/services/just_audio_player_service.dart';
+import '../../data/services/just_audio_web_player_service.dart';
 import '../../data/services/no_op_notification_service.dart';
 import '../../data/services/pahlevani_audio_handler.dart';
 import '../../domain/repositories/download_repository.dart';
@@ -60,8 +61,17 @@ class DependencyInjection {
       ),
     );
 
-    // Audio service + notification: mobile uses just_audio + audio_service handler
-    // registered in main.dart; Linux/Web fall back to audioplayers + no-op.
+    // Audio service + notification: mobile uses just_audio + audio_service
+    // handler registered in main.dart; Linux desktop falls back to
+    // audioplayers + no-op. Web also uses just_audio (JustAudioWebPlayerService,
+    // no handler) rather than audioplayers_web — audioplayers_web unconditionally
+    // sets `crossOrigin='anonymous'` on its <audio> element (needed for its
+    // stereo-panning Web Audio graph), which makes the browser reject
+    // cross-origin media unless the server sends CORS headers. just_audio_web
+    // never requests CORS mode, so cross-origin media (e.g. R2-hosted audio)
+    // plays with no server-side CORS configuration needed. See
+    // JustAudioWebPlayerService's doc comment for the reproduction that
+    // confirmed this.
     final bool useMobileAudio =
         !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
@@ -70,6 +80,11 @@ class DependencyInjection {
       getIt.registerFactory<AudioPlayerService>(
           () => JustAudioPlayerService(handler));
       getIt.registerSingleton<PlayerNotificationService>(handler);
+    } else if (kIsWeb) {
+      getIt.registerFactory<AudioPlayerService>(
+          () => JustAudioWebPlayerService());
+      getIt.registerSingleton<PlayerNotificationService>(
+          NoOpNotificationService());
     } else {
       getIt
           .registerFactory<AudioPlayerService>(() => AudioPlayersServiceImpl());

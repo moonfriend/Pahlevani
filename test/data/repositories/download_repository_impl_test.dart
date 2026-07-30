@@ -126,6 +126,17 @@ void main() {
 
       expect(await repo.isTrainingSessionDownloaded(1, [item]), isTrue);
     });
+
+    test(
+        'returns false when checking cached files throws '
+        '(e.g. path_provider unavailable on web)', () async {
+      when(() => mockDs.getDownloadedTrainingSessionIds())
+          .thenAnswer((_) async => ['1']);
+      when(() => mockDs.getMediaCacheDirectoryPath())
+          .thenThrow(Exception('path_provider unavailable'));
+
+      expect(await repo.isTrainingSessionDownloaded(1, [item]), isFalse);
+    });
   });
 
   // ── getLocalAudioPath ──────────────────────────────────────────────────────
@@ -158,6 +169,16 @@ void main() {
       expect(await repo.getLocalAudioPath(item2), cachedFile.path);
       expect(await repo.getLocalAudioPath(item3), cachedFile.path);
     });
+
+    test(
+        'returns null when datasource throws '
+        '(e.g. path_provider unavailable on web)', () async {
+      when(() => mockDs.getMediaCacheDirectoryPath())
+          .thenThrow(Exception('path_provider unavailable'));
+      const item = ItemDetail(item: testItem1, exercise: testExercise1);
+
+      expect(await repo.getLocalAudioPath(item), isNull);
+    });
   });
 
   // ── getLocalImagePath ──────────────────────────────────────────────────────
@@ -179,6 +200,18 @@ void main() {
       final imgFile = File('${tmpDir.path}/img_${_urlHash(url)}')..createSync();
 
       expect(await repo.getLocalImagePath(url), imgFile.path);
+    });
+
+    test(
+        'returns null when datasource throws '
+        '(e.g. path_provider unavailable on web)', () async {
+      when(() => mockDs.getMediaCacheDirectoryPath())
+          .thenThrow(Exception('path_provider unavailable'));
+
+      expect(
+        await repo.getLocalImagePath('https://example.com/img.jpg'),
+        isNull,
+      );
     });
   });
 
