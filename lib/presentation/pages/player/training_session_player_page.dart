@@ -632,7 +632,7 @@ class _TrackListState extends State<_TrackList> {
               ? widget.cubit.togglePlay()
               : widget.cubit.setIndexAndPlay(i),
           child: Container(
-            height: 70,
+            height: 76,
             margin: const EdgeInsets.only(bottom: 2),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -677,7 +677,9 @@ class _TrackListState extends State<_TrackList> {
                           : '${track.effectiveRepetitions} reps',
                       style: PTextStyles.of(context)
                           .trackRowGloss
-                          .copyWith(color: colors.onFaint)),
+                          .copyWith(color: colors.onFaint),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               )),
               // ⓘ — opens the move's info page.
