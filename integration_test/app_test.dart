@@ -9,6 +9,7 @@
 //
 // For real-Supabase smoke: see integration_test/smoke_test.dart
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -122,7 +123,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Edit a copy'), findsOneWidget);
-    expect(find.text('Download'), findsOneWidget);
+    // No local filesystem on web — the Download entry is hidden there
+    // (see training_sessions_page.dart's kIsWeb guard).
+    expect(find.text('Download'), kIsWeb ? findsNothing : findsOneWidget);
     // Delete option must NOT appear for server sessions.
     expect(find.text('Delete session'), findsNothing);
   });
