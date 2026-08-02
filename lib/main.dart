@@ -34,7 +34,8 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    if (!kDebugMode) {
+    if (AppLogger.shouldEnableCrashlytics(
+        isWeb: kIsWeb, isDebugMode: kDebugMode)) {
       FlutterError.onError =
           FirebaseCrashlytics.instance.recordFlutterFatalError;
       PlatformDispatcher.instance.onError = (error, stack) {

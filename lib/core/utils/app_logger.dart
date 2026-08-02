@@ -27,6 +27,14 @@ class AppLogger {
     _crashlyticsEnabled = crashlyticsEnabled;
   }
 
+  /// firebase_crashlytics has no web implementation — enabling it there
+  /// throws MissingPluginException on every logged warning/error.
+  static bool shouldEnableCrashlytics({
+    required bool isWeb,
+    required bool isDebugMode,
+  }) =>
+      !isWeb && !isDebugMode;
+
   static void d(String message) => _log.d(message);
 
   static void i(String message) => _log.i(message);
