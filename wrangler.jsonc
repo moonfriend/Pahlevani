@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shy-forest-12a7",
+  "compatibility_date": "2026-08-02",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    // flutter build web --release outputs here, NOT the top-level web/
+    // source folder (which only holds the pre-build template/index.html).
+    "directory": "build/web"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
