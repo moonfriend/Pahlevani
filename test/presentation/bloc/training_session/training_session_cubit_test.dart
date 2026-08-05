@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -292,6 +294,52 @@ void main() {
 
       final loaded = cubit.state as TrainingSessionLoaded;
       expect(loaded.uiModel.downloadStatuses[1], DownloadStatus.downloaded);
+    });
+  });
+
+  group('loadInitialStatuses()', () {
+    test('preserves session item counts already loaded from a prior fetch',
+        () async {
+      final session = _session(1);
+      final snapshot = DomainSnapshot(
+        sessionsById: {1: session},
+        itemsBySessionId: {
+          1: [
+            const TrainingItem(
+                id: 10001,
+                sessionId: 1,
+                exerciseId: 1,
+                position: 0,
+                prescription: RepsPresc(5)),
+            const TrainingItem(
+                id: 10002,
+                sessionId: 1,
+                exerciseId: 2,
+                position: 1,
+                prescription: RepsPresc(5)),
+          ],
+        },
+        exercisesById: {},
+      );
+      final repo = _SpyRepository(snapshot);
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      await cubit.fetchTrainingSessions();
+      final loaded = cubit.state as TrainingSessionLoaded;
+      expect(loaded.uiModel.sessionItemCounts[1], 2,
+          reason: 'sanity check: fetch itself must populate item counts');
+
+      // Simulates returning from the player page, which calls this to
+      // refresh download-status badges without a full refetch.
+      await cubit.loadInitialStatuses();
+
+      final afterReturn = cubit.state as TrainingSessionLoaded;
+      expect(afterReturn.uiModel.sessionItemCounts[1], 2,
+          reason: 'loadInitialStatuses must not drop counts already known '
+              'from the snapshot — regression: it built a bare '
+              'TrainingSessionsUiModel instead of going through '
+              'buildTrainingSessionsUiModel()');
     });
   });
 
