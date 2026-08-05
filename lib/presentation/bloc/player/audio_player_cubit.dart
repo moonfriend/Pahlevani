@@ -173,7 +173,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         case NotificationCommand.skipNext:
           next();
         case NotificationCommand.skipPrev:
-          prev();
+          unawaited(prev());
         case NotificationCommand.play:
         case NotificationCommand.pause:
           togglePlay();
@@ -275,16 +275,26 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _loadSourceAtIndex(0, shouldPlay: true);
   }
 
-  void prev() {
-    if (state.playingIndex > 0) {
-      final prevIndex = state.playingIndex - 1;
-      emit(state.copyWith(
-        playingIndex: prevIndex,
-        position: Duration.zero,
-        duration: Duration.zero,
-      ));
-      _loadSourceAtIndex(prevIndex, shouldPlay: true);
+  /// Below this, "previous" is treated as the start of a fresh tap rather
+  /// than a correction mid-track — standard music-player convention (Spotify,
+  /// Apple Music, YouTube Music).
+  static const Duration _prevRestartThreshold = Duration(seconds: 3);
+
+  /// Restarts the current track if it's already past [_prevRestartThreshold]
+  /// or there's no previous track to go to; otherwise skips back one track.
+  Future<void> prev() async {
+    if (state.logicalPosition > _prevRestartThreshold ||
+        state.playingIndex <= 0) {
+      await seekTo(Duration.zero);
+      return;
     }
+    final prevIndex = state.playingIndex - 1;
+    emit(state.copyWith(
+      playingIndex: prevIndex,
+      position: Duration.zero,
+      duration: Duration.zero,
+    ));
+    unawaited(_loadSourceAtIndex(prevIndex, shouldPlay: true));
   }
 
   void setIndex(int index) {
