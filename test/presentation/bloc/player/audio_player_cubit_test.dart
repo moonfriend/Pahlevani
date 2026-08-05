@@ -307,7 +307,7 @@ void main() {
       cubit.next();
       expect(cubit.state.playingIndex, 1);
 
-      cubit.prev();
+      await cubit.prev();
       expect(cubit.state.playingIndex, 0);
     });
 
@@ -323,9 +323,84 @@ void main() {
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
-      cubit.prev(); // already at 0
+      await cubit.prev(); // already at 0
 
       expect(cubit.state.playingIndex, 0);
+    });
+
+    test(
+        'restarts the current track instead of skipping back once past the '
+        'restart threshold — standard music-player behavior', () async {
+      final session = _session(1);
+      final items = [
+        _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+        _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+      ];
+      final snap = _snapshotWithItems(
+          session, items, [_exercise(10, reps: 1), _exercise(11, reps: 1)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.next(); // move to track 1
+      audioService.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await cubit.seekTo(const Duration(seconds: 5)); // well past 3s threshold
+
+      await cubit.prev();
+
+      expect(cubit.state.playingIndex, 1,
+          reason: 'past the threshold, prev() must restart the current '
+              'track rather than skip to the previous one');
+      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(audioService.seekedTo, Duration.zero);
+    });
+
+    test(
+        'skips to the previous track when pressed near the start of the '
+        'current one', () async {
+      final session = _session(1);
+      final items = [
+        _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+        _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+      ];
+      final snap = _snapshotWithItems(
+          session, items, [_exercise(10, reps: 1), _exercise(11, reps: 1)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.next(); // move to track 1
+      audioService.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await cubit.seekTo(const Duration(seconds: 1)); // within threshold
+
+      await cubit.prev();
+
+      expect(cubit.state.playingIndex, 0);
+    });
+
+    test('restarts the current track when pressed on the first track',
+        () async {
+      final session = _session(1);
+      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await cubit.seekTo(const Duration(seconds: 5));
+
+      await cubit.prev();
+
+      expect(cubit.state.playingIndex, 0);
+      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(audioService.seekedTo, Duration.zero);
     });
   });
 

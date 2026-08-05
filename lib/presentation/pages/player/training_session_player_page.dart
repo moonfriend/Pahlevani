@@ -738,7 +738,6 @@ class _Transport extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
-    final atStart = state.playingIndex <= 0;
     final atEnd = state.playingIndex >= state.tracks.length - 1;
 
     return Container(
@@ -755,7 +754,7 @@ class _Transport extends StatelessWidget {
         _TransportBtn(
             size: 52,
             icon: Icons.keyboard_arrow_up_rounded,
-            enabled: !atStart,
+            enabled: state.tracks.isNotEmpty,
             colors: colors,
             onTap: cubit.prev),
         const SizedBox(width: 28),
