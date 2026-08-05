@@ -58,14 +58,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
           await _downloadRepository.getInitialDownloadStatuses();
       // If training_sessions are already loaded, emit loaded state with statuses
       if (_currentTSSnapshot.isNotEmpty) {
-        emit(TrainingSessionLoaded(
-          uiModel: TrainingSessionsUiModel(
-            trainingSessions: _currentTSSnapshot.sessionsById.values.toList(),
-            downloadStatuses: _currentDownloadStatus,
-          ),
-          // domainSnapShot: _currentTSSnapshot,
-          // downloadStatus: _currentDownloadStatus,
-        ));
+        emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
       }
     } catch (_) {}
   }
