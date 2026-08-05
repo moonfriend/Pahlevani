@@ -117,30 +117,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     }
   }
 
-  Future<void> _openNew() async {
-    final cubit = context.read<TrainingSessionCubit>();
-    final blank = TrainingSession(
-      id: DateTime.now().millisecondsSinceEpoch,
-      title: '',
-      description: '',
-      difficulty: 2,
-      isUserCreated: true,
-    );
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-          builder: (_) => EditTrainingSessionPage(
-                trainingSession: blank,
-                items: const [],
-              )),
-    );
-    if (result != null && mounted) {
-      final session = result['session'] as TrainingSession;
-      final items = result['items'] as List<ItemDetail>?;
-      await cubit.updateTrainingSession(session, items: items);
-    }
-  }
-
   void _showOverflowSheet(
       BuildContext context, TrainingSession session, DownloadStatus dlStatus) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
@@ -251,57 +227,36 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
         return Scaffold(
           backgroundColor: colors.bg,
           body: SafeArea(
-            child: Stack(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _Header(
-                      refreshSpin: _refreshSpin,
-                      refreshing: isLoading,
+                _Header(
+                  refreshSpin: _refreshSpin,
+                  refreshing: isLoading,
+                  onRefresh: _refresh,
+                ),
+                if (isLoading && sessions.isEmpty)
+                  const Expanded(
+                      child: Center(child: CircularProgressIndicator()))
+                else
+                  Expanded(
+                    child: RefreshIndicator(
                       onRefresh: _refresh,
-                    ),
-                    if (isLoading && sessions.isEmpty)
-                      const Expanded(
-                          child: Center(child: CircularProgressIndicator()))
-                    else
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _refresh,
-                          child: _SessionList(
-                            sessions: sessions,
-                            dlStatuses: dlStatuses,
-                            dlProgress: dlProgress,
-                            itemCounts: itemCounts,
-                            durations: durations,
-                            onOpen: _openPlayer,
-                            onMenu: (s) => _showOverflowSheet(
-                                context,
-                                s,
-                                dlStatuses[s.id] ??
-                                    DownloadStatus.notDownloaded),
-                            onDownload: (s) => context
-                                .read<TrainingSessionCubit>()
-                                .downloadTrainingSession(s.id),
-                          ),
-                        ),
+                      child: _SessionList(
+                        sessions: sessions,
+                        dlStatuses: dlStatuses,
+                        dlProgress: dlProgress,
+                        itemCounts: itemCounts,
+                        durations: durations,
+                        onOpen: _openPlayer,
+                        onMenu: (s) => _showOverflowSheet(context, s,
+                            dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
+                        onDownload: (s) => context
+                            .read<TrainingSessionCubit>()
+                            .downloadTrainingSession(s.id),
                       ),
-                  ],
-                ),
-                // FAB
-                Positioned(
-                  right: 18,
-                  bottom: 16,
-                  child: FloatingActionButton.extended(
-                    onPressed: _openNew,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
