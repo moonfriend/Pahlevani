@@ -75,6 +75,108 @@ def load_stories() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def render_story_form(existing: dict | None, key_prefix: str) -> None:
+    """Shared create/edit form. `existing` pre-fills fields and switches the
+    submit action to an update-by-id instead of an insert."""
+    template = st.text_area(
+        "Template (use '=' for fillable cells)",
+        value=existing["template"] if existing else "",
+        height=200,
+        key=f"{key_prefix}_template",
+    )
+    fillable_count = len(offsets_of_fillable_cells(template))
+    st.caption(f"{fillable_count} fillable '=' cells detected.")
+
+    slug = st.text_input(
+        "Slug",
+        value=existing["slug"] if existing else "",
+        key=f"{key_prefix}_slug",
+        disabled=existing is not None,
+    )
+    title = st.text_input(
+        "Title", value=existing["title"] if existing else "", key=f"{key_prefix}_title"
+    )
+    story_text = st.text_area(
+        "Story text", value=existing["story_text"] if existing else "", key=f"{key_prefix}_story_text"
+    )
+    complete_art = st.text_area(
+        "Completion art (optional)",
+        value=(existing.get("complete_art") or "") if existing else "",
+        key=f"{key_prefix}_complete_art",
+    )
+
+    default_order = default_fill_order(template)
+    reversed_order = list(reversed(default_order))
+    preset_options = ["Reading order", "Reverse (bottom-up)", "Custom"]
+    initial_preset_index = 0
+    initial_custom_text = ""
+    if existing:
+        existing_order = existing["fill_order"]
+        if existing_order == reversed_order:
+            initial_preset_index = 1
+        elif existing_order != default_order:
+            initial_preset_index = 2
+            initial_custom_text = ",".join(str(i) for i in existing_order)
+
+    preset = st.radio(
+        "Fill order", preset_options, index=initial_preset_index, key=f"{key_prefix}_fill_order_preset"
+    )
+
+    fill_order: list[int] = []
+    if preset == "Reading order":
+        fill_order = default_order
+    elif preset == "Reverse (bottom-up)":
+        fill_order = reversed_order
+    else:
+        custom_text = st.text_input(
+            "Custom order (comma-separated occurrence numbers, 0-based)",
+            value=initial_custom_text,
+            key=f"{key_prefix}_fill_order_custom",
+        )
+        try:
+            fill_order = [int(token.strip()) for token in custom_text.split(",") if token.strip()]
+        except ValueError:
+            st.warning("Custom order must be a comma-separated list of numbers.")
+
+    if template and fillable_count > 0:
+        try:
+            st.text(render_order_preview(template, fill_order))
+        except (IndexError, KeyError):
+            st.warning("Fill order doesn't match the template yet — keep editing.")
+
+    button_label = "Save changes" if existing else "Save story"
+    if st.button(button_label, key=f"{key_prefix}_submit"):
+        if not slug or not title or not story_text or not template:
+            st.error("Slug, title, story text, and template are all required.")
+        elif sorted(fill_order) != list(range(fillable_count)):
+            st.error(
+                f"Fill order must be a permutation of 0..{fillable_count - 1} "
+                f"(the template has {fillable_count} fillable '=' cells)."
+            )
+        else:
+            payload = {
+                "title": title,
+                "story_text": story_text,
+                "template": template,
+                "complete_art": complete_art or None,
+                "fill_order": fill_order,
+            }
+            try:
+                if existing:
+                    get_client().table("challenge_story").update(payload).eq("id", existing["id"]).execute()
+                else:
+                    get_client().table("challenge_story").insert({**payload, "slug": slug}).execute()
+            except APIError as error:
+                if error.code == "23505":
+                    st.error(f"Slug '{slug}' is already in use — pick a different one.")
+                else:
+                    raise
+            else:
+                st.success(f"Story '{slug}' saved.")
+                st.cache_data.clear()
+                st.rerun()
+
+
 st.title("Challenge Bot — Admin")
 
 tab_challenges, tab_stories = st.tabs(["Challenges", "Stories"])
@@ -158,71 +260,13 @@ with tab_stories:
             hide_index=True,
         )
 
-    st.subheader("Create a story")
-
-    template = st.text_area("Template (use '=' for fillable cells)", height=200, key="story_template")
-    fillable_count = len(offsets_of_fillable_cells(template))
-    st.caption(f"{fillable_count} fillable '=' cells detected.")
-
-    slug = st.text_input("Slug", key="story_slug")
-    title = st.text_input("Title", key="story_title")
-    story_text = st.text_area("Story text", key="story_text")
-    complete_art = st.text_area("Completion art (optional)", key="story_complete_art")
-
-    preset = st.radio(
-        "Fill order",
-        ["Reading order", "Reverse (bottom-up)", "Custom"],
-        key="story_fill_order_preset",
-    )
-
-    default_order = default_fill_order(template)
-    fill_order: list[int] = []
-    if preset == "Reading order":
-        fill_order = default_order
-    elif preset == "Reverse (bottom-up)":
-        fill_order = list(reversed(default_order))
+    st.subheader("Edit an existing story")
+    if stories.empty:
+        st.caption("No stories to edit yet.")
     else:
-        custom_text = st.text_input(
-            "Custom order (comma-separated occurrence numbers, 0-based)",
-            key="story_fill_order_custom",
-        )
-        try:
-            fill_order = [int(token.strip()) for token in custom_text.split(",") if token.strip()]
-        except ValueError:
-            st.warning("Custom order must be a comma-separated list of numbers.")
+        edit_slug = st.selectbox("Story to edit", stories["slug"].tolist(), key="story_edit_select")
+        existing_story = stories[stories["slug"] == edit_slug].iloc[0].to_dict()
+        render_story_form(existing_story, key_prefix=f"edit_{existing_story['id']}")
 
-    if template and fillable_count > 0:
-        try:
-            st.text(render_order_preview(template, fill_order))
-        except (IndexError, KeyError):
-            st.warning("Fill order doesn't match the template yet — keep editing.")
-
-    if st.button("Save story"):
-        if not slug or not title or not story_text or not template:
-            st.error("Slug, title, story text, and template are all required.")
-        elif sorted(fill_order) != list(range(fillable_count)):
-            st.error(
-                f"Fill order must be a permutation of 0..{fillable_count - 1} "
-                f"(the template has {fillable_count} fillable '=' cells)."
-            )
-        else:
-            try:
-                get_client().table("challenge_story").insert(
-                    {
-                        "slug": slug,
-                        "title": title,
-                        "story_text": story_text,
-                        "template": template,
-                        "complete_art": complete_art or None,
-                        "fill_order": fill_order,
-                    }
-                ).execute()
-            except APIError as error:
-                if error.code == "23505":
-                    st.error(f"Slug '{slug}' is already in use — pick a different one.")
-                else:
-                    raise
-            else:
-                st.success(f"Story '{slug}' saved.")
-                st.cache_data.clear()
-                st.rerun()
+    st.subheader("Create a story")
+    render_story_form(None, key_prefix="create")
