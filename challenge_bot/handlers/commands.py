@@ -1,9 +1,11 @@
 import asyncio
+import html
 import logging
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from ascii_progress import render_ascii_progress
 from repository import ChallengeAlreadyActiveError, ChallengeRepository
 
 logger = logging.getLogger(__name__)
@@ -11,12 +13,14 @@ logger = logging.getLogger(__name__)
 HELP_TEXT = (
     "/challenge <target> [unit] — start a group challenge, e.g. /challenge 300 pushups\n"
     '/log <amount> [unit] — log a rep count (or just say it: "I did 30 push ups")\n'
+    "/start_challenge <slug> <target> [unit] — start a story-driven challenge, "
+    "e.g. /start_challenge khane_avval 300 pushups\n"
     "/total or /status — show the running total\n"
     "/end — close the active challenge"
 )
 
 
-def _repository(context: ContextTypes.DEFAULT_TYPE) -> ChallengeRepository:
+def get_repository(context: ContextTypes.DEFAULT_TYPE) -> ChallengeRepository:
     return context.bot_data["repository"]
 
 
@@ -48,7 +52,7 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         await asyncio.to_thread(
-            _repository(context).create_challenge,
+            get_repository(context).create_challenge,
             chat_id=chat.id,
             target_amount=target_amount,
             unit=unit,
@@ -86,7 +90,7 @@ async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def total_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     message = update.effective_message
-    repository = _repository(context)
+    repository = get_repository(context)
 
     challenge = await asyncio.to_thread(repository.get_active_challenge, chat.id)
     if challenge is None:
@@ -103,14 +107,29 @@ async def total_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if breakdown:
         lines.append("")
         lines.extend(f"{entry['display_name']}: {entry['amount']}" for entry in breakdown)
+    status_text = "\n".join(lines)
 
-    await message.reply_text("\n".join(lines))
+    story_id = challenge.get("story_id")
+    if story_id is None:
+        await message.reply_text(status_text)
+        return
+
+    story = await asyncio.to_thread(repository.get_story, story_id)
+    art = render_ascii_progress(
+        story["template"],
+        story["fill_order"],
+        total_reps=total,
+        target_amount=target,
+        complete_art=story.get("complete_art"),
+    )
+    html_message = f"<pre>{html.escape(art, quote=False)}</pre>\n{html.escape(status_text, quote=False)}"
+    await message.reply_text(html_message, parse_mode="HTML")
 
 
 async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     message = update.effective_message
-    repository = _repository(context)
+    repository = get_repository(context)
 
     challenge = await asyncio.to_thread(repository.get_active_challenge, chat.id)
     if challenge is None:
@@ -140,7 +159,7 @@ async def record_entry(
     chat = update.effective_chat
     message = update.effective_message
     user = update.effective_user
-    repository = _repository(context)
+    repository = get_repository(context)
 
     challenge = await asyncio.to_thread(repository.get_active_challenge, chat.id)
     if challenge is None:

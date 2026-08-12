@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from config import load_config
-from handlers import commands, messages
+from handlers import commands, messages, story_commands
 from logging_conf import configure_logging
 from repository import ChallengeRepository
 
@@ -22,6 +22,7 @@ def build_application() -> Application:
     application.bot_data["repository"] = repository
 
     application.add_handler(CommandHandler("challenge", commands.challenge_command))
+    application.add_handler(CommandHandler("start_challenge", story_commands.start_challenge_command))
     application.add_handler(CommandHandler("log", commands.log_command))
     application.add_handler(CommandHandler(["total", "status"], commands.total_command))
     application.add_handler(CommandHandler("end", commands.end_command))
