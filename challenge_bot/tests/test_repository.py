@@ -1,4 +1,5 @@
 import pytest
+from postgrest.exceptions import APIError
 
 from repository import ChallengeAlreadyActiveError, ChallengeRepository
 from tests.fakes import FakeSupabaseClient
@@ -85,3 +86,66 @@ def test_get_totals_by_user_falls_back_to_username_then_id(repo):
 def test_get_totals_by_user_is_empty_for_challenge_with_no_entries(repo):
     created = repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=42)
     assert repo.get_totals_by_user(created["id"]) == []
+
+
+# ── stories ───────────────────────────────────────────────────────────────
+
+
+def _create_story(repo, slug="khane_avval", fill_order=None):
+    template = "/==\\\n/====\\"
+    return repo.create_story(
+        slug=slug,
+        title="The Dragon's Peak",
+        story_text="The dragon sits at the summit...",
+        template=template,
+        fill_order=fill_order or [0, 1, 2, 3, 4, 5],
+    )
+
+
+def test_create_story_and_get_story_by_slug(repo):
+    created = _create_story(repo)
+    assert created["slug"] == "khane_avval"
+
+    fetched = repo.get_story_by_slug("khane_avval")
+    assert fetched["id"] == created["id"]
+
+
+def test_get_story_by_slug_returns_none_when_absent(repo):
+    assert repo.get_story_by_slug("does_not_exist") is None
+
+
+def test_get_story_returns_by_id(repo):
+    created = _create_story(repo)
+    fetched = repo.get_story(created["id"])
+    assert fetched["slug"] == "khane_avval"
+
+
+def test_create_story_rejects_invalid_fill_order_permutation(repo):
+    with pytest.raises(ValueError):
+        repo.create_story(
+            slug="bad_order",
+            title="Bad",
+            story_text="...",
+            template="/==\\\n/====\\",
+            fill_order=[0, 1, 2],  # wrong length — template has 6 fillable cells
+        )
+
+
+def test_create_story_rejects_duplicate_slug(repo):
+    _create_story(repo)
+    with pytest.raises(APIError) as exc_info:
+        _create_story(repo)
+    assert exc_info.value.code == "23505"
+
+
+def test_create_challenge_with_story_id_links_challenge_to_story(repo):
+    story = _create_story(repo)
+    created = repo.create_challenge(
+        chat_id=1, target_amount=300, unit="pushups", created_by=42, story_id=story["id"]
+    )
+    assert created["story_id"] == story["id"]
+
+
+def test_create_challenge_without_story_id_defaults_to_none(repo):
+    created = repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=42)
+    assert created["story_id"] is None

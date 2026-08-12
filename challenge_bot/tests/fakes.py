@@ -69,6 +69,18 @@ class _FakeQuery:
                             "hint": None,
                         }
                     )
+            if "slug" in row:
+                clash = any(r.get("slug") == row["slug"] for r in self._rows)
+                if clash:
+                    raise APIError(
+                        {
+                            "message": 'duplicate key value violates unique constraint '
+                            '"challenge_story_slug_key"',
+                            "code": "23505",
+                            "details": None,
+                            "hint": None,
+                        }
+                    )
             row["id"] = len(self._rows) + 1
             self._rows.append(row)
             return FakeResponse([row])
@@ -86,7 +98,7 @@ class _FakeQuery:
 
 class FakeSupabaseClient:
     def __init__(self):
-        self._store = {"challenge": [], "challenge_entry": []}
+        self._store = {"challenge": [], "challenge_entry": [], "challenge_story": []}
 
     def table(self, name):
         return _FakeQuery(self._store[name])

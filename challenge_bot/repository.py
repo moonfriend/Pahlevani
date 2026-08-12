@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from postgrest.exceptions import APIError
 from supabase import Client
 
+from ascii_progress import offsets_of_fillable_cells
+
 _UNIQUE_VIOLATION = "23505"
 
 
@@ -41,6 +43,7 @@ class ChallengeRepository:
         unit: str = "reps",
         created_by: int | None = None,
         title: str | None = None,
+        story_id: int | None = None,
     ) -> dict:
         payload = {
             "chat_id": chat_id,
@@ -48,6 +51,7 @@ class ChallengeRepository:
             "unit": unit,
             "created_by_telegram_user_id": created_by,
             "title": title,
+            "story_id": story_id,
         }
         try:
             response = self._client.table("challenge").insert(payload).execute()
@@ -122,3 +126,44 @@ class ChallengeRepository:
             )
             entry["amount"] += row["amount"]
         return sorted(totals.values(), key=lambda entry: entry["amount"], reverse=True)
+
+    def create_story(
+        self,
+        slug: str,
+        title: str,
+        story_text: str,
+        template: str,
+        fill_order: list[int],
+        complete_art: str | None = None,
+    ) -> dict:
+        total_symbols = len(offsets_of_fillable_cells(template))
+        if sorted(fill_order) != list(range(total_symbols)):
+            raise ValueError(
+                f"fill_order must be a permutation of range({total_symbols}) "
+                f"(the template has {total_symbols} fillable '=' cells)"
+            )
+
+        payload = {
+            "slug": slug,
+            "title": title,
+            "story_text": story_text,
+            "template": template,
+            "fill_order": fill_order,
+            "complete_art": complete_art,
+        }
+        response = self._client.table("challenge_story").insert(payload).execute()
+        return response.data[0]
+
+    def get_story_by_slug(self, slug: str) -> dict | None:
+        response = (
+            self._client.table("challenge_story").select("*").eq("slug", slug).limit(1).execute()
+        )
+        rows = response.data
+        return rows[0] if rows else None
+
+    def get_story(self, story_id: int) -> dict | None:
+        response = (
+            self._client.table("challenge_story").select("*").eq("id", story_id).limit(1).execute()
+        )
+        rows = response.data
+        return rows[0] if rows else None
