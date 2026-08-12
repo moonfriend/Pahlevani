@@ -72,6 +72,9 @@ supabase/.db.env
 # Supabase snapshot — table data + media files downloaded by scripts/dump_supabase.py
 supabase/dump/
 
+# Challenge bot — real Telegram token + Supabase service-role key (copy from .env.example)
+challenge_bot/.env
+
 # Python virtual environment and version pin (used by scripts/)
 .venv/
 .python-version
