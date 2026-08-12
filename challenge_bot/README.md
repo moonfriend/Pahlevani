@@ -18,6 +18,10 @@ cp .env.example .env   # fill in TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY
 `SUPABASE_KEY` must be the **service-role key** — the bot writes to tables with RLS
 enabled and no policies, so only the service-role key (which bypasses RLS) can use them.
 
+Apply `supabase/migrations/0008_challenge_bot.sql` (see the repo-root `supabase/` setup)
+before running the bot for the first time — it creates the `challenge` and
+`challenge_entry` tables this project reads and writes.
+
 ### BotFather setup (required)
 
 Telegram bots default to *privacy mode* in groups, meaning they only receive messages
@@ -62,7 +66,7 @@ WantedBy=multi-user.target
 | *free text* (e.g. "I did 30 push ups") | Same as `/log`, best-effort parsed |
 | `/total` or `/status` | Report the running total |
 | `/end` | Close the active challenge |
-| `/help` | List commands |
+| `/help` (or `/start`) | List commands |
 
 Output is intentionally minimal: logging a rep count only triggers an emoji reaction, not
 a text reply. Messages that don't parse are ignored entirely — no error replies.
