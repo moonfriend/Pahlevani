@@ -99,3 +99,26 @@ class ChallengeRepository:
             .execute()
         )
         return sum(row["amount"] for row in response.data)
+
+    def get_totals_by_user(self, challenge_id: int) -> list[dict]:
+        response = (
+            self._client.table("challenge_entry")
+            .select("telegram_user_id, telegram_username, telegram_display_name, amount")
+            .eq("challenge_id", challenge_id)
+            .execute()
+        )
+        totals: dict[int, dict] = {}
+        for row in response.data:
+            user_id = row["telegram_user_id"]
+            entry = totals.setdefault(
+                user_id,
+                {
+                    "telegram_user_id": user_id,
+                    "display_name": row.get("telegram_display_name")
+                    or row.get("telegram_username")
+                    or str(user_id),
+                    "amount": 0,
+                },
+            )
+            entry["amount"] += row["amount"]
+        return sorted(totals.values(), key=lambda entry: entry["amount"], reverse=True)

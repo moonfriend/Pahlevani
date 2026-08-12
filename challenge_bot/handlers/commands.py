@@ -94,10 +94,17 @@ async def total_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     total = await asyncio.to_thread(repository.get_total, challenge["id"])
+    breakdown = await asyncio.to_thread(repository.get_totals_by_user, challenge["id"])
     target = challenge["target_amount"]
     unit = challenge["unit"]
     percent = min(100, round(100 * total / target)) if target else 0
-    await message.reply_text(f"Total: {total} / {target} {unit} ({percent}%)")
+
+    lines = [f"Total: {total} / {target} {unit} ({percent}%)"]
+    if breakdown:
+        lines.append("")
+        lines.extend(f"{entry['display_name']}: {entry['amount']}" for entry in breakdown)
+
+    await message.reply_text("\n".join(lines))
 
 
 async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

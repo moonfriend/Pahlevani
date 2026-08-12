@@ -64,7 +64,7 @@ WantedBy=multi-user.target
 | `/challenge <target> [unit]` | Start a group challenge, e.g. `/challenge 300 pushups` |
 | `/log <amount> [unit]` | Log a rep count (silent ack via emoji reaction) |
 | *free text* (e.g. "I did 30 push ups") | Same as `/log`, best-effort parsed |
-| `/total` or `/status` | Report the running total |
+| `/total` or `/status` | Report the running total, plus a per-user breakdown sorted highest first |
 | `/end` | Close the active challenge |
 | `/help` (or `/start`) | List commands |
 

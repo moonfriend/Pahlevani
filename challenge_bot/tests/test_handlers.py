@@ -106,6 +106,34 @@ def test_total_command_reports_running_total(repo):
     assert "300" in message.replies[-1]
 
 
+def test_total_command_includes_per_user_leaderboard_sorted_descending(repo):
+    repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=7)
+    challenge = repo.get_active_challenge(1)
+    repo.add_entry(challenge["id"], telegram_user_id=1, amount=10, display_name="Alice")
+    repo.add_entry(challenge["id"], telegram_user_id=2, amount=50, display_name="Bob")
+
+    update, message = make_update()
+    context = make_context(repo)
+
+    run(commands.total_command(update, context))
+
+    reply = message.replies[-1]
+    assert reply.index("Bob") < reply.index("Alice")
+    assert "50" in reply
+    assert "10" in reply
+
+
+def test_total_command_omits_leaderboard_when_no_entries(repo):
+    repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=7)
+
+    update, message = make_update()
+    context = make_context(repo)
+
+    run(commands.total_command(update, context))
+
+    assert message.replies[-1] == "Total: 0 / 300 pushups (0%)"
+
+
 def test_end_command_closes_challenge(repo):
     repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=7)
     challenge = repo.get_active_challenge(1)
