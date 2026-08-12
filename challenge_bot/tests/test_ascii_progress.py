@@ -40,16 +40,45 @@ def test_symbols_done_count_exact_division():
     assert symbols_done_count(total_reps=200, target_amount=200, total_symbols=25) == 25
 
 
-def test_symbols_done_count_distributes_remainder_via_mod():
-    # target=205, total_symbols=25 -> base=8, remainder=5: first 5 symbols
-    # cost 9 reps each, the rest cost 8 each. Total to fill all 25 == 205.
-    total_to_fill_all = 5 * 9 + 20 * 8
-    assert total_to_fill_all == 205
+def test_symbols_done_count_reaches_exactly_total_symbols_at_target():
+    # target=205, total_symbols=25 doesn't divide evenly (base=8, remainder=5),
+    # but the count must still land on exactly 25 right at total_reps=target,
+    # never earlier, never later.
     assert symbols_done_count(total_reps=204, target_amount=205, total_symbols=25) == 24
     assert symbols_done_count(total_reps=205, target_amount=205, total_symbols=25) == 25
-    # first symbol (index 0, in the "extra rep" group) needs 9, not 8
-    assert symbols_done_count(total_reps=8, target_amount=205, total_symbols=25) == 0
-    assert symbols_done_count(total_reps=9, target_amount=205, total_symbols=25) == 1
+
+
+def _required_reps_per_symbol(target_amount: int, total_symbols: int) -> list[int]:
+    """Reps needed to advance from each symbol to the next, in order."""
+    prev = 0
+    steps = []
+    for reps in range(0, target_amount + 1):
+        done = symbols_done_count(reps, target_amount, total_symbols)
+        if done != prev:
+            steps.append(reps)
+            prev = done
+    return [steps[0]] + [steps[i] - steps[i - 1] for i in range(1, len(steps))]
+
+
+def test_symbols_done_count_spreads_the_remainder_instead_of_front_loading_it():
+    # target=200, total_symbols=156 -> base=1, remainder=44: 44 symbols need
+    # 2 reps and 112 need 1 rep. A front-loaded distribution would make every
+    # one of the first 44 symbols cost 2 (a visible slow-then-fast pace
+    # change); this asserts the "costs 2" symbols are spread across the
+    # whole sequence instead, so the fill rate looks consistent throughout.
+    required = _required_reps_per_symbol(target_amount=200, total_symbols=156)
+    assert len(required) == 156
+    assert required.count(2) == 44
+    assert required.count(1) == 112
+    # a "costs 2" step shows up well into the second half, not just the front
+    assert 2 in required[100:]
+
+
+def test_symbols_done_count_never_requires_more_than_a_one_rep_swing():
+    # No two symbols should ever differ by more than 1 in required reps —
+    # that's what "smooth, consistent pacing" means concretely.
+    required = _required_reps_per_symbol(target_amount=205, total_symbols=25)
+    assert max(required) - min(required) <= 1
 
 
 def test_symbols_done_count_zero_total_symbols_is_zero():

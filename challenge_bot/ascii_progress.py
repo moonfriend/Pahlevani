@@ -13,26 +13,21 @@ def symbols_done_count(total_reps: int, target_amount: int, total_symbols: int) 
 
     Pacing is derived per-run from the challenge's own target_amount rather
     than a fixed "reps per symbol", since the same story can run with a
-    different target in every chat. target_amount // total_symbols gives the
-    base cost per symbol; the leftover (target_amount % total_symbols) is
-    spread one-extra-rep-each across the first `remainder` symbols, so the
-    art reaches 100% exactly when total_reps reaches target_amount.
+    different target in every chat. Each symbol represents an equal
+    *proportion* of the goal (total_reps / target_amount, scaled to
+    total_symbols and floored), so the art reaches 100% exactly when
+    total_reps reaches target_amount.
+
+    When target_amount isn't a clean multiple of total_symbols, this still
+    keeps the fill rate visually consistent throughout: the "costs one extra
+    rep" symbols implied by the remainder are spread evenly across the whole
+    sequence rather than front-loaded onto the first few symbols (which
+    would look like a slow start followed by a sudden speed-up).
     """
-    if total_symbols <= 0 or target_amount <= 0:
+    if total_symbols <= 0 or target_amount <= 0 or total_reps <= 0:
         return 0
 
-    base = target_amount // total_symbols
-    remainder = target_amount % total_symbols
-
-    done = 0
-    consumed = 0
-    for i in range(total_symbols):
-        required = base + (1 if i < remainder else 0)
-        if consumed + required > total_reps:
-            break
-        consumed += required
-        done += 1
-    return done
+    return min(total_symbols, (total_reps * total_symbols) // target_amount)
 
 
 def render_ascii_progress(
