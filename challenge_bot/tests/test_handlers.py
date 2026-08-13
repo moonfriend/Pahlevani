@@ -69,6 +69,25 @@ def test_challenge_command_rejects_duplicate(repo):
     assert "already an active challenge" in message2.replies[-1]
 
 
+def test_challenge_command_rejects_target_over_upper_bound(repo):
+    update, message = make_update()
+    context = make_context(repo, args=[str(commands.MAX_TARGET_AMOUNT + 1)])
+
+    run(commands.challenge_command(update, context))
+
+    assert "too large" in message.replies[-1].lower()
+    assert repo.get_active_challenge(1) is None
+
+
+def test_challenge_command_accepts_target_at_upper_bound(repo):
+    update, message = make_update()
+    context = make_context(repo, args=[str(commands.MAX_TARGET_AMOUNT)])
+
+    run(commands.challenge_command(update, context))
+
+    assert "Challenge started" in message.replies[-1]
+
+
 def test_log_command_records_silently_with_reaction(repo):
     repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=7)
     update, message = make_update()
@@ -225,6 +244,19 @@ def test_start_challenge_command_missing_args_shows_usage(repo):
     run(story_commands.start_challenge_command(update, context))
 
     assert "usage" in message.replies[-1].lower()
+
+
+def test_start_challenge_command_rejects_target_over_upper_bound(repo):
+    _create_story(repo)
+    update, message = make_update()
+    context = make_context(
+        repo, args=["khane_avval", str(story_commands.MAX_TARGET_AMOUNT + 1)]
+    )
+
+    run(story_commands.start_challenge_command(update, context))
+
+    assert "too large" in message.replies[-1].lower()
+    assert repo.get_active_challenge(1) is None
 
 
 def test_start_challenge_command_rejects_duplicate_active_challenge(repo):

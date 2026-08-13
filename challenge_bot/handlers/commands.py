@@ -10,6 +10,12 @@ from repository import ChallengeAlreadyActiveError, ChallengeRepository
 
 logger = logging.getLogger(__name__)
 
+# Postgres's int4 column caps at ~2.1 billion; this stays well clear of that
+# while still being far larger than any real challenge would need, so a
+# crafted/mistyped huge target fails with a clear reply instead of an
+# unhandled DB error.
+MAX_TARGET_AMOUNT = 1_000_000
+
 HELP_TEXT = (
     "/challenge <target> [unit] — start a group challenge, e.g. /challenge 300 pushups\n"
     '/log <amount> [unit] — log a rep count (or just say it: "I did 30 push ups")\n'
@@ -44,6 +50,10 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if target_amount <= 0:
         await message.reply_text("Target must be a positive number.")
+        return
+
+    if target_amount > MAX_TARGET_AMOUNT:
+        await message.reply_text(f"Target is too large — must be at most {MAX_TARGET_AMOUNT:,}.")
         return
 
     unit = " ".join(args[1:]) or "reps"

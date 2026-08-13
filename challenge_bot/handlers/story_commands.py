@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from ascii_progress import render_ascii_progress
-from handlers.commands import get_repository
+from handlers.commands import MAX_TARGET_AMOUNT, get_repository
 from repository import ChallengeAlreadyActiveError
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,10 @@ async def start_challenge_command(update: Update, context: ContextTypes.DEFAULT_
 
     if target_amount <= 0:
         await message.reply_text("Target must be a positive number.")
+        return
+
+    if target_amount > MAX_TARGET_AMOUNT:
+        await message.reply_text(f"Target is too large — must be at most {MAX_TARGET_AMOUNT:,}.")
         return
 
     unit = " ".join(args[2:]) or "reps"
