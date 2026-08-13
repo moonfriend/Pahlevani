@@ -36,6 +36,7 @@ def render_ascii_progress(
     total_reps: int,
     target_amount: int,
     complete_art: str | None = None,
+    cursor_glyph: str | None = None,
 ) -> str:
     offsets = offsets_of_fillable_cells(template)
     total_symbols = len(offsets)
@@ -47,6 +48,11 @@ def render_ascii_progress(
     chars = list(template)
     for occurrence_index in fill_order[:symbols_done]:
         chars[offsets[occurrence_index]] = "+"
+
+    if cursor_glyph and symbols_done > 0:
+        frontier_occurrence = fill_order[symbols_done - 1]
+        chars[offsets[frontier_occurrence]] = cursor_glyph
+
     return "".join(chars)
 
 

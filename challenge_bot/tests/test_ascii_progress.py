@@ -151,6 +151,49 @@ def test_render_ascii_progress_leaves_non_fillable_characters_untouched():
     assert "\n" in art
 
 
+# ── cursor_glyph ──────────────────────────────────────────────────────────
+
+
+def test_render_ascii_progress_shows_cursor_glyph_at_most_recent_symbol():
+    # target=60, total_symbols=6 -> 10 reps/symbol; 25 reps -> 2 symbols done,
+    # occurrences 0 and 1 (reading order). The most recent (occurrence 1)
+    # should show the glyph; occurrence 0 stays '+'.
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(MINI_TEMPLATE, order, 25, 60, cursor_glyph="🧗")
+    assert art == "/+🧗\\\n/====\\"
+
+
+def test_render_ascii_progress_no_cursor_glyph_shown_at_zero_reps():
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(MINI_TEMPLATE, order, 0, 60, cursor_glyph="🧗")
+    assert art == MINI_TEMPLATE
+
+
+def test_render_ascii_progress_cursor_glyph_none_is_unchanged_from_before():
+    order = default_fill_order(MINI_TEMPLATE)
+    with_none = render_ascii_progress(MINI_TEMPLATE, order, 25, 60, cursor_glyph=None)
+    without_arg = render_ascii_progress(MINI_TEMPLATE, order, 25, 60)
+    assert with_none == without_arg == "/++\\\n/====\\"
+
+
+def test_render_ascii_progress_cursor_glyph_not_shown_once_complete():
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(
+        MINI_TEMPLATE, order, 60, 60, complete_art="\\o/", cursor_glyph="🧗"
+    )
+    assert art == "\\o/"
+
+
+def test_render_ascii_progress_cursor_glyph_moves_as_more_reps_come_in():
+    order = default_fill_order(MINI_TEMPLATE)
+    early = render_ascii_progress(MINI_TEMPLATE, order, 15, 60, cursor_glyph="🧗")
+    later = render_ascii_progress(MINI_TEMPLATE, order, 35, 60, cursor_glyph="🧗")
+    # 15 reps -> 1 symbol done (occurrence 0); 35 reps -> 3 symbols done
+    # (occurrences 0,1,2), cursor now on occurrence 2 (row B's first cell).
+    assert early == "/🧗=\\\n/====\\"
+    assert later == "/++\\\n/🧗===\\"
+
+
 # ── render_order_preview ─────────────────────────────────────────────────────
 
 
