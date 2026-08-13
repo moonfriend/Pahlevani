@@ -104,6 +104,11 @@ def render_story_form(existing: dict | None, key_prefix: str) -> None:
         value=(existing.get("complete_art") or "") if existing else "",
         key=f"{key_prefix}_complete_art",
     )
+    cursor_glyph = st.text_input(
+        "Cursor glyph (optional — shown at the current position, e.g. 🧗)",
+        value=(existing.get("cursor_glyph") or "") if existing else "",
+        key=f"{key_prefix}_cursor_glyph",
+    )
 
     default_order = default_fill_order(template)
     reversed_order = list(reversed(default_order))
@@ -160,6 +165,7 @@ def render_story_form(existing: dict | None, key_prefix: str) -> None:
                 "template": template,
                 "complete_art": complete_art or None,
                 "fill_order": fill_order,
+                "cursor_glyph": cursor_glyph or None,
             }
             try:
                 if existing:
