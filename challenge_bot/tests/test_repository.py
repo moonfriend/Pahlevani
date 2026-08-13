@@ -149,3 +149,20 @@ def test_create_challenge_with_story_id_links_challenge_to_story(repo):
 def test_create_challenge_without_story_id_defaults_to_none(repo):
     created = repo.create_challenge(chat_id=1, target_amount=300, unit="pushups", created_by=42)
     assert created["story_id"] is None
+
+
+def test_create_story_stores_cursor_glyph(repo):
+    created = repo.create_story(
+        slug="with_cursor",
+        title="Cursor story",
+        story_text="...",
+        template="/==\\\n/====\\",
+        fill_order=[0, 1, 2, 3, 4, 5],
+        cursor_glyph="🧗",
+    )
+    assert created["cursor_glyph"] == "🧗"
+
+
+def test_create_story_without_cursor_glyph_defaults_to_none(repo):
+    created = _create_story(repo)
+    assert created["cursor_glyph"] is None

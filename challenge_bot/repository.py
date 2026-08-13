@@ -135,6 +135,7 @@ class ChallengeRepository:
         template: str,
         fill_order: list[int],
         complete_art: str | None = None,
+        cursor_glyph: str | None = None,
     ) -> dict:
         total_symbols = len(offsets_of_fillable_cells(template))
         if sorted(fill_order) != list(range(total_symbols)):
@@ -150,6 +151,7 @@ class ChallengeRepository:
             "template": template,
             "fill_order": fill_order,
             "complete_art": complete_art,
+            "cursor_glyph": cursor_glyph,
         }
         response = self._client.table("challenge_story").insert(payload).execute()
         return response.data[0]
