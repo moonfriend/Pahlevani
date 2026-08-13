@@ -65,6 +65,7 @@ async def start_challenge_command(update: Update, context: ContextTypes.DEFAULT_
         total_reps=0,
         target_amount=target_amount,
         complete_art=story.get("complete_art"),
+        cursor_glyph=story.get("cursor_glyph"),
     )
     story_text = html.escape(story["story_text"], quote=False)
     art_block = html.escape(art, quote=False)

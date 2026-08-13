@@ -182,7 +182,7 @@ def test_text_message_handler_ignores_unparseable_text(repo):
 # ── /start_challenge and story-aware /total ─────────────────────────────────
 
 
-def _create_story(repo, slug="khane_avval"):
+def _create_story(repo, slug="khane_avval", cursor_glyph=None):
     template = "/==\\\n/====\\"
     return repo.create_story(
         slug=slug,
@@ -190,6 +190,7 @@ def _create_story(repo, slug="khane_avval"):
         story_text="The dragon sits at the summit. Together, we must climb to face it.",
         template=template,
         fill_order=[0, 1, 2, 3, 4, 5],
+        cursor_glyph=cursor_glyph,
     )
 
 
@@ -252,4 +253,29 @@ def test_total_command_prepends_ascii_art_when_story_bound(repo):
     reply = message.replies[-1]
     assert "<pre>" in reply
     assert "Total: 25 / 60 pushups" in reply
+
+
+def test_total_command_shows_cursor_glyph_when_story_has_one_configured(repo):
+    story = _create_story(repo, cursor_glyph="🧗")
+    challenge = repo.create_challenge(
+        chat_id=1, target_amount=60, unit="pushups", created_by=7, story_id=story["id"]
+    )
+    repo.add_entry(challenge["id"], telegram_user_id=7, amount=25)
+
+    update, message = make_update()
+    context = make_context(repo)
+
+    run(commands.total_command(update, context))
+
+    assert "🧗" in message.replies[-1]
+
+
+def test_start_challenge_command_kickoff_shows_no_cursor_glyph_at_zero_reps(repo):
+    _create_story(repo, cursor_glyph="🧗")
+    update, message = make_update()
+    context = make_context(repo, args=["khane_avval", "60", "pushups"])
+
+    run(story_commands.start_challenge_command(update, context))
+
+    assert "🧗" not in message.replies[-1]
     assert message.parse_modes[-1] == "HTML"

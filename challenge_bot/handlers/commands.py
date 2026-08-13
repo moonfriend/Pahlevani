@@ -121,6 +121,7 @@ async def total_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         total_reps=total,
         target_amount=target,
         complete_art=story.get("complete_art"),
+        cursor_glyph=story.get("cursor_glyph"),
     )
     html_message = f"<pre>{html.escape(art, quote=False)}</pre>\n{html.escape(status_text, quote=False)}"
     await message.reply_text(html_message, parse_mode="HTML")
