@@ -18,8 +18,8 @@ cp .env.example .env   # fill in TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY
 `SUPABASE_KEY` must be the **service-role key** — the bot writes to tables with RLS
 enabled and no policies, so only the service-role key (which bypasses RLS) can use them.
 
-Apply `supabase/migrations/0008_challenge_bot.sql` and then
-`supabase/migrations/0009_challenge_story.sql` (see the repo-root `supabase/` setup)
+Apply `supabase/migrations/0008_challenge_bot.sql`, `0009_challenge_story.sql`, and
+`0010_challenge_story_cursor_glyph.sql` in order (see the repo-root `supabase/` setup)
 before running the bot for the first time — they create the `challenge`,
 `challenge_entry`, and `challenge_story` tables this project reads and writes.
 
@@ -83,6 +83,11 @@ story can be run against any number of groups via `/start_challenge <slug> <targ
 the story itself. Nothing is posted anywhere until `/start_challenge` is actually run in a
 group.
 
+A story can optionally set a **cursor glyph** (e.g. 🧗) — shown in place of the
+most-recently-converted `=` symbol, giving a lightweight sense of the current progress
+position. It only appears once at least one symbol has converted (never on the zero-rep
+kickoff announcement), and disappears once the art switches to the completion art.
+
 ## Admin UI
 
 A Streamlit app with two tabs:
@@ -90,7 +95,7 @@ A Streamlit app with two tabs:
   cancel/close a challenge).
 - **Stories** — author story templates: paste the `=`-template, pick a fill-order preset
   (reading order / reverse-bottom-up / a custom comma-separated order) with a live preview,
-  and save.
+  optionally set a cursor glyph, and save. Existing stories can also be edited here.
 
 ```bash
 uv run streamlit run bot_admin.py
