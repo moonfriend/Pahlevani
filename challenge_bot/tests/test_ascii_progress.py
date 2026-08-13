@@ -1,0 +1,211 @@
+import pytest
+
+from ascii_progress import (
+    default_fill_order,
+    offsets_of_fillable_cells,
+    render_ascii_progress,
+    render_order_preview,
+    symbols_done_count,
+)
+
+MINI_TEMPLATE = "/==\\\n/====\\"  # 6 fillable cells: occurrences 0,1 then 2,3,4,5
+
+
+def test_offsets_of_fillable_cells_finds_all_equals_signs():
+    offsets = offsets_of_fillable_cells(MINI_TEMPLATE)
+    assert len(offsets) == 6
+    assert all(MINI_TEMPLATE[i] == "=" for i in offsets)
+
+
+def test_offsets_of_fillable_cells_empty_when_no_equals():
+    assert offsets_of_fillable_cells("/****\\") == []
+
+
+def test_default_fill_order_is_natural_reading_order():
+    assert default_fill_order(MINI_TEMPLATE) == [0, 1, 2, 3, 4, 5]
+
+
+def test_default_fill_order_empty_for_template_with_no_fillable_cells():
+    assert default_fill_order("/****\\") == []
+
+
+# ── symbols_done_count: the pacing formula ──────────────────────────────────
+
+
+def test_symbols_done_count_exact_division():
+    # target=200, total_symbols=25 -> 8 reps per symbol exactly
+    assert symbols_done_count(total_reps=16, target_amount=200, total_symbols=25) == 2
+    assert symbols_done_count(total_reps=8, target_amount=200, total_symbols=25) == 1
+    assert symbols_done_count(total_reps=7, target_amount=200, total_symbols=25) == 0
+    assert symbols_done_count(total_reps=200, target_amount=200, total_symbols=25) == 25
+
+
+def test_symbols_done_count_reaches_exactly_total_symbols_at_target():
+    # target=205, total_symbols=25 doesn't divide evenly (base=8, remainder=5),
+    # but the count must still land on exactly 25 right at total_reps=target,
+    # never earlier, never later.
+    assert symbols_done_count(total_reps=204, target_amount=205, total_symbols=25) == 24
+    assert symbols_done_count(total_reps=205, target_amount=205, total_symbols=25) == 25
+
+
+def _required_reps_per_symbol(target_amount: int, total_symbols: int) -> list[int]:
+    """Reps needed to advance from each symbol to the next, in order."""
+    prev = 0
+    steps = []
+    for reps in range(0, target_amount + 1):
+        done = symbols_done_count(reps, target_amount, total_symbols)
+        if done != prev:
+            steps.append(reps)
+            prev = done
+    return [steps[0]] + [steps[i] - steps[i - 1] for i in range(1, len(steps))]
+
+
+def test_symbols_done_count_spreads_the_remainder_instead_of_front_loading_it():
+    # target=200, total_symbols=156 -> base=1, remainder=44: 44 symbols need
+    # 2 reps and 112 need 1 rep. A front-loaded distribution would make every
+    # one of the first 44 symbols cost 2 (a visible slow-then-fast pace
+    # change); this asserts the "costs 2" symbols are spread across the
+    # whole sequence instead, so the fill rate looks consistent throughout.
+    required = _required_reps_per_symbol(target_amount=200, total_symbols=156)
+    assert len(required) == 156
+    assert required.count(2) == 44
+    assert required.count(1) == 112
+    # a "costs 2" step shows up well into the second half, not just the front
+    assert 2 in required[100:]
+
+
+def test_symbols_done_count_never_requires_more_than_a_one_rep_swing():
+    # No two symbols should ever differ by more than 1 in required reps —
+    # that's what "smooth, consistent pacing" means concretely.
+    required = _required_reps_per_symbol(target_amount=205, total_symbols=25)
+    assert max(required) - min(required) <= 1
+
+
+def test_symbols_done_count_zero_total_symbols_is_zero():
+    assert symbols_done_count(total_reps=100, target_amount=200, total_symbols=0) == 0
+
+
+def test_symbols_done_count_zero_or_negative_target_amount_is_zero():
+    assert symbols_done_count(total_reps=100, target_amount=0, total_symbols=25) == 0
+    assert symbols_done_count(total_reps=100, target_amount=-5, total_symbols=25) == 0
+
+
+def test_symbols_done_count_zero_reps_is_zero():
+    assert symbols_done_count(total_reps=0, target_amount=200, total_symbols=25) == 0
+
+
+# ── render_ascii_progress ────────────────────────────────────────────────────
+
+
+def test_render_ascii_progress_zero_reps_leaves_template_unfilled():
+    art = render_ascii_progress(MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 0, 60)
+    assert art == MINI_TEMPLATE
+
+
+def test_render_ascii_progress_partial_reps_converts_in_reading_order():
+    # target=60, total_symbols=6 -> 10 reps per symbol
+    art = render_ascii_progress(MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 25, 60)
+    # 25 // 10 = 2 symbols done -> occurrences 0 and 1 (row A) converted
+    assert art == "/++\\\n/====\\"
+
+
+def test_render_ascii_progress_overshoot_caps_at_total_symbols():
+    art = render_ascii_progress(MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 1000, 60)
+    assert art == "/++\\\n/++++\\"
+
+
+def test_render_ascii_progress_uses_custom_fill_order():
+    reversed_order = list(reversed(default_fill_order(MINI_TEMPLATE)))
+    # 10 reps per symbol; 25 reps -> 2 symbols done -> LAST two occurrences
+    # (4 and 5, in row B) convert first under the reversed order.
+    art = render_ascii_progress(MINI_TEMPLATE, reversed_order, 25, 60)
+    assert art == "/==\\\n/==++\\"
+
+
+def test_render_ascii_progress_returns_complete_art_verbatim_when_fully_filled():
+    art = render_ascii_progress(
+        MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 60, 60, complete_art="\\o/"
+    )
+    assert art == "\\o/"
+
+
+def test_render_ascii_progress_falls_back_to_filled_template_when_complete_art_none():
+    art = render_ascii_progress(
+        MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 60, 60, complete_art=None
+    )
+    assert art == "/++\\\n/++++\\"
+
+
+def test_render_ascii_progress_empty_template_returns_empty_string():
+    assert render_ascii_progress("", [], 100, 60) == ""
+
+
+def test_render_ascii_progress_template_with_no_equals_returns_unchanged():
+    template = "/****\\"
+    assert render_ascii_progress(template, [], 100, 60) == template
+
+
+def test_render_ascii_progress_leaves_non_fillable_characters_untouched():
+    art = render_ascii_progress(MINI_TEMPLATE, default_fill_order(MINI_TEMPLATE), 25, 60)
+    assert art.startswith("/")
+    assert "\n" in art
+
+
+# ── cursor_glyph ──────────────────────────────────────────────────────────
+
+
+def test_render_ascii_progress_shows_cursor_glyph_at_most_recent_symbol():
+    # target=60, total_symbols=6 -> 10 reps/symbol; 25 reps -> 2 symbols done,
+    # occurrences 0 and 1 (reading order). The most recent (occurrence 1)
+    # should show the glyph; occurrence 0 stays '+'.
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(MINI_TEMPLATE, order, 25, 60, cursor_glyph="🧗")
+    assert art == "/+🧗\\\n/====\\"
+
+
+def test_render_ascii_progress_no_cursor_glyph_shown_at_zero_reps():
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(MINI_TEMPLATE, order, 0, 60, cursor_glyph="🧗")
+    assert art == MINI_TEMPLATE
+
+
+def test_render_ascii_progress_cursor_glyph_none_is_unchanged_from_before():
+    order = default_fill_order(MINI_TEMPLATE)
+    with_none = render_ascii_progress(MINI_TEMPLATE, order, 25, 60, cursor_glyph=None)
+    without_arg = render_ascii_progress(MINI_TEMPLATE, order, 25, 60)
+    assert with_none == without_arg == "/++\\\n/====\\"
+
+
+def test_render_ascii_progress_cursor_glyph_not_shown_once_complete():
+    order = default_fill_order(MINI_TEMPLATE)
+    art = render_ascii_progress(
+        MINI_TEMPLATE, order, 60, 60, complete_art="\\o/", cursor_glyph="🧗"
+    )
+    assert art == "\\o/"
+
+
+def test_render_ascii_progress_cursor_glyph_moves_as_more_reps_come_in():
+    order = default_fill_order(MINI_TEMPLATE)
+    early = render_ascii_progress(MINI_TEMPLATE, order, 15, 60, cursor_glyph="🧗")
+    later = render_ascii_progress(MINI_TEMPLATE, order, 35, 60, cursor_glyph="🧗")
+    # 15 reps -> 1 symbol done (occurrence 0); 35 reps -> 3 symbols done
+    # (occurrences 0,1,2), cursor now on occurrence 2 (row B's first cell).
+    assert early == "/🧗=\\\n/====\\"
+    assert later == "/++\\\n/🧗===\\"
+
+
+# ── render_order_preview ─────────────────────────────────────────────────────
+
+
+def test_render_order_preview_labels_ranks_with_wraparound_mod_10():
+    # 12 fillable cells -> ranks 0..9, then wrap to 0,1
+    template = "=" * 12
+    order = list(range(12))
+    preview = render_order_preview(template, order)
+    assert preview == "012345678901"
+
+
+def test_render_order_preview_reflects_custom_fill_order():
+    preview = render_order_preview(MINI_TEMPLATE, list(reversed(default_fill_order(MINI_TEMPLATE))))
+    # occurrence 0 (first '=') now has rank 5, occurrence 5 (last '=') has rank 0
+    assert preview == "/54\\\n/3210\\"
