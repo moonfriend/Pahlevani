@@ -353,6 +353,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         track.media.src != null &&
         !track.media.src!.startsWith('/')) {
       _downloadRepo.cacheImage(track.media.src!);
+    } else if (track.media.type == 'video' &&
+        track.media.src != null &&
+        !track.media.src!.startsWith('/')) {
+      // Independent of the big "Download session" flow, which only tracks
+      // audio completeness (checkAllCachedAndMark) — a session already
+      // marked downloaded before this exercise had a video would otherwise
+      // never get a chance to fetch it. This lookahead runs on every
+      // playthrough regardless of that flag.
+      _downloadRepo.cacheVideo(track.media.src!);
     }
   }
 

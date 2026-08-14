@@ -64,18 +64,29 @@ class _FakeDownloadRepo implements DownloadRepository {
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
 
+  final List<String> cacheImageCalls = [];
+  final List<String> cacheVideoCalls = [];
+
   @override
   Future<String?> getLocalImagePath(String imageUrl) async =>
       localImagePathBuilder?.call(imageUrl);
   @override
   Future<String?> cacheAudio(ItemDetail item) async => null;
   @override
-  Future<String?> cacheImage(String url) async => null;
+  Future<String?> cacheImage(String url) async {
+    cacheImageCalls.add(url);
+    return null;
+  }
+
   @override
   Future<String?> getLocalVideoPath(String videoUrl) async =>
       localVideoPathBuilder?.call(videoUrl);
   @override
-  Future<String?> cacheVideo(String url) async => null;
+  Future<String?> cacheVideo(String url) async {
+    cacheVideoCalls.add(url);
+    return null;
+  }
+
   @override
   Future<bool> checkAllCachedAndMark(int sid, List<ItemDetail> items) async =>
       false;
@@ -1012,13 +1023,69 @@ void main() {
           media: photoMedia);
       final snap = _snapshotWithItems(session,
           [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
-      final cubit = _makeCubit(snap);
+      final downloadRepo = _FakeDownloadRepo();
+      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
 
-      // Should not throw when exercise has photo media
       await cubit.loadTracks();
 
       expect(cubit.state.tracks[0].media.type, 'photo');
+      expect(downloadRepo.cacheImageCalls,
+          contains('https://img.example.com/photo.jpg'));
+    });
+  });
+
+  // ---------- video caching path (lookahead, independent of the big
+  // "Download session" flow — covers an already-downloaded session that
+  // gains a video after the fact, since checkAllCachedAndMark only tracks
+  // audio) ----------
+
+  group('video caching', () {
+    test('caches video when track has video media not yet local', () async {
+      final session = _session(1);
+      const videoMedia = ExerciseMedia(
+        type: 'video',
+        src: 'https://cdn.example.com/clip.mp4',
+        poster: 'https://cdn.example.com/poster.jpg',
+      );
+      const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          repetitionsDefault: 1,
+          media: videoMedia);
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
+      final downloadRepo = _FakeDownloadRepo();
+      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(downloadRepo.cacheVideoCalls,
+          contains('https://cdn.example.com/clip.mp4'));
+    });
+
+    test('does not re-cache a video whose path is already local', () async {
+      final session = _session(1);
+      const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          repetitionsDefault: 1,
+          media: ExerciseMedia(
+              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
+      final downloadRepo = _FakeDownloadRepo()
+        ..localVideoPathBuilder = (_) => '/local/clip.mp4';
+      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.tracks[0].media.src, '/local/clip.mp4');
+      expect(downloadRepo.cacheVideoCalls, isEmpty);
     });
   });
 
