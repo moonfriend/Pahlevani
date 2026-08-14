@@ -39,6 +39,25 @@ def _secret(key: str) -> str:
     except Exception:
         return ""
 
+def _creds_file(key: str, filename: str = "r2") -> str:
+    """Simple KEY=value reader for gitignored files under the repo-root
+    creds/ folder — a lower-ceremony alternative to .streamlit/secrets.toml
+    for credentials that don't need Streamlit's TOML parsing."""
+    path = Path(__file__).parent.parent / "creds" / filename
+    if not path.exists():
+        return ""
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() == key:
+                return v.strip()
+    except Exception:
+        pass
+    return ""
+
 SUPABASE_URL = os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
 
@@ -52,18 +71,55 @@ MEDIA_BUCKET_PUBLIC = False
 SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
 
 # R2 — demonstration videos. Same account/bucket as the rest of the app's
-# media (photos/audio), which already live on R2 under their own flat
-# prefixes (Sirvan/, movement_images/); videos get their own: movement_videos/.
-R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID") or _secret("R2_ACCOUNT_ID") or "52a61783f2d01cd161e65ac58f130716"
-R2_BUCKET = os.getenv("R2_BUCKET") or _secret("R2_BUCKET") or "morshed-sounds"
-R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID") or _secret("R2_ACCESS_KEY_ID")
-R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY") or _secret("R2_SECRET_ACCESS_KEY")
+# media (photos/audio).
+#
+# Storage layout (new content only — see note below):
+#   audio/exercises/<id>-<slug>.<ext>   — exercise audio (NOT migrated yet;
+#                                          existing audio stays under the
+#                                          legacy Sirvan/ prefix for now)
+#   images/movements/<id>-<slug>.<ext>  — movement photos (NOT migrated yet;
+#                                          existing photos stay under the
+#                                          legacy movement_images/ prefix)
+#   images/posters/<id>-<slug>.jpg      — video poster frames (new)
+#   video/movements/<id>-<slug>.mp4     — movement demonstration videos (new)
+#
+# Top-level grouping is by media type (mirrors how cache-control/lifecycle
+# rules would realistically ever need to differ — e.g. images vs video —
+# and makes the bucket browsable by content kind). Second level is semantic
+# role. Filenames are "<movement id>-<slug>" rather than a bare slug so a
+# renamed movement never orphans its file, and so two similarly-named
+# movements can never collide.
+#
+# The two ORIGINAL flat prefixes (Sirvan/ for audio, movement_images/ for
+# photos) hold 66 files already live in production, referenced by real DB
+# rows — deliberately left untouched here. Migrating them to the new layout
+# is a separate, one-time, zero-urgency task if ever wanted; this app's
+# caching is fully URL-based (DJB2 hash of the full URL), so nothing in the
+# Flutter app cares what the path looks like either way.
+R2_ACCOUNT_ID = (
+    os.getenv("R2_ACCOUNT_ID") or _secret("R2_ACCOUNT_ID") or _creds_file("ACCOUNT_ID")
+    or "52a61783f2d01cd161e65ac58f130716"
+)
+R2_BUCKET = os.getenv("R2_BUCKET") or _secret("R2_BUCKET") or _creds_file("BUCKET") or "morshed-sounds"
+# Note: R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3-compatible API key
+# pair from R2 > Manage API Tokens — NOT a general Cloudflare account API
+# token (those are single bearer-token values and cannot be used for the
+# S3-compatible signature boto3 computes). Save both into creds/r2 as
+# ACCESS_KEY_ID=... / SECRET_ACCESS_KEY=... once created.
+R2_ACCESS_KEY_ID = (
+    os.getenv("R2_ACCESS_KEY_ID") or _secret("R2_ACCESS_KEY_ID") or _creds_file("ACCESS_KEY_ID")
+)
+R2_SECRET_ACCESS_KEY = (
+    os.getenv("R2_SECRET_ACCESS_KEY") or _secret("R2_SECRET_ACCESS_KEY")
+    or _creds_file("SECRET_ACCESS_KEY")
+)
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_PUBLIC_BASE = (
     os.getenv("R2_PUBLIC_BASE") or _secret("R2_PUBLIC_BASE")
     or "https://pub-d26e099daad243af8e9221f16223fb95.r2.dev"
 )
-R2_VIDEO_PREFIX = "movement_videos/"
+R2_VIDEO_PREFIX = "video/movements/"
+R2_VIDEO_POSTER_PREFIX = "images/posters/"
 
 # ── DB / Storage client ───────────────────────────────────────────────────────
 
@@ -1225,8 +1281,8 @@ def tab_video_upload():
 
         if st.button("✅ Confirm — upload to R2 & link to movement", type="primary", key="vid_confirm_btn"):
             slug = slugify(mov_row.get("name") or f"movement-{movement_id}")
-            video_key = f"{R2_VIDEO_PREFIX}{slug}.mp4"
-            poster_key = f"{R2_VIDEO_PREFIX}{slug}_poster.jpg"
+            video_key = f"{R2_VIDEO_PREFIX}{movement_id}-{slug}.mp4"
+            poster_key = f"{R2_VIDEO_POSTER_PREFIX}{movement_id}-{slug}.jpg"
             try:
                 with st.spinner("Uploading to R2…"):
                     video_url = upload_video_asset_to_r2(

@@ -75,6 +75,9 @@ supabase/dump/
 # Challenge bot — real Telegram token + Supabase service-role key (copy from .env.example)
 challenge_bot/.env
 
+# Raw credential files (e.g. R2 API tokens) — never commit
+creds/
+
 # Python virtual environment and version pin (used by scripts/)
 .venv/
 .python-version
