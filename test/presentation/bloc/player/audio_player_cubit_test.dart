@@ -61,14 +61,19 @@ class _FakeDownloadRepo implements DownloadRepository {
       false;
   @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  String? Function(String url)? localImagePathBuilder;
+  String? Function(String url)? localVideoPathBuilder;
+
   @override
-  Future<String?> getLocalImagePath(String imageUrl) async => null;
+  Future<String?> getLocalImagePath(String imageUrl) async =>
+      localImagePathBuilder?.call(imageUrl);
   @override
   Future<String?> cacheAudio(ItemDetail item) async => null;
   @override
   Future<String?> cacheImage(String url) async => null;
   @override
-  Future<String?> getLocalVideoPath(String videoUrl) async => null;
+  Future<String?> getLocalVideoPath(String videoUrl) async =>
+      localVideoPathBuilder?.call(videoUrl);
   @override
   Future<String?> cacheVideo(String url) async => null;
   @override
@@ -256,6 +261,90 @@ void main() {
 
       expect(cubit.state.tracks[0].title, ex1.name);
       expect(cubit.state.tracks[1].title, ex2.name);
+    });
+
+    group('media resolution', () {
+      test('photo resolves src to local path, preserving type', () async {
+        final session = _session(1);
+        const exercise = Exercise(
+          id: 10,
+          name: 'Photo Ex',
+          audioFileUrl: 'https://audio.mp3',
+          media: ExerciseMedia(
+              type: 'photo', src: 'https://cdn.example.com/photo.jpg'),
+        );
+        final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+        final snap = _snapshotWithItems(session, items, [exercise]);
+        final downloadRepo = _FakeDownloadRepo()
+          ..localImagePathBuilder = (_) => '/local/photo.jpg';
+        final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+        addTearDown(cubit.close);
+
+        await cubit.loadTracks();
+
+        final media = cubit.state.tracks[0].media;
+        expect(media.type, 'photo');
+        expect(media.src, '/local/photo.jpg');
+      });
+
+      test('video resolves src and poster to local paths, preserving type',
+          () async {
+        final session = _session(1);
+        const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          media: ExerciseMedia(
+            type: 'video',
+            src: 'https://cdn.example.com/clip.mp4',
+            poster: 'https://cdn.example.com/poster.jpg',
+          ),
+        );
+        final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+        final snap = _snapshotWithItems(session, items, [exercise]);
+        final downloadRepo = _FakeDownloadRepo();
+        downloadRepo.localVideoPathBuilder = (_) => '/local/clip.mp4';
+        downloadRepo.localImagePathBuilder = (_) => '/local/poster.jpg';
+        final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+        addTearDown(cubit.close);
+
+        await cubit.loadTracks();
+
+        final media = cubit.state.tracks[0].media;
+        expect(media.type, 'video');
+        expect(media.src, '/local/clip.mp4');
+        expect(media.poster, '/local/poster.jpg');
+      });
+
+      test(
+          'video not yet cached keeps the remote src (unplayable locally) '
+          'but still resolves a cached poster', () async {
+        final session = _session(1);
+        const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          media: ExerciseMedia(
+            type: 'video',
+            src: 'https://cdn.example.com/clip.mp4',
+            poster: 'https://cdn.example.com/poster.jpg',
+          ),
+        );
+        final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+        final snap = _snapshotWithItems(session, items, [exercise]);
+        final downloadRepo = _FakeDownloadRepo()
+          ..localImagePathBuilder = (_) => '/local/poster.jpg';
+        // localVideoPathBuilder left unset -> null -> not cached
+        final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+        addTearDown(cubit.close);
+
+        await cubit.loadTracks();
+
+        final media = cubit.state.tracks[0].media;
+        expect(media.type, 'video');
+        expect(media.src, 'https://cdn.example.com/clip.mp4');
+        expect(media.poster, '/local/poster.jpg');
+      });
     });
   });
 

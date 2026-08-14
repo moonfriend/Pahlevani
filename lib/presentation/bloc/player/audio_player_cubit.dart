@@ -202,14 +202,29 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final localAudio = await _downloadRepo.getLocalAudioPath(itemDetail);
         final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
 
-        String? localImage;
-        if (exercise.media.hasAsset) {
-          localImage =
+        var resolvedMedia = exercise.media;
+        if (exercise.media.type == 'photo' && exercise.media.hasAsset) {
+          final localImage =
               await _downloadRepo.getLocalImagePath(exercise.media.src!);
+          if (localImage != null) {
+            resolvedMedia = ExerciseMedia(type: 'photo', src: localImage);
+          }
+        } else if (exercise.media.type == 'video' && exercise.media.hasAsset) {
+          // Video only ever plays from the local cache (never streamed) — if
+          // it isn't cached yet, src stays the remote URL, which the player
+          // stage treats as "not playable" and falls back to the poster.
+          final localVideo =
+              await _downloadRepo.getLocalVideoPath(exercise.media.src!);
+          final posterUrl = exercise.media.poster;
+          final localPoster = (posterUrl != null && posterUrl.isNotEmpty)
+              ? await _downloadRepo.getLocalImagePath(posterUrl)
+              : null;
+          resolvedMedia = ExerciseMedia(
+            type: 'video',
+            src: localVideo ?? exercise.media.src,
+            poster: localPoster ?? posterUrl,
+          );
         }
-        final resolvedMedia = localImage != null
-            ? ExerciseMedia(type: 'photo', src: localImage)
-            : exercise.media;
 
         tracksToLoad.add(TrainingItemWithAudio(
           id: item.id.toString(),
