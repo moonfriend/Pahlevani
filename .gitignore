@@ -66,6 +66,9 @@ ios/Runner/GoogleService-Info.plist
 # Firebase local dev env (real keys for --dart-define-from-file)
 .firebase.env
 
+# Supabase staging env (real keys for --dart-define-from-file)
+.supabase.env
+
 # DB migration test — real Supabase credentials (copy from supabase/.db.env.example)
 supabase/.db.env
 
