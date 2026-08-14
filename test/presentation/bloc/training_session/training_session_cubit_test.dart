@@ -99,6 +99,12 @@ class _DownloadRepoWithStream implements DownloadRepository {
   Future<String?> cacheImage(String url) async => null;
 
   @override
+  Future<String?> getLocalVideoPath(String videoUrl) async => null;
+
+  @override
+  Future<String?> cacheVideo(String url) async => null;
+
+  @override
   Future<bool> checkAllCachedAndMark(
           int sessionId, List<ItemDetail> items) async =>
       false;
@@ -132,6 +138,12 @@ class _FakeDownloadRepository implements DownloadRepository {
 
   @override
   Future<String?> cacheImage(String url) async => null;
+
+  @override
+  Future<String?> getLocalVideoPath(String videoUrl) async => null;
+
+  @override
+  Future<String?> cacheVideo(String url) async => null;
 
   @override
   Future<bool> checkAllCachedAndMark(

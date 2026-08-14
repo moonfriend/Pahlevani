@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/repositories_impl/download_repository_impl.dart';
-import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart'
+    show Exercise, ExerciseMedia;
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
@@ -402,6 +403,83 @@ void main() {
     });
   });
 
+  // ── getLocalVideoPath ─────────────────────────────────────────────────────
+
+  group('getLocalVideoPath', () {
+    test('returns null when video file does not exist', () async {
+      expect(
+        await repo.getLocalVideoPath('https://example.com/clip.mp4'),
+        isNull,
+      );
+    });
+
+    test('returns null for an empty url', () async {
+      expect(await repo.getLocalVideoPath(''), isNull);
+    });
+
+    test('returns path when video file exists', () async {
+      const url = 'https://example.com/clip.mp4';
+      final vidFile = File('${tmpDir.path}/vid_${_urlHash(url)}.mp4')
+        ..createSync();
+
+      expect(await repo.getLocalVideoPath(url), vidFile.path);
+    });
+
+    test(
+        'returns null when datasource throws '
+        '(e.g. path_provider unavailable on web)', () async {
+      when(() => mockDs.getMediaCacheDirectoryPath())
+          .thenThrow(Exception('path_provider unavailable'));
+
+      expect(
+        await repo.getLocalVideoPath('https://example.com/clip.mp4'),
+        isNull,
+      );
+    });
+  });
+
+  // ── cacheVideo ────────────────────────────────────────────────────────────
+
+  group('cacheVideo', () {
+    test('downloads the video URL unchanged (no transform)', () async {
+      String? downloadedUrl;
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        downloadedUrl = inv.positionalArguments[0] as String;
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+
+      const url = 'https://cdn.example.com/clip.mp4';
+      await repo.cacheVideo(url);
+
+      expect(downloadedUrl, url);
+    });
+
+    test('returns cached path without re-downloading if file already exists',
+        () async {
+      const url = 'https://example.com/clip.mp4';
+      final path = '${tmpDir.path}/vid_${_urlHash(url)}.mp4';
+      File(path).createSync();
+
+      final result = await repo.cacheVideo(url);
+
+      expect(result, path);
+      verifyNever(() => mockDs.downloadFile(any(), any(), any()));
+    });
+
+    test('returns null when download throws', () async {
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenThrow(Exception('network error'));
+
+      expect(await repo.cacheVideo('https://example.com/clip.mp4'), isNull);
+    });
+
+    test('returns null for an empty url', () async {
+      expect(await repo.cacheVideo(''), isNull);
+    });
+  });
+
   // ── downloadTrainingSession ────────────────────────────────────────────────
 
   group('downloadTrainingSession', () {
@@ -489,6 +567,50 @@ void main() {
 
       expect(events.last, equals(1.0));
       verifyNever(() => mockDs.downloadFile(any(), any(), any()));
+    });
+
+    test('caches a video exercise\'s video and poster, best-effort', () async {
+      const videoExercise = Exercise(
+        id: 201,
+        name: 'Sarnavazi',
+        audioFileUrl: 'https://example.com/sarnavazi.mp3',
+        repetitionsDefault: 1,
+        media: ExerciseMedia(
+          type: 'video',
+          src: 'https://example.com/sarnavazi.mp4',
+          poster: 'https://example.com/sarnavazi_poster.jpg',
+        ),
+      );
+      const videoItem = TrainingItem(
+          id: 10005,
+          sessionId: 1,
+          exerciseId: 201,
+          position: 1,
+          prescription: RepsPresc(1));
+
+      final downloadedUrls = <String>[];
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        downloadedUrls.add(inv.positionalArguments[0] as String);
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+      when(() => mockDs.getDownloadedTrainingSessionIds())
+          .thenAnswer((_) async => []);
+      when(() => mockDs.saveDownloadedTrainingSessionIds(any()))
+          .thenAnswer((_) async {});
+
+      final session = SessionDetail(
+        session: testSession1,
+        items: [const ItemDetail(item: videoItem, exercise: videoExercise)],
+      );
+
+      final events = await repo.downloadTrainingSession(session).toList();
+
+      expect(events.last, equals(1.0));
+      expect(downloadedUrls, contains('https://example.com/sarnavazi.mp4'));
+      expect(
+          downloadedUrls, contains('https://example.com/sarnavazi_poster.jpg'));
     });
   });
 }
