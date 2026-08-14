@@ -41,22 +41,10 @@ uv run python main.py
 
 Long-polling — no webhook, no public HTTPS endpoint needed.
 
-### Deployment (systemd example)
+### Deployment
 
-```ini
-[Unit]
-Description=Challenge Bot (Telegram)
-After=network.target
-
-[Service]
-WorkingDirectory=/path/to/Pahlevani/challenge_bot
-EnvironmentFile=/path/to/Pahlevani/challenge_bot/.env
-ExecStart=/path/to/uv run python main.py
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
+See [`DEPLOY.md`](DEPLOY.md) for a full VPS walkthrough (deploy key, systemd service,
+updating, migration ordering).
 
 ## Commands
 
