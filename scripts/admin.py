@@ -1165,10 +1165,11 @@ def tab_movement_media():
 def tab_video_upload():
     st.header("Video Upload")
     st.caption(
-        "Upload a raw source clip, crop it to a portrait framing, and publish it as a "
-        "movement's demonstration video (stored on Cloudflare R2). Crop framing needs "
-        "eyeballing per clip — a wide plank pose needs more width than a standing "
-        "squat — use the preview before committing to the full encode."
+        "Upload a raw source clip and publish it as a movement's demonstration video "
+        "(stored on Cloudflare R2), scaled down to a smaller size. Defaults to the "
+        "source's original framing (no crop) — like watching a normal video, not a "
+        "portrait reel. Narrow the crop width below only if a specific clip needs it "
+        "(e.g. to trim empty space beside the subject); preview before committing."
     )
 
     movements = load_movements()
@@ -1213,8 +1214,8 @@ def tab_video_upload():
     src_w, src_h, src_duration = info["width"], info["height"], info["duration"]
     st.caption(f"Source: {src_w}×{src_h}, {src_duration:.1f}s")
 
-    st.subheader("Crop")
-    default_crop_w = min(round(src_h * 9 / 16), src_w)
+    st.subheader("Crop (optional)")
+    default_crop_w = src_w  # full width by default — preserve the source's own aspect ratio
     col1, col2, col3 = st.columns(3)
     crop_w = col1.number_input(
         "Crop width (px)", min_value=100, max_value=src_w, value=default_crop_w, step=10, key="vid_crop_w"
@@ -1246,7 +1247,7 @@ def tab_video_upload():
         key="vid_trim_end",
     )
     target_height = col6.number_input(
-        "Output height (px)", min_value=240, max_value=1920, value=960, step=60, key="vid_target_h"
+        "Output height (px)", min_value=240, max_value=1920, value=720, step=60, key="vid_target_h"
     )
     strip_audio = st.checkbox("Strip audio", value=True, key="vid_strip_audio")
 
