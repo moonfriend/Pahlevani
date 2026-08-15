@@ -410,6 +410,18 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   late final VideoPlayerController _controller;
   bool _ready = false;
 
+  // True from the moment initialize() succeeds until the computed sync plan
+  // (seek or delay) has been fully applied. _Stage rebuilds far more often
+  // than once — every ~200ms audio tick — and didUpdateWidget reacts to
+  // each one by auto-playing whenever isPlaying=true but the controller
+  // isn't yet playing. Without this guard, a rebuild landing during the
+  // sync window (which _ready alone doesn't prevent, since it becomes true
+  // immediately on initialize(), before the plan is even computed) races
+  // straight past a pending seek or delay and starts playback from
+  // position 0 immediately — confirmed live: a real negative offset that
+  // should have delayed play() by ~1.3s instead started right away.
+  bool _syncPending = true;
+
   @override
   void initState() {
     super.initState();
@@ -438,10 +450,13 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
         }
         if (plan.delayMs != null) {
           unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
-            if (mounted && widget.isPlaying) _controller.play();
+            if (!mounted) return;
+            _syncPending = false;
+            if (widget.isPlaying) unawaited(_controller.play());
           }));
           return;
         }
+        _syncPending = false;
         if (widget.isPlaying) unawaited(_controller.play());
       }).catchError((_) {
         // Corrupt/unreadable local file — fail silently, same as a broken
@@ -452,7 +467,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_ready) return;
+    if (!_ready || _syncPending) return;
     if (widget.isPlaying && !_controller.value.isPlaying) {
       _controller.play();
     } else if (!widget.isPlaying && _controller.value.isPlaying) {
