@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -216,13 +217,17 @@ class _Stage extends StatelessWidget {
         track.media.type == 'photo' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty;
-    // Video only ever plays from the local cache (never streamed) — the
-    // cubit already resolves media.src to a local path when cached, leaving
-    // the remote URL otherwise, so a leading '/' is exactly "ready to play".
+    // Non-web: video only ever plays from the local cache (never streamed) —
+    // the cubit already resolves media.src to a local path when cached,
+    // leaving the remote URL otherwise, so a leading '/' is exactly "ready
+    // to play". Web has no local filesystem to cache into (DownloadRepository
+    // no-ops there), so media.src is always the remote R2 URL there, and any
+    // non-empty value is ready — the player streams it directly.
     final hasVideo = track != null &&
         track.media.type == 'video' &&
         track.media.src != null &&
-        track.media.src!.startsWith('/');
+        track.media.src!.isNotEmpty &&
+        (kIsWeb || track.media.src!.startsWith('/'));
     // Not-yet-cached video (or any video, as a first-frame placeholder)
     // falls back to its poster image, same rendering path as a photo.
     final hasVideoPoster = track != null &&
@@ -376,7 +381,14 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.path));
+    // dart:io's File doesn't exist on web — video_player_web only supports
+    // networkUrl()/asset(). widget.path is the remote R2 URL there (the
+    // cubit never resolves a local cache path on web), so this streams
+    // directly rather than downloading first, matching normal browser
+    // video behavior.
+    _controller = kIsWeb
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.path))
+        : VideoPlayerController.file(File(widget.path));
     _controller
       ..setLooping(true)
       ..setVolume(0)
