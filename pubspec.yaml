@@ -51,6 +51,8 @@ dependencies:
   logger: ^2.4.0
   package_info_plus: ^8.0.0 # reads the real installed build number, for the version gate
   url_launcher: ^6.3.1      # "Update" button on the version-gate screen (was transitive-only)
+  video_player: ^2.9.2      # exercise demonstration videos (local-file playback only)
+  fvp: ^0.38.0               # video_player has no Linux/Windows desktop backend of its own
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

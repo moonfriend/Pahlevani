@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:video_player/video_player.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
@@ -214,6 +217,25 @@ class _Stage extends StatelessWidget {
         track.media.type == 'photo' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty;
+    // Non-web: video only ever plays from the local cache (never streamed) —
+    // the cubit already resolves media.src to a local path when cached,
+    // leaving the remote URL otherwise, so a leading '/' is exactly "ready
+    // to play". Web has no local filesystem to cache into (DownloadRepository
+    // no-ops there), so media.src is always the remote R2 URL there, and any
+    // non-empty value is ready — the player streams it directly.
+    final hasVideo = track != null &&
+        track.media.type == 'video' &&
+        track.media.src != null &&
+        track.media.src!.isNotEmpty &&
+        (kIsWeb || track.media.src!.startsWith('/'));
+    // Not-yet-cached video (or any video, as a first-frame placeholder)
+    // falls back to its poster image, same rendering path as a photo.
+    final hasVideoPoster = track != null &&
+        track.media.type == 'video' &&
+        !hasVideo &&
+        track.media.poster != null &&
+        track.media.poster!.isNotEmpty;
+    final hasVisual = hasPhoto || hasVideo || hasVideoPoster;
 
     Widget buildImage(String src) {
       // fitHeight: image always fills the stage height; on wide containers
@@ -247,9 +269,20 @@ class _Stage extends StatelessWidget {
           Positioned.fill(
               child: PersianPattern(
                   color: accent.fg, opacity: 0.5, tileSize: 110)),
-          if (hasPhoto) Positioned.fill(child: buildImage(track.media.src!)),
-          // Dark gradient at bottom so text stays legible over photos
-          if (hasPhoto)
+          if (hasVideo)
+            Positioned.fill(
+              child: _ExerciseVideo(
+                key: ValueKey(track.media.src),
+                path: track.media.src!,
+                isPlaying: state.isPlaying,
+              ),
+            )
+          else if (hasPhoto || hasVideoPoster)
+            Positioned.fill(
+                child: buildImage(
+                    (hasPhoto ? track.media.src : track.media.poster)!)),
+          // Dark gradient at bottom so text stays legible over photos/video
+          if (hasVisual)
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -273,7 +306,7 @@ class _Stage extends StatelessWidget {
             child: Text(state.currentTrack?.title ?? '',
                 style: PTextStyles.of(context)
                     .playerExLatin
-                    .copyWith(color: hasPhoto ? Colors.white : cs.onSurface),
+                    .copyWith(color: hasVisual ? Colors.white : cs.onSurface),
                 maxLines: 2),
           ),
           // Paused overlay
@@ -320,6 +353,86 @@ class _Stage extends StatelessWidget {
               ),
             ),
         ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exercise demonstration video — muted, looping, local-file only. Play/pause
+// follows the audio cubit's isPlaying (the audio guidance drives the actual
+// timeline; this is a silent visual companion, not an independently
+// controlled player), so it never exposes its own transport controls.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ExerciseVideo extends StatefulWidget {
+  const _ExerciseVideo(
+      {super.key, required this.path, required this.isPlaying});
+  final String path;
+  final bool isPlaying;
+
+  @override
+  State<_ExerciseVideo> createState() => _ExerciseVideoState();
+}
+
+class _ExerciseVideoState extends State<_ExerciseVideo> {
+  late final VideoPlayerController _controller;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // dart:io's File doesn't exist on web — video_player_web only supports
+    // networkUrl()/asset(). widget.path is the remote R2 URL there (the
+    // cubit never resolves a local cache path on web), so this streams
+    // directly rather than downloading first, matching normal browser
+    // video behavior.
+    _controller = kIsWeb
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.path))
+        : VideoPlayerController.file(File(widget.path));
+    _controller
+      ..setLooping(true)
+      ..setVolume(0)
+      ..initialize().then((_) {
+        if (!mounted) return;
+        setState(() => _ready = true);
+        if (widget.isPlaying) _controller.play();
+      }).catchError((_) {
+        // Corrupt/unreadable local file — fail silently, same as a broken
+        // image falls back to errorBuilder rather than crashing the stage.
+      });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_ready) return;
+    if (widget.isPlaying && !_controller.value.isPlaying) {
+      _controller.play();
+    } else if (!widget.isPlaying && _controller.value.isPlaying) {
+      _controller.pause();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready || !_controller.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+    // Same fitHeight strategy as photos: fills the stage height, centered,
+    // leaving transparent sides where the Persian pattern shows through.
+    final size = _controller.value.size;
+    return FittedBox(
+      fit: BoxFit.fitHeight,
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: VideoPlayer(_controller),
       ),
     );
   }

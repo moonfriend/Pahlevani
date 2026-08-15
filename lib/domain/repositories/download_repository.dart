@@ -40,6 +40,16 @@ abstract class DownloadRepository {
   /// exercise.
   Future<String?> cacheImage(String url);
 
+  /// Local video path for [videoUrl] if the file exists in the shared media
+  /// cache. Videos only ever play from this local cache — never streamed
+  /// over network — so callers should treat a null result as "not ready
+  /// yet" rather than falling back to the remote URL.
+  Future<String?> getLocalVideoPath(String videoUrl);
+
+  /// Download a single video and return its local path. No-op if already
+  /// cached.
+  Future<String?> cacheVideo(String url);
+
   /// Returns true if every exercise audio in [items] is cached locally.
   /// If all are cached, also marks the session as downloaded in persistent storage
   /// so the badge appears on the sessions list without requiring an explicit download.

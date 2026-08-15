@@ -57,16 +57,17 @@ class DownloadRepositoryImpl implements DownloadRepository {
         return;
       }
 
-      final imageItems = session.items
+      final mediaItems = session.items
           .where((i) =>
-              i.exercise.media.type == 'photo' &&
+              (i.exercise.media.type == 'photo' ||
+                  i.exercise.media.type == 'video') &&
               (i.exercise.media.src ?? '').isNotEmpty)
           .toList();
 
-      // Total work units: each audio file + each image file.
-      // Audio occupies units 0..audioCount-1; images occupy audioCount..total-1.
+      // Total work units: each audio file + each photo/video file.
+      // Audio occupies units 0..audioCount-1; media occupy audioCount..total-1.
       final audioCount = validItems.length;
-      final totalWork = audioCount + imageItems.length;
+      final totalWork = audioCount + mediaItems.length;
       int done = 0;
       controller.add(0.0);
 
@@ -117,9 +118,17 @@ class DownloadRepositoryImpl implements DownloadRepository {
         return;
       }
 
-      // Image downloads — non-fatal: a failed image never rolls back audio status.
-      for (final item in imageItems) {
-        await cacheImage(item.exercise.media.src!);
+      // Photo/video downloads — non-fatal: a failed one never rolls back audio status.
+      for (final item in mediaItems) {
+        if (item.exercise.media.type == 'video') {
+          await cacheVideo(item.exercise.media.src!);
+          final poster = item.exercise.media.poster;
+          if (poster != null && poster.isNotEmpty) {
+            await cacheImage(poster);
+          }
+        } else {
+          await cacheImage(item.exercise.media.src!);
+        }
         done++;
         controller.add((done / totalWork).clamp(0.0, 1.0));
       }
@@ -228,6 +237,45 @@ class DownloadRepositoryImpl implements DownloadRepository {
   Future<String> resolvePlayableAudioPath(ItemDetail item) async {
     final cached = await cacheAudio(item);
     return cached ?? item.exercise.audioFileUrl ?? '';
+  }
+
+  @override
+  Future<String?> getLocalVideoPath(String videoUrl) async {
+    if (videoUrl.isEmpty) return null;
+    try {
+      final dir = await localDataSource.getMediaCacheDirectoryPath();
+      final path = '$dir/vid_${_urlHash(videoUrl)}.mp4';
+      return await File(path).exists().then((e) => e ? path : null);
+    } catch (_) {
+      // e.g. path_provider unavailable (Flutter Web has no local filesystem).
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> cacheVideo(String url) async {
+    if (url.isEmpty) return null;
+    try {
+      final dir = await localDataSource.getMediaCacheDirectoryPath();
+      await Directory(dir).create(recursive: true);
+      // Hash keyed on original URL so getLocalVideoPath lookup stays stable.
+      final path = '$dir/vid_${_urlHash(url)}.mp4';
+      if (_inFlight.contains(path)) return null;
+      _inFlight.add(path);
+      try {
+        if (await File(path).exists()) return path;
+        // No transform API for R2 (unlike Supabase image transforms) — the
+        // admin upload tool already compresses to delivery size, so the
+        // stored URL is downloaded as-is.
+        await localDataSource.downloadFile(url, path, (_, __) {});
+        return path;
+      } finally {
+        _inFlight.remove(path);
+      }
+    } catch (e, st) {
+      AppLogger.w('cacheVideo failed for url=$url', error: e, stackTrace: st);
+      return null;
+    }
   }
 
   @override

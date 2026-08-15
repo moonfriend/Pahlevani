@@ -16,14 +16,18 @@ Storage:
 """
 
 import io
+import json
 import os
 import re
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
 
+import boto3
 import pandas as pd
 import streamlit as st
+from botocore.config import Config as BotoConfig
 from mutagen.mp3 import MP3
 from supabase import create_client, Client
 
@@ -34,6 +38,25 @@ def _secret(key: str) -> str:
         return st.secrets[key]
     except Exception:
         return ""
+
+def _creds_file(key: str, filename: str = "r2") -> str:
+    """Simple KEY=value reader for gitignored files under the repo-root
+    creds/ folder — a lower-ceremony alternative to .streamlit/secrets.toml
+    for credentials that don't need Streamlit's TOML parsing."""
+    path = Path(__file__).parent.parent / "creds" / filename
+    if not path.exists():
+        return ""
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() == key:
+                return v.strip()
+    except Exception:
+        pass
+    return ""
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
@@ -47,6 +70,57 @@ BUCKET_PUBLIC = False
 MEDIA_BUCKET_PUBLIC = False
 SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
 
+# R2 — demonstration videos. Same account/bucket as the rest of the app's
+# media (photos/audio).
+#
+# Storage layout (new content only — see note below):
+#   audio/exercises/<id>-<slug>.<ext>   — exercise audio (NOT migrated yet;
+#                                          existing audio stays under the
+#                                          legacy Sirvan/ prefix for now)
+#   images/movements/<id>-<slug>.<ext>  — movement photos (NOT migrated yet;
+#                                          existing photos stay under the
+#                                          legacy movement_images/ prefix)
+#   images/posters/<id>-<slug>.jpg      — video poster frames (new)
+#   video/movements/<id>-<slug>.mp4     — movement demonstration videos (new)
+#
+# Top-level grouping is by media type (mirrors how cache-control/lifecycle
+# rules would realistically ever need to differ — e.g. images vs video —
+# and makes the bucket browsable by content kind). Second level is semantic
+# role. Filenames are "<movement id>-<slug>" rather than a bare slug so a
+# renamed movement never orphans its file, and so two similarly-named
+# movements can never collide.
+#
+# The two ORIGINAL flat prefixes (Sirvan/ for audio, movement_images/ for
+# photos) hold 66 files already live in production, referenced by real DB
+# rows — deliberately left untouched here. Migrating them to the new layout
+# is a separate, one-time, zero-urgency task if ever wanted; this app's
+# caching is fully URL-based (DJB2 hash of the full URL), so nothing in the
+# Flutter app cares what the path looks like either way.
+R2_ACCOUNT_ID = (
+    os.getenv("R2_ACCOUNT_ID") or _secret("R2_ACCOUNT_ID") or _creds_file("ACCOUNT_ID")
+    or "52a61783f2d01cd161e65ac58f130716"
+)
+R2_BUCKET = os.getenv("R2_BUCKET") or _secret("R2_BUCKET") or _creds_file("BUCKET") or "morshed-sounds"
+# Note: R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3-compatible API key
+# pair from R2 > Manage API Tokens — NOT a general Cloudflare account API
+# token (those are single bearer-token values and cannot be used for the
+# S3-compatible signature boto3 computes). Save both into creds/r2 as
+# ACCESS_KEY_ID=... / SECRET_ACCESS_KEY=... once created.
+R2_ACCESS_KEY_ID = (
+    os.getenv("R2_ACCESS_KEY_ID") or _secret("R2_ACCESS_KEY_ID") or _creds_file("ACCESS_KEY_ID")
+)
+R2_SECRET_ACCESS_KEY = (
+    os.getenv("R2_SECRET_ACCESS_KEY") or _secret("R2_SECRET_ACCESS_KEY")
+    or _creds_file("SECRET_ACCESS_KEY")
+)
+R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+R2_PUBLIC_BASE = (
+    os.getenv("R2_PUBLIC_BASE") or _secret("R2_PUBLIC_BASE")
+    or "https://pub-d26e099daad243af8e9221f16223fb95.r2.dev"
+)
+R2_VIDEO_PREFIX = "video/movements/"
+R2_VIDEO_POSTER_PREFIX = "images/posters/"
+
 # ── DB / Storage client ───────────────────────────────────────────────────────
 
 @st.cache_resource
@@ -59,6 +133,25 @@ def get_client() -> Client:
         )
         st.stop()
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+@st.cache_resource
+def get_r2_client():
+    if not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
+        st.error(
+            "R2 credentials not configured. Add R2_ACCESS_KEY_ID and "
+            "R2_SECRET_ACCESS_KEY to scripts/.streamlit/secrets.toml "
+            "(Cloudflare Dashboard → R2 → Manage API Tokens → Object Read & "
+            "Write, scoped to the 'morshed-sounds' bucket)."
+        )
+        st.stop()
+    return boto3.client(
+        "s3",
+        endpoint_url=R2_ENDPOINT,
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name="auto",
+    )
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
@@ -129,6 +222,87 @@ def make_media_url(storage_path: str) -> str:
         storage_path, SIGNED_URL_EXPIRY
     )
     return r.get("signedURL") or r.get("signed_url") or ""
+
+# ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
+# Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
+# mobile delivery as-is. The crop needs eyeballing per clip — a wide plank
+# pose needs more width than a standing squat — hence the preview step below
+# rather than baking in one fixed crop ratio.
+
+def probe_video(path: str) -> dict:
+    """Return {width, height, duration} via ffprobe, or {} on failure."""
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return {}
+        data = json.loads(result.stdout)
+        video_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
+        if not video_stream:
+            return {}
+        return {
+            "width": int(video_stream.get("width", 0)),
+            "height": int(video_stream.get("height", 0)),
+            "duration": float(data.get("format", {}).get("duration", 0)),
+        }
+    except (subprocess.TimeoutExpired, KeyError, json.JSONDecodeError, ValueError):
+        return {}
+
+def extract_preview_frame(src_path: str, crop_w: int, crop_h: int, crop_x: int, crop_y: int, timestamp: float) -> bytes | None:
+    """Extract one cropped preview frame as JPEG bytes, for eyeballing before a full encode."""
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        out_path = tmp.name
+    cmd = [
+        "ffmpeg", "-y", "-ss", str(timestamp), "-i", src_path,
+        "-frames:v", "1", "-update", "1",
+        "-vf", f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}",
+        out_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            return None
+        return Path(out_path).read_bytes()
+    except subprocess.TimeoutExpired:
+        return None
+    finally:
+        Path(out_path).unlink(missing_ok=True)
+
+def encode_video(
+    src_path: str, out_path: str, crop_w: int, crop_h: int, crop_x: int, crop_y: int,
+    target_height: int, trim_start: float, trim_duration: float | None, strip_audio: bool,
+) -> bool:
+    scale_w = max(round((crop_w / crop_h) * target_height / 2) * 2, 2)  # even width, h264-friendly
+    vf = f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},scale={scale_w}:{target_height}"
+    cmd = ["ffmpeg", "-y"]
+    if trim_start:
+        cmd += ["-ss", str(trim_start)]
+    cmd += ["-i", src_path]
+    if trim_duration:
+        cmd += ["-t", str(trim_duration)]
+    cmd += [
+        "-vf", vf,
+        "-c:v", "libx264", "-crf", "24", "-preset", "medium",
+        "-maxrate", "2M", "-bufsize", "4M",
+        "-movflags", "+faststart",
+    ]
+    if strip_audio:
+        cmd += ["-an"]
+    cmd += [out_path]
+    result = subprocess.run(cmd, capture_output=True, timeout=600)
+    return result.returncode == 0
+
+def extract_poster(video_path: str, out_path: str, timestamp: float = 1.0) -> bool:
+    cmd = ["ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
+           "-frames:v", "1", "-update", "1", "-q:v", "3", out_path]
+    result = subprocess.run(cmd, capture_output=True, timeout=30)
+    return result.returncode == 0
+
+def upload_video_asset_to_r2(local_path: str, r2_key: str, content_type: str) -> str:
+    get_r2_client().upload_file(
+        local_path, R2_BUCKET, r2_key, ExtraArgs={"ContentType": content_type}
+    )
+    return f"{R2_PUBLIC_BASE}/{r2_key}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -985,6 +1159,167 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Video Upload
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_video_upload():
+    st.header("Video Upload")
+    st.caption(
+        "Upload a raw source clip and publish it as a movement's demonstration video "
+        "(stored on Cloudflare R2), scaled down to a smaller size. Defaults to the "
+        "source's original framing (no crop) — like watching a normal video, not a "
+        "portrait reel. Narrow the crop width below only if a specific clip needs it "
+        "(e.g. to trim empty space beside the subject); preview before committing."
+    )
+
+    movements = load_movements()
+    if movements.empty:
+        st.info("No movements found. Run the DB migration first.")
+        return
+
+    mov_opts = {
+        f"{r.get('name', '?')}  (id {mid})": mid
+        for mid, r in movements.set_index("id").iterrows()
+    }
+    chosen_label = st.selectbox("Movement", list(mov_opts.keys()), key="vid_mov_sel")
+    movement_id = mov_opts[chosen_label]
+    mov_row = movements[movements["id"] == movement_id].iloc[0]
+
+    if (mov_row.get("media_type") or "none") == "video" and mov_row.get("media_src"):
+        st.caption("Current video:")
+        try:
+            st.video(mov_row["media_src"])
+        except Exception:
+            st.caption(f"Video URL: {mov_row['media_src']}")
+
+    uploaded = st.file_uploader(
+        "Source video (raw clip, any resolution)", type=["mp4", "mov", "mkv"], key="vid_uploader"
+    )
+    if not uploaded:
+        return
+
+    # ffmpeg needs a real file on disk — persist the upload to a stable temp path.
+    tmp_dir = Path(tempfile.gettempdir()) / "pahlevani_admin_video"
+    tmp_dir.mkdir(exist_ok=True)
+    src_path = tmp_dir / f"src_{movement_id}_{uploaded.name}"
+    if not src_path.exists() or st.session_state.get("vid_src_name") != uploaded.name:
+        src_path.write_bytes(uploaded.getvalue())
+        st.session_state["vid_src_name"] = uploaded.name
+        st.session_state.pop("vid_encoded_path", None)  # new source invalidates any prior encode
+
+    info = probe_video(str(src_path))
+    if not info:
+        st.error("Could not read this video (ffprobe failed). Is ffmpeg installed and the file valid?")
+        return
+    src_w, src_h, src_duration = info["width"], info["height"], info["duration"]
+    st.caption(f"Source: {src_w}×{src_h}, {src_duration:.1f}s")
+
+    st.subheader("Crop (optional)")
+    default_crop_w = src_w  # full width by default — preserve the source's own aspect ratio
+    col1, col2, col3 = st.columns(3)
+    crop_w = col1.number_input(
+        "Crop width (px)", min_value=100, max_value=src_w, value=default_crop_w, step=10, key="vid_crop_w"
+    )
+    crop_x = col2.number_input(
+        "Crop x-offset (px)", min_value=0, max_value=max(src_w - crop_w, 0),
+        value=min(max((src_w - crop_w) // 2, 0), max(src_w - crop_w, 0)), step=10, key="vid_crop_x",
+    )
+    preview_t = col3.number_input(
+        "Preview timestamp (s)", min_value=0.0, max_value=max(src_duration - 0.1, 0.0),
+        value=min(5.0, max(src_duration - 0.1, 0.0)), step=1.0, key="vid_preview_t",
+    )
+    crop_h = src_h  # full source height — every crop used so far keeps full height
+
+    if st.button("🔍 Preview crop", key="vid_preview_btn"):
+        frame = extract_preview_frame(str(src_path), int(crop_w), int(crop_h), int(crop_x), 0, preview_t)
+        if frame:
+            st.image(frame, caption=f"Preview @ {preview_t}s — {int(crop_w)}×{int(crop_h)}", width=300)
+        else:
+            st.error("Preview extraction failed.")
+
+    st.subheader("Trim & output")
+    col4, col5, col6 = st.columns(3)
+    trim_start = col4.number_input(
+        "Trim start (s)", min_value=0.0, max_value=src_duration, value=0.0, step=1.0, key="vid_trim_start"
+    )
+    trim_end = col5.number_input(
+        "Trim end (s, 0 = full length)", min_value=0.0, max_value=src_duration, value=0.0, step=1.0,
+        key="vid_trim_end",
+    )
+    target_height = col6.number_input(
+        "Output height (px)", min_value=240, max_value=1920, value=720, step=60, key="vid_target_h"
+    )
+    strip_audio = st.checkbox("Strip audio", value=True, key="vid_strip_audio")
+
+    if st.button("🚀 Process", type="primary", key="vid_process_btn"):
+        trim_duration = (trim_end - trim_start) if trim_end > trim_start else None
+        out_path = tmp_dir / f"out_{movement_id}.mp4"
+        poster_path = tmp_dir / f"poster_{movement_id}.jpg"
+        with st.spinner("Encoding…"):
+            ok = encode_video(
+                str(src_path), str(out_path), int(crop_w), int(crop_h), int(crop_x), 0,
+                int(target_height), trim_start, trim_duration, strip_audio,
+            )
+        if not ok:
+            st.error("ffmpeg encode failed.")
+        else:
+            out_info = probe_video(str(out_path))
+            with st.spinner("Extracting poster…"):
+                extract_poster(str(out_path), str(poster_path))
+            st.session_state["vid_encoded_path"] = str(out_path)
+            st.session_state["vid_poster_path"] = str(poster_path)
+            st.session_state["vid_out_info"] = out_info
+            st.session_state["vid_file_size"] = out_path.stat().st_size
+
+    if st.session_state.get("vid_encoded_path"):
+        out_info = st.session_state["vid_out_info"]
+        file_size = st.session_state["vid_file_size"]
+        st.success(
+            f"Encoded: {out_info.get('width')}×{out_info.get('height')}, "
+            f"{out_info.get('duration', 0):.1f}s, {file_size / 1_000_000:.1f}MB"
+        )
+        st.video(st.session_state["vid_encoded_path"])
+
+        if st.button("✅ Confirm — upload to R2 & link to movement", type="primary", key="vid_confirm_btn"):
+            slug = slugify(mov_row.get("name") or f"movement-{movement_id}")
+            video_key = f"{R2_VIDEO_PREFIX}{movement_id}-{slug}.mp4"
+            poster_key = f"{R2_VIDEO_POSTER_PREFIX}{movement_id}-{slug}.jpg"
+            try:
+                with st.spinner("Uploading to R2…"):
+                    video_url = upload_video_asset_to_r2(
+                        st.session_state["vid_encoded_path"], video_key, "video/mp4"
+                    )
+                    poster_url = upload_video_asset_to_r2(
+                        st.session_state["vid_poster_path"], poster_key, "image/jpeg"
+                    )
+
+                    video_row = get_client().table("video").insert({
+                        "url": video_url,
+                        "poster_url": poster_url,
+                        "width": out_info.get("width"),
+                        "height": out_info.get("height"),
+                        "duration_seconds": out_info.get("duration"),
+                        "file_size_bytes": file_size,
+                        "format": "h264/mp4",
+                    }).execute().data[0]
+
+                    get_client().table("movement").update({
+                        "media_type": "video",
+                        "media_src": video_url,
+                        "media_poster": poster_url,
+                        "video_id": video_row["id"],
+                    }).eq("id", movement_id).execute()
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
+            else:
+                st.success(f"✅ Video uploaded and linked to **{mov_row.get('name')}**.")
+                for key in ("vid_encoded_path", "vid_poster_path", "vid_out_info", "vid_file_size"):
+                    st.session_state.pop(key, None)
+                load_movements.clear()
+                st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Tab: Release Gate
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1082,13 +1417,14 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
         "🏗️  Session Builder",
         "🔍  Inspector",
         "📸  Movement Media",
+        "🎬  Video Upload",
         "🚦  Release Gate",
     ])
     with t1: tab_exercises()
@@ -1097,7 +1433,8 @@ def main():
     with t4: tab_session_builder()
     with t5: tab_inspector()
     with t6: tab_movement_media()
-    with t7: tab_release_gate()
+    with t7: tab_video_upload()
+    with t8: tab_release_gate()
 
 
 if __name__ == "__main__":
