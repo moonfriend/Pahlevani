@@ -446,6 +446,32 @@ def tab_exercises():
     st.caption(f"Farsi titles: **{filled} / {len(df)}**")
     st.progress(filled / len(df) if len(df) else 0)
 
+    st.divider()
+    st.subheader('Audio anchor — "sarzarb"/main beat sync')
+    st.caption(
+        "Sets the beat moment (e.g. the bottom of a push-up) used to sync "
+        "this exercise's audio to its movement's video demonstration, if one "
+        "exists. Listen to the clip below, scrub to the moment, then enter "
+        "its timestamp."
+    )
+    ex_opts = {f"{exercise_label(r)}  (id {r['id']})": r["id"] for _, r in df.iterrows()}
+    if ex_opts:
+        chosen_ex = st.selectbox("Exercise", list(ex_opts.keys()), key="anchor_ex_sel")
+        ex_id = ex_opts[chosen_ex]
+        ex_row = df[df["id"] == ex_id].iloc[0]
+        if ex_row.get("url"):
+            st.audio(ex_row["url"])
+        current_ms = ex_row.get("audio_anchor_ms")
+        current_s = float(current_ms) / 1000 if pd.notna(current_ms) else 0.0
+        anchor_s = st.number_input(
+            "Audio anchor (s)", min_value=0.0, value=current_s, step=0.1,
+            key="audio_anchor_s",
+        )
+        if st.button("💾 Save anchor", key="sv_audio_anchor"):
+            save_rows("exercise", [{"id": int(ex_id), "audio_anchor_ms": round(anchor_s * 1000)}])
+            st.success("Anchor saved.")
+            bust_cache()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Sessions
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1191,6 +1217,9 @@ def tab_video_upload():
             st.video(mov_row["media_src"])
         except Exception:
             st.caption(f"Video URL: {mov_row['media_src']}")
+        current_anchor = mov_row.get("video_anchor_ms")
+        if pd.notna(current_anchor):
+            st.caption(f"Current anchor: {float(current_anchor) / 1000:.1f}s")
 
     uploaded = st.file_uploader(
         "Source video (raw clip, any resolution)", type=["mp4", "mov", "mkv"], key="vid_uploader"
@@ -1280,11 +1309,21 @@ def tab_video_upload():
         )
         st.video(st.session_state["vid_encoded_path"])
 
+        anchor_s = st.number_input(
+            "Video anchor — \"sarzarb\"/main beat (s)",
+            min_value=0.0, max_value=float(out_info.get("duration") or 999.0),
+            value=0.0, step=0.1, key="vid_anchor_s",
+            help="Scrub the preview above to the beat moment (e.g. the bottom "
+                 "of a push-up), then enter its timestamp. Used to sync this "
+                 "video to the exercise's audio narration.",
+        )
+
         if st.button("✅ Confirm — upload to R2 & link to movement", type="primary", key="vid_confirm_btn"):
             slug = slugify(mov_row.get("name") or f"movement-{movement_id}")
             video_key = f"{R2_VIDEO_PREFIX}{movement_id}-{slug}.mp4"
             poster_key = f"{R2_VIDEO_POSTER_PREFIX}{movement_id}-{slug}.jpg"
             try:
+                video_anchor_ms = round(anchor_s * 1000)
                 with st.spinner("Uploading to R2…"):
                     video_url = upload_video_asset_to_r2(
                         st.session_state["vid_encoded_path"], video_key, "video/mp4"
@@ -1301,6 +1340,7 @@ def tab_video_upload():
                         "duration_seconds": out_info.get("duration"),
                         "file_size_bytes": file_size,
                         "format": "h264/mp4",
+                        "video_anchor_ms": video_anchor_ms,
                     }).execute().data[0]
 
                     get_client().table("movement").update({
@@ -1308,6 +1348,9 @@ def tab_video_upload():
                         "media_src": video_url,
                         "media_poster": poster_url,
                         "video_id": video_row["id"],
+                        # Write-through copy — the app reads movement directly
+                        # and never joins video (see migration 0012).
+                        "video_anchor_ms": video_anchor_ms,
                     }).eq("id", movement_id).execute()
             except Exception as e:
                 st.error(f"Upload failed: {e}")
