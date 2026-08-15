@@ -13,6 +13,12 @@ class TrainingItemWithAudio extends Equatable {
   final int? defaultRepetitions;
   final int? userRepetitions;
 
+  /// Constant offset (ms) to seek/delay the video by so its "sarzarb"/main
+  /// beat lines up with the audio's, computed once from
+  /// `media.videoAnchorMs - exercise.audioAnchorMs`. Null when either anchor
+  /// is unset — video then just plays decoupled from the audio, as before.
+  final int? videoStartOffsetMs;
+
   const TrainingItemWithAudio({
     required this.id,
     required this.title,
@@ -22,6 +28,7 @@ class TrainingItemWithAudio extends Equatable {
     this.duration,
     this.defaultRepetitions,
     this.userRepetitions,
+    this.videoStartOffsetMs,
   });
 
   /// Get the effective number of repetitions for this track
@@ -62,6 +69,7 @@ class TrainingItemWithAudio extends Equatable {
         media,
         duration,
         defaultRepetitions,
-        userRepetitions
+        userRepetitions,
+        videoStartOffsetMs,
       ];
 }
