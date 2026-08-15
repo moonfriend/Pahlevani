@@ -139,6 +139,14 @@ class HiveExercise extends HiveObject {
   @HiveField(15)
   final String? videoUrl;
 
+  // Nullable so the adapter safely reads null for boxes written before these
+  // fields existed (video/audio sync anchors — see migration 0012).
+  @HiveField(16)
+  final int? audioAnchorMs;
+
+  @HiveField(17)
+  final int? videoAnchorMs;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -156,6 +164,8 @@ class HiveExercise extends HiveObject {
     this.movementId,
     this.description,
     this.videoUrl,
+    this.audioAnchorMs,
+    this.videoAnchorMs,
   });
 
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
@@ -174,6 +184,8 @@ class HiveExercise extends HiveObject {
         mediaPoster: e.media.poster,
         description: e.description,
         videoUrl: e.videoUrl,
+        audioAnchorMs: e.audioAnchorMs,
+        videoAnchorMs: e.media.videoAnchorMs,
       );
 
   Exercise toDomain() => Exercise(
@@ -189,10 +201,12 @@ class HiveExercise extends HiveObject {
         durationSeconds: durationSeconds,
         description: description,
         videoUrl: videoUrl,
+        audioAnchorMs: audioAnchorMs,
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,
           poster: mediaPoster,
+          videoAnchorMs: videoAnchorMs,
         ),
       );
 }

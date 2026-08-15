@@ -47,6 +47,18 @@ void main() {
       expect(row2.repetitions, 0);
     });
 
+    test('parses audio_anchor_ms when present, null when absent', () {
+      final row = ExerciseRow.fromJson({
+        'id': 1,
+        'repetitions': 3,
+        'audio_anchor_ms': 1250,
+      });
+      expect(row.audioAnchorMs, 1250);
+
+      final rowWithout = ExerciseRow.fromJson({'id': 1, 'repetitions': 3});
+      expect(rowWithout.audioAnchorMs, isNull);
+    });
+
     test('allows nullable text fields', () {
       final row = ExerciseRow.fromJson({
         'id': 1,

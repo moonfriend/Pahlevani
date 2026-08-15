@@ -8,6 +8,11 @@ class MovementRow {
   final String? mediaSrc;
   final String? mediaPoster;
 
+  /// "Sarzarb"/main-beat timestamp (ms) in this movement's video, for
+  /// video/audio sync. Write-through copy of video.video_anchor_ms. Null =
+  /// no anchor set.
+  final int? videoAnchorMs;
+
   MovementRow({
     required this.id,
     required this.name,
@@ -17,6 +22,7 @@ class MovementRow {
     required this.mediaType,
     this.mediaSrc,
     this.mediaPoster,
+    this.videoAnchorMs,
   });
 
   factory MovementRow.fromJson(Map<String, Object?> m) => MovementRow(
@@ -28,5 +34,6 @@ class MovementRow {
         mediaType: m['media_type'] as String? ?? 'none',
         mediaSrc: m['media_src'] as String?,
         mediaPoster: m['media_poster'] as String?,
+        videoAnchorMs: (m['video_anchor_ms'] as num?)?.toInt(),
       );
 }
