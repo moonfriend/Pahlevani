@@ -54,6 +54,7 @@ class DependencyInjection {
         remoteDataSource: getIt<TrainingSessionRemoteDataSource>(),
         localDataSource: getIt<TrainingSessionLocalDataSource>(),
         localDatabase: getIt<TrainingSessionLocalDatabase>(),
+        authRepository: getIt<AuthRepository>(),
       ),
     );
 

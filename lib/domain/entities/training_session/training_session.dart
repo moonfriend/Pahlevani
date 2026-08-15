@@ -7,6 +7,18 @@ class TrainingSession {
   final DateTime? createdAt;
   final bool isUserCreated;
 
+  /// Public catalog session (default) vs. an individualized one a trainer
+  /// built for a specific trainee. Existing/public sessions are unaffected —
+  /// this defaults to true everywhere.
+  final bool isPublic;
+
+  /// Set together: the trainee this session was assigned to, and the
+  /// trainer who assigned it. Both null for public catalog sessions.
+  final String? assignedToUserId;
+  final String? assignedByTrainerId;
+
+  bool get isIndividualized => assignedToUserId != null;
+
   TrainingSession({
     required this.id,
     required this.title,
@@ -15,6 +27,9 @@ class TrainingSession {
     required this.difficulty,
     this.createdAt,
     this.isUserCreated = false,
+    this.isPublic = true,
+    this.assignedToUserId,
+    this.assignedByTrainerId,
   });
 
   TrainingSession copyWith({
@@ -25,6 +40,9 @@ class TrainingSession {
     int? difficulty,
     DateTime? createdAt,
     bool? isUserCreated,
+    bool? isPublic,
+    String? assignedToUserId,
+    String? assignedByTrainerId,
   }) {
     return TrainingSession(
       id: id ?? this.id,
@@ -34,6 +52,9 @@ class TrainingSession {
       difficulty: difficulty ?? this.difficulty,
       createdAt: createdAt ?? this.createdAt,
       isUserCreated: isUserCreated ?? this.isUserCreated,
+      isPublic: isPublic ?? this.isPublic,
+      assignedToUserId: assignedToUserId ?? this.assignedToUserId,
+      assignedByTrainerId: assignedByTrainerId ?? this.assignedByTrainerId,
     );
   }
 }

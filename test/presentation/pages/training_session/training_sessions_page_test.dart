@@ -43,6 +43,14 @@ class _StubRepository implements TrainingSessionRepository {
 
   @override
   Future<DomainSnapshot> syncFromRemote() async => _snapshot;
+
+  @override
+  Future<TrainingSession> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  }) async =>
+      session;
 }
 
 class _StubDownloadRepository implements DownloadRepository {

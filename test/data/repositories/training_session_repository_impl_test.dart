@@ -21,9 +21,15 @@ import 'package:pahlevani/data/datasources/training_session/training_session_loc
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_remote_datasource.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
+import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/data/repositories_impl/training_session_repository_impl.dart';
+
+import '../../fakes/fake_auth_repository.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fake remote data source
@@ -69,6 +75,24 @@ class _FakeRemoteDataSource implements TrainingSessionRemoteDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> fetchMovementInfoTable() async => [];
+
+  // ── assignSessionToTrainee() call tracking ──────────────────────────────
+  final List<Map<String, dynamic>> upsertedSessions = [];
+  final List<({int sessionId, List<Map<String, dynamic>> items})>
+      replacedItems = [];
+
+  @override
+  Future<void> upsertTrainingSession(Map<String, dynamic> row) async {
+    if (shouldThrow) throw Exception('network error');
+    upsertedSessions.add(row);
+  }
+
+  @override
+  Future<void> replaceTrainingSessionItems(
+      int sessionId, List<Map<String, dynamic>> items) async {
+    if (shouldThrow) throw Exception('network error');
+    replacedItems.add((sessionId: sessionId, items: items));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -316,11 +340,15 @@ Map<String, dynamic> _itemRow(int sessionId, int exerciseId, int position) => {
 TrainingSessionRepositoryImpl _makeRepo({
   _FakeRemoteDataSource? remote,
   _FakeLocalDatabase? db,
+  FakeAuthRepository? authRepository,
 }) =>
     TrainingSessionRepositoryImpl(
       remoteDataSource: remote ?? _FakeRemoteDataSource(),
       localDataSource: _FakeLocalDataSource(),
       localDatabase: db ?? _FakeLocalDatabase(),
+      authRepository: authRepository ??
+          FakeAuthRepository(
+              initialUser: const AppUser(id: 'trainer-1', email: 't@b.com')),
     );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,6 +625,86 @@ void main() {
       expect(
         (snap.itemsBySessionId[999]!.first.prescription as RepsPresc).count,
         3,
+      );
+    });
+  });
+
+  // ── assignSessionToTrainee() ──────────────────────────────────────────────
+  //
+  // Regression coverage for the "assignment never reached Supabase" bug in
+  // the prior-art branches: asserts against the fake REMOTE data source's
+  // recorded calls, not a Hive-box inspection, since proving the write
+  // reaches "remote" is the entire point.
+  group('assignSessionToTrainee()', () {
+    final trainer = FakeAuthRepository(
+        initialUser: const AppUser(id: 'trainer-1', email: 't@b.com'));
+
+    List<ItemDetail> makeItems() => [
+          const ItemDetail(
+            item: TrainingItem(
+              id: 1,
+              sessionId: 0,
+              exerciseId: 20,
+              position: 0,
+              prescription: RepsPresc(5),
+            ),
+            exercise: Exercise(id: 20, name: 'Chahar-Zarb'),
+          ),
+        ];
+
+    test('performs a real remote upsert + item replace, not a local-only write',
+        () async {
+      final remote = _FakeRemoteDataSource();
+      final repo = _makeRepo(remote: remote, authRepository: trainer);
+
+      final session = TrainingSession(
+          id: 0, title: 'For Ali', description: 'x', difficulty: 2);
+      await repo.assignSessionToTrainee(
+        session: session,
+        items: makeItems(),
+        traineeUserId: 'trainee-1',
+      );
+
+      expect(remote.upsertedSessions, hasLength(1),
+          reason: 'must call the real remote datasource, not just Hive');
+      final row = remote.upsertedSessions.single;
+      expect(row['title'], 'For Ali');
+      expect(row['is_public'], false);
+      expect(row['assigned_to_user_id'], 'trainee-1');
+      expect(row['assigned_by_trainer_id'], 'trainer-1');
+
+      expect(remote.replacedItems, hasLength(1));
+      expect(remote.replacedItems.single.items.single['exercise_id'], 20);
+      expect(remote.replacedItems.single.items.single['reps_to_do'], 5);
+    });
+
+    test('allocates a new id when session.id is 0, keeps it otherwise',
+        () async {
+      final remote = _FakeRemoteDataSource();
+      final repo = _makeRepo(remote: remote, authRepository: trainer);
+
+      final newSession =
+          TrainingSession(id: 0, title: 'New', description: 'x', difficulty: 2);
+      final assigned = await repo.assignSessionToTrainee(
+          session: newSession, items: makeItems(), traineeUserId: 'u1');
+      expect(assigned.id, isNot(0));
+
+      final existingSession = TrainingSession(
+          id: 42, title: 'Existing', description: 'x', difficulty: 2);
+      final reassigned = await repo.assignSessionToTrainee(
+          session: existingSession, items: makeItems(), traineeUserId: 'u1');
+      expect(reassigned.id, 42);
+    });
+
+    test('throws when no trainer is signed in', () async {
+      final repo = _makeRepo(authRepository: FakeAuthRepository());
+      final session =
+          TrainingSession(id: 0, title: 'X', description: 'x', difficulty: 2);
+
+      expect(
+        () => repo.assignSessionToTrainee(
+            session: session, items: makeItems(), traineeUserId: 'u1'),
+        throwsA(isA<StateError>()),
       );
     });
   });

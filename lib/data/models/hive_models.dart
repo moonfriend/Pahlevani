@@ -28,6 +28,18 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(6)
   final String? titleFa;
 
+  // Nullable so the adapter safely reads null for boxes written before
+  // these fields existed (session-assignment) — null isPublic means
+  // "predates the column," always the public catalog it always was.
+  @HiveField(7)
+  final bool? isPublic;
+
+  @HiveField(8)
+  final String? assignedToUserId;
+
+  @HiveField(9)
+  final String? assignedByTrainerId;
+
   HiveTrainingSession({
     required this.id,
     required this.title,
@@ -36,6 +48,9 @@ class HiveTrainingSession extends HiveObject {
     this.createdAt,
     this.isUserCreated = false,
     this.titleFa,
+    this.isPublic,
+    this.assignedToUserId,
+    this.assignedByTrainerId,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -49,6 +64,9 @@ class HiveTrainingSession extends HiveObject {
           : DateTime.parse(json['created_at'] as String),
       isUserCreated: json['is_user_created'] as bool? ?? false,
       titleFa: json['title_fa'] as String?,
+      isPublic: json['is_public'] as bool? ?? true,
+      assignedToUserId: json['assigned_to_user_id'] as String?,
+      assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
     );
   }
 
@@ -60,6 +78,10 @@ class HiveTrainingSession extends HiveObject {
         if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
         'is_user_created': isUserCreated,
         if (titleFa != null) 'title_fa': titleFa,
+        'is_public': isPublic ?? true,
+        if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
+        if (assignedByTrainerId != null)
+          'assigned_by_trainer_id': assignedByTrainerId,
       };
 
   factory HiveTrainingSession.fromDomain(TrainingSession s) {
@@ -71,6 +93,9 @@ class HiveTrainingSession extends HiveObject {
       createdAt: s.createdAt,
       isUserCreated: s.isUserCreated,
       titleFa: s.titleFa,
+      isPublic: s.isPublic,
+      assignedToUserId: s.assignedToUserId,
+      assignedByTrainerId: s.assignedByTrainerId,
     );
   }
 
@@ -83,6 +108,9 @@ class HiveTrainingSession extends HiveObject {
       difficulty: difficulty,
       createdAt: createdAt,
       isUserCreated: isUserCreated,
+      isPublic: isPublic ?? true,
+      assignedToUserId: assignedToUserId,
+      assignedByTrainerId: assignedByTrainerId,
     );
   }
 }

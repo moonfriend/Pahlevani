@@ -7,6 +7,18 @@ abstract class TrainingSessionRemoteDataSource {
   Future<List<Map<String, dynamic>>> fetchTrainingSessionItemTable();
   Future<List<Map<String, dynamic>>> fetchMovementTable();
   Future<List<Map<String, dynamic>>> fetchMovementInfoTable();
+
+  /// Trainer-only (RLS: supabase/migrations/0012_session_assignment.sql).
+  /// A real remote write — this is what makes an assigned session actually
+  /// reach the trainee's device, unlike saveTrainingSession()/
+  /// updateTrainingSession(), which are intentionally local-only.
+  Future<void> upsertTrainingSession(Map<String, dynamic> row);
+
+  /// Deletes existing rows for [sessionId] then inserts [items] — the same
+  /// replace-in-place semantics as the local
+  /// TrainingSessionRepositoryImpl._saveItemDetails().
+  Future<void> replaceTrainingSessionItems(
+      int sessionId, List<Map<String, dynamic>> items);
 }
 
 /// Implementation of [TrainingSessionRemoteDataSource] using Supabase.
@@ -73,6 +85,31 @@ class TrainingSessionRemoteDataSourceImpl
       // movement_info may not exist yet (pre-0005). Absence just means no
       // extra detail on the info page — safe to ignore.
       return [];
+    }
+  }
+
+  @override
+  Future<void> upsertTrainingSession(Map<String, dynamic> row) async {
+    try {
+      await _client.from('training_session').upsert(row);
+    } catch (e) {
+      throw Exception('Failed to upsert training_session: $e');
+    }
+  }
+
+  @override
+  Future<void> replaceTrainingSessionItems(
+      int sessionId, List<Map<String, dynamic>> items) async {
+    try {
+      await _client
+          .from('training_session_item')
+          .delete()
+          .eq('training_session_id', sessionId);
+      if (items.isNotEmpty) {
+        await _client.from('training_session_item').insert(items);
+      }
+    } catch (e) {
+      throw Exception('Failed to replace training_session_item rows: $e');
     }
   }
 }

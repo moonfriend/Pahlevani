@@ -40,6 +40,14 @@ class _FakeSessionRepo implements TrainingSessionRepository {
 
   @override
   Future<void> deleteTrainingSession(int id) async {}
+
+  @override
+  Future<TrainingSession> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  }) async =>
+      session;
 }
 
 class _FakeDownloadRepo implements DownloadRepository {

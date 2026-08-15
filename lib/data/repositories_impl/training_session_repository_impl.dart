@@ -13,6 +13,7 @@ import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
 /// Implementation of the [TrainingSessionRepository] interface.
@@ -20,6 +21,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   final TrainingSessionRemoteDataSource remoteDataSource;
   final TrainingSessionLocalDataSource localDataSource;
   final TrainingSessionLocalDatabase localDatabase;
+  final AuthRepository authRepository;
 
   DomainSnapshot? _domainSnapshot;
 
@@ -27,6 +29,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     required this.remoteDataSource,
     required this.localDataSource,
     required this.localDatabase,
+    required this.authRepository,
   });
 
   @override
@@ -246,6 +249,72 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
     } catch (e) {
       throw Exception('Failed to update session: $e');
     }
+  }
+
+  @override
+  Future<TrainingSession> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  }) async {
+    final trainer = authRepository.currentUser;
+    if (trainer == null) {
+      throw StateError(
+          'assignSessionToTrainee() called with no signed-in trainer');
+    }
+
+    final assigned = session.copyWith(
+      id: session.id == 0 ? DateTime.now().millisecondsSinceEpoch : session.id,
+      isPublic: false,
+      assignedToUserId: traineeUserId,
+      assignedByTrainerId: trainer.id,
+    );
+
+    // The real fix for the "assignment never reached the trainee" bug —
+    // an actual Supabase write, not a local Hive/in-memory shortcut.
+    await remoteDataSource.upsertTrainingSession({
+      'id': assigned.id,
+      'title': assigned.title,
+      'description': assigned.description,
+      'difficulty': assigned.difficulty,
+      if (assigned.titleFa != null) 'title_fa': assigned.titleFa,
+      'is_public': false,
+      'assigned_to_user_id': assigned.assignedToUserId,
+      'assigned_by_trainer_id': assigned.assignedByTrainerId,
+    });
+
+    final itemRows = items.asMap().entries.map((entry) {
+      final position = entry.key;
+      final detail = entry.value;
+      final reps = detail.item.prescription is RepsPresc
+          ? (detail.item.prescription as RepsPresc).count
+          : 1;
+      return {
+        'training_session_id': assigned.id,
+        'exercise_id': detail.item.exerciseId,
+        'position': position,
+        'reps_to_do': reps,
+      };
+    }).toList();
+    await remoteDataSource.replaceTrainingSessionItems(assigned.id, itemRows);
+
+    // Patch the trainer's own in-memory snapshot for immediate UI
+    // reflection — the trainee picks it up via their own next sync, since
+    // correct RLS already scopes what the unfiltered select returns.
+    if (_domainSnapshot != null) {
+      _domainSnapshot!.sessionsById[assigned.id] = assigned;
+      _domainSnapshot!.itemsBySessionId[assigned.id] = itemRows
+          .map((r) => TrainingItem(
+                id: assigned.id * 10000 + (r['position'] as int),
+                sessionId: assigned.id,
+                exerciseId: r['exercise_id'] as int,
+                position: r['position'] as int,
+                prescription: RepsPresc(r['reps_to_do'] as int),
+              ))
+          .toList();
+    }
+
+    return assigned;
   }
 
   /// Replaces all HiveTrainingSessionItems for [sessionId] with [items].

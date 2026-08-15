@@ -14,6 +14,7 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/trainer/assign_session_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/difficulty_pips.dart';
@@ -121,10 +122,37 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     }
   }
 
+  Future<void> _assignToTrainee(TrainingSession session) async {
+    final cubit = context.read<TrainingSessionCubit>();
+    final detail = cubit.getSessionDetail(session.id);
+    final editResult = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => EditTrainingSessionPage(
+                trainingSession: session,
+                items: detail?.items ?? const [],
+              )),
+    );
+    if (editResult == null || !mounted) return;
+    final editedSession = editResult['session'] as TrainingSession;
+    final editedItems = editResult['items'] as List<ItemDetail>;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => AssignSessionPage(
+                session: editedSession,
+                items: editedItems,
+              )),
+    );
+  }
+
   void _showOverflowSheet(
       BuildContext context, TrainingSession session, DownloadStatus dlStatus) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cubit = context.read<TrainingSessionCubit>();
+    final authState = context.read<AuthCubit>().state;
+    final isTrainer =
+        authState is AuthAuthenticated && authState.user.isTrainer;
 
     showModalBottomSheet(
       context: context,
@@ -147,6 +175,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               _openEdit(session);
             },
           ),
+          if (isTrainer)
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Assign to a trainee',
+                  style: TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                _assignToTrainee(session);
+              },
+            ),
           // No local filesystem on Flutter Web (path_provider has no web
           // implementation) — nothing to download to, so hide the entry
           // point entirely rather than show a control that silently no-ops.
@@ -630,6 +669,10 @@ class _BannerCard extends StatelessWidget {
                         _YoursChip(colors: colors),
                         const SizedBox(height: 4),
                       ],
+                      if (session.assignedByTrainerId != null) ...[
+                        _AssignedChip(colors: colors),
+                        const SizedBox(height: 4),
+                      ],
                       Text(session.title,
                           style: PTextStyles.of(context)
                               .cardTitleBanner
@@ -784,6 +827,10 @@ class _CompactCard extends StatelessWidget {
                     const SizedBox(width: 7),
                     _YoursChip(colors: colors),
                   ],
+                  if (session.assignedByTrainerId != null) ...[
+                    const SizedBox(width: 7),
+                    _AssignedChip(colors: colors),
+                  ],
                 ])),
                 GestureDetector(
                   onTap: onMenu,
@@ -883,6 +930,33 @@ class _YoursChip extends StatelessWidget {
               fontSize: 11,
               color: colors.teal,
               letterSpacing: 0.3)),
+    );
+  }
+}
+
+/// Shown on a session a trainer individually assigned (as opposed to the
+/// public catalog) — sibling to _YoursChip, same shape, distinct color.
+class _AssignedChip extends StatelessWidget {
+  const _AssignedChip({required this.colors});
+  final PahlevaniColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+          color: colors.surface3, borderRadius: BorderRadius.circular(99)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.person_rounded, size: 11, color: colors.onMuted),
+        const SizedBox(width: 3),
+        Text('Assigned',
+            style: TextStyle(
+                fontFamily: PFonts.ui,
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                color: colors.onMuted,
+                letterSpacing: 0.3)),
+      ]),
     );
   }
 }

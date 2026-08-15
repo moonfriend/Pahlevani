@@ -18,4 +18,15 @@ abstract class TrainingSessionRepository {
       {List<ItemDetail>? items});
 
   Future<void> deleteTrainingSession(int sessionId);
+
+  /// Trainer-only. Unlike saveTrainingSession()/updateTrainingSession()
+  /// (intentionally local-only, for the unrelated isUserCreated concept),
+  /// this performs a real remote write — required for the assignment to
+  /// ever reach the trainee's own device. [session.id] of 0 means "new";
+  /// nonzero edits an existing assignment.
+  Future<TrainingSession> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  });
 }

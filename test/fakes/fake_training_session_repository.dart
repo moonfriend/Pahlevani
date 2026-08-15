@@ -62,4 +62,29 @@ class FakeTrainingSessionRepository implements TrainingSessionRepository {
       exercisesById: {..._snapshot.exercisesById},
     );
   }
+
+  List<({TrainingSession session, String traineeUserId})> assignedSessions = [];
+
+  @override
+  Future<TrainingSession> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  }) async {
+    final assigned = session.copyWith(
+      id: session.id == 0 ? DateTime.now().millisecondsSinceEpoch : session.id,
+      isPublic: false,
+      assignedToUserId: traineeUserId,
+    );
+    assignedSessions.add((session: assigned, traineeUserId: traineeUserId));
+    _snapshot = DomainSnapshot(
+      sessionsById: {..._snapshot.sessionsById, assigned.id: assigned},
+      itemsBySessionId: {
+        ..._snapshot.itemsBySessionId,
+        assigned.id: items.map((d) => d.item).toList(),
+      },
+      exercisesById: {..._snapshot.exercisesById},
+    );
+    return assigned;
+  }
 }

@@ -229,6 +229,30 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     }
   }
 
+  /// Trainer-only. See TrainingSessionRepository.assignSessionToTrainee —
+  /// a real remote write, unlike updateTrainingSession/saveTrainingSession.
+  Future<void> assignSessionToTrainee({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+    required String traineeUserId,
+  }) async {
+    try {
+      await _sessionRepository.assignSessionToTrainee(
+        session: session,
+        items: items,
+        traineeUserId: traineeUserId,
+      );
+      _currentTSSnapshot =
+          await _sessionRepository.getTrainingSessions(refresh: false);
+      emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+    } catch (e) {
+      emit(TrainingSessionError(
+        message: 'Failed to assign session: $e',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
+    }
+  }
+
   Future<void> deleteTrainingSession(int sessionId) async {
     try {
       await _sessionRepository.deleteTrainingSession(sessionId);
