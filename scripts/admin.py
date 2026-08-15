@@ -248,6 +248,34 @@ def probe_video(path: str) -> dict:
     except (subprocess.TimeoutExpired, KeyError, json.JSONDecodeError, ValueError):
         return {}
 
+def format_mmss(seconds: float) -> str:
+    """1.4 -> '00:01.400' — for reading an anchor timestamp precisely, since
+    a plain seconds number is hard to eyeball against a video's own scrubber."""
+    m, s = divmod(max(seconds, 0.0), 60)
+    return f"{int(m):02d}:{s:06.3f}"
+
+def extract_frame_at(src_path_or_url: str, timestamp: float) -> bytes | None:
+    """Extract one full (uncropped) frame as JPEG bytes — for confirming an
+    anchor's exact frame on an already-processed video (local path or R2
+    URL; ffmpeg reads both natively). No crop, unlike extract_preview_frame,
+    which is for eyeballing framing on a raw source before encoding."""
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        out_path = tmp.name
+    cmd = [
+        "ffmpeg", "-y", "-ss", str(timestamp), "-i", src_path_or_url,
+        "-frames:v", "1", "-update", "1", "-q:v", "3",
+        out_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            return None
+        return Path(out_path).read_bytes()
+    except subprocess.TimeoutExpired:
+        return None
+    finally:
+        Path(out_path).unlink(missing_ok=True)
+
 def extract_preview_frame(src_path: str, crop_w: int, crop_h: int, crop_x: int, crop_y: int, timestamp: float) -> bytes | None:
     """Extract one cropped preview frame as JPEG bytes, for eyeballing before a full encode."""
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
@@ -463,10 +491,12 @@ def tab_exercises():
             st.audio(ex_row["url"])
         current_ms = ex_row.get("audio_anchor_ms")
         current_s = float(current_ms) / 1000 if pd.notna(current_ms) else 0.0
-        anchor_s = st.number_input(
-            "Audio anchor (s)", min_value=0.0, value=current_s, step=0.1,
-            key="audio_anchor_s",
+        audio_col1, audio_col2 = st.columns([2, 1])
+        anchor_s = audio_col1.number_input(
+            "Audio anchor (s)", min_value=0.0, value=current_s, step=0.05,
+            format="%.3f", key="audio_anchor_s",
         )
+        audio_col2.markdown(f"**{format_mmss(anchor_s)}**")
         if st.button("💾 Save anchor", key="sv_audio_anchor"):
             save_rows("exercise", [{"id": int(ex_id), "audio_anchor_ms": round(anchor_s * 1000)}])
             st.success("Anchor saved.")
@@ -1217,9 +1247,43 @@ def tab_video_upload():
             st.video(mov_row["media_src"])
         except Exception:
             st.caption(f"Video URL: {mov_row['media_src']}")
-        current_anchor = mov_row.get("video_anchor_ms")
-        if pd.notna(current_anchor):
-            st.caption(f"Current anchor: {float(current_anchor) / 1000:.1f}s")
+
+        st.markdown('**Video anchor — "sarzarb"/main beat**')
+        st.caption(
+            "The player's scrubber only shows whole seconds, which isn't "
+            "precise enough — nudge the timestamp below in ~1-frame steps "
+            "and check the preview frame until it's exactly on the beat "
+            "(e.g. the bottom of a push-up), then save."
+        )
+        current_anchor_ms = mov_row.get("video_anchor_ms")
+        default_anchor_s = float(current_anchor_ms) / 1000 if pd.notna(current_anchor_ms) else 0.0
+        anchor_col1, anchor_col2 = st.columns([2, 1])
+        cur_anchor_s = anchor_col1.number_input(
+            "Anchor (s)", min_value=0.0, value=default_anchor_s, step=1 / 30,
+            format="%.3f", key="cur_vid_anchor_s",
+        )
+        anchor_col2.markdown(f"**{format_mmss(cur_anchor_s)}**")
+        if st.button("🔍 Preview frame", key="cur_vid_anchor_preview_btn"):
+            frame = extract_frame_at(mov_row["media_src"], cur_anchor_s)
+            if frame:
+                st.image(frame, caption=f"Frame @ {format_mmss(cur_anchor_s)}", width=300)
+            else:
+                st.error("Preview extraction failed.")
+        if st.button("💾 Save anchor", type="primary", key="cur_vid_anchor_save_btn"):
+            anchor_ms = round(cur_anchor_s * 1000)
+            try:
+                if mov_row.get("video_id"):
+                    get_client().table("video").update(
+                        {"video_anchor_ms": anchor_ms}
+                    ).eq("id", int(mov_row["video_id"])).execute()
+                get_client().table("movement").update(
+                    {"video_anchor_ms": anchor_ms}
+                ).eq("id", movement_id).execute()
+            except Exception as e:
+                st.error(f"Save failed: {e}")
+            else:
+                st.success(f"Anchor saved: {format_mmss(cur_anchor_s)}")
+                load_movements.clear()
 
     uploaded = st.file_uploader(
         "Source video (raw clip, any resolution)", type=["mp4", "mov", "mkv"], key="vid_uploader"
@@ -1309,14 +1373,24 @@ def tab_video_upload():
         )
         st.video(st.session_state["vid_encoded_path"])
 
-        anchor_s = st.number_input(
-            "Video anchor — \"sarzarb\"/main beat (s)",
-            min_value=0.0, max_value=float(out_info.get("duration") or 999.0),
-            value=0.0, step=0.1, key="vid_anchor_s",
-            help="Scrub the preview above to the beat moment (e.g. the bottom "
-                 "of a push-up), then enter its timestamp. Used to sync this "
-                 "video to the exercise's audio narration.",
+        st.markdown('**Video anchor — "sarzarb"/main beat**')
+        st.caption(
+            "The player's scrubber only shows whole seconds — nudge in "
+            "~1-frame steps and check the preview frame until it's exactly "
+            "on the beat (e.g. the bottom of a push-up)."
         )
+        anchor_col1, anchor_col2 = st.columns([2, 1])
+        anchor_s = anchor_col1.number_input(
+            "Anchor (s)", min_value=0.0, max_value=float(out_info.get("duration") or 999.0),
+            value=0.0, step=1 / 30, format="%.3f", key="vid_anchor_s",
+        )
+        anchor_col2.markdown(f"**{format_mmss(anchor_s)}**")
+        if st.button("🔍 Preview frame", key="vid_anchor_preview_btn"):
+            frame = extract_frame_at(st.session_state["vid_encoded_path"], anchor_s)
+            if frame:
+                st.image(frame, caption=f"Frame @ {format_mmss(anchor_s)}", width=300)
+            else:
+                st.error("Preview extraction failed.")
 
         if st.button("✅ Confirm — upload to R2 & link to movement", type="primary", key="vid_confirm_btn"):
             slug = slugify(mov_row.get("name") or f"movement-{movement_id}")
