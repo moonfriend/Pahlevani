@@ -275,6 +275,7 @@ class _Stage extends StatelessWidget {
                 key: ValueKey(track.media.src),
                 path: track.media.src!,
                 isPlaying: state.isPlaying,
+                startOffsetMs: track.videoStartOffsetMs,
               ),
             )
           else if (hasPhoto || hasVideoPoster)
@@ -359,16 +360,46 @@ class _Stage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video/audio sync — a constant one-time offset (see
+// TrainingItemWithAudio.videoStartOffsetMs) so the video's "sarzarb"/main
+// beat lines up with the audio's, applied once when the video starts.
+// Deliberately not re-applied on every loop (v1 scope, see plan): re-seeking
+// video_player on a timer is a real jank risk (seekTo triggers a genuine
+// buffering pause on Android, not an instant jump), so drift across many
+// loops is an accepted limitation for now rather than something to build
+// continuous correction for.
+// ─────────────────────────────────────────────────────────────────────────────
+({int? seekToMs, int? delayMs}) computeVideoSyncPlan(
+    int? startOffsetMs, int videoDurationMs) {
+  if (startOffsetMs == null || videoDurationMs <= 0) {
+    return (seekToMs: null, delayMs: null);
+  }
+  if (startOffsetMs >= 0) {
+    // Modulo handles an anchor beyond one loop length — start partway into
+    // the current loop iteration rather than failing to seek at all.
+    return (seekToMs: startOffsetMs % videoDurationMs, delayMs: null);
+  }
+  // Audio's beat lands later in its own file than video's does, so video
+  // needs to wait at frame 0, not seek to a negative position.
+  return (seekToMs: null, delayMs: -startOffsetMs);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Exercise demonstration video — muted, looping, local-file only. Play/pause
 // follows the audio cubit's isPlaying (the audio guidance drives the actual
 // timeline; this is a silent visual companion, not an independently
 // controlled player), so it never exposes its own transport controls.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ExerciseVideo extends StatefulWidget {
-  const _ExerciseVideo(
-      {super.key, required this.path, required this.isPlaying});
+  const _ExerciseVideo({
+    super.key,
+    required this.path,
+    required this.isPlaying,
+    this.startOffsetMs,
+  });
   final String path;
   final bool isPlaying;
+  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -392,10 +423,22 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     _controller
       ..setLooping(true)
       ..setVolume(0)
-      ..initialize().then((_) {
+      ..initialize().then((_) async {
         if (!mounted) return;
         setState(() => _ready = true);
-        if (widget.isPlaying) _controller.play();
+        final plan = computeVideoSyncPlan(
+            widget.startOffsetMs, _controller.value.duration.inMilliseconds);
+        if (plan.seekToMs != null) {
+          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
+          if (!mounted) return;
+        }
+        if (plan.delayMs != null) {
+          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+            if (mounted && widget.isPlaying) _controller.play();
+          }));
+          return;
+        }
+        if (widget.isPlaying) unawaited(_controller.play());
       }).catchError((_) {
         // Corrupt/unreadable local file — fail silently, same as a broken
         // image falls back to errorBuilder rather than crashing the stage.
