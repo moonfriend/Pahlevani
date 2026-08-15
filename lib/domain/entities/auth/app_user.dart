@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 /// The signed-in user, joining Supabase auth identity with their
-/// supabase/migrations/0011_profiles_and_consent.sql profile row.
+/// supabase/migrations/0013_profiles_and_consent.sql profile row.
 class AppUser extends Equatable {
   final String id;
   final String? email;

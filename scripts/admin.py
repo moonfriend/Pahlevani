@@ -192,7 +192,7 @@ def load_release_gate() -> dict | None:
 def load_profiles() -> list[dict]:
     """All signed-up users. Service-role key bypasses RLS, so this sees
     every row regardless of the profiles_select_own/profiles_select_trainer_all
-    policies (supabase/migrations/0011_profiles_and_consent.sql)."""
+    policies (supabase/migrations/0013_profiles_and_consent.sql)."""
     return get_client().table("profiles").select("*").order("created_at").execute().data
 
 @st.cache_data(ttl=60)
@@ -1588,7 +1588,7 @@ def tab_grant_trainer():
     except Exception:
         st.error(
             "⚠️ `profiles` table not found. "
-            "Run `supabase/migrations/0011_profiles_and_consent.sql` in the "
+            "Run `supabase/migrations/0013_profiles_and_consent.sql` in the "
             "Supabase SQL Editor first."
         )
         return

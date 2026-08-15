@@ -8,7 +8,7 @@ abstract class TrainingSessionRemoteDataSource {
   Future<List<Map<String, dynamic>>> fetchMovementTable();
   Future<List<Map<String, dynamic>>> fetchMovementInfoTable();
 
-  /// Trainer-only (RLS: supabase/migrations/0012_session_assignment.sql).
+  /// Trainer-only (RLS: supabase/migrations/0014_session_assignment.sql).
   /// A real remote write — this is what makes an assigned session actually
   /// reach the trainee's device, unlike saveTrainingSession()/
   /// updateTrainingSession(), which are intentionally local-only.

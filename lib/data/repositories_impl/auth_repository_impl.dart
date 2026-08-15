@@ -4,7 +4,7 @@ import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 /// [AuthRepository] backed by Supabase auth + the `profiles` table
-/// (supabase/migrations/0011_profiles_and_consent.sql).
+/// (supabase/migrations/0013_profiles_and_consent.sql).
 class AuthRepositoryImpl implements AuthRepository {
   final sb.SupabaseClient _client;
 
