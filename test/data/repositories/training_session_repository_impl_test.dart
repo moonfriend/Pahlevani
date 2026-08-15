@@ -93,6 +93,40 @@ class _FakeRemoteDataSource implements TrainingSessionRemoteDataSource {
     if (shouldThrow) throw Exception('network error');
     replacedItems.add((sessionId: sessionId, items: items));
   }
+
+  final List<({int sessionId, String traineeUserId, String trainerId})>
+      insertedAssignments = [];
+
+  @override
+  Future<void> insertSessionAssignment({
+    required int sessionId,
+    required String traineeUserId,
+    required String trainerId,
+  }) async {
+    if (shouldThrow) throw Exception('network error');
+    insertedAssignments.add((
+      sessionId: sessionId,
+      traineeUserId: traineeUserId,
+      trainerId: trainerId,
+    ));
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchSessionAssignments(
+      int sessionId) async {
+    if (shouldThrow) throw Exception('network error');
+    return insertedAssignments
+        .where((a) => a.sessionId == sessionId)
+        .map((a) => {
+              'id': 1,
+              'session_id': a.sessionId,
+              'trainee_user_id': a.traineeUserId,
+              'assigned_by_trainer_id': a.trainerId,
+              'assigned_at': DateTime.now().toIso8601String(),
+              'trainee_note': null,
+            })
+        .toList();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -629,13 +663,15 @@ void main() {
     });
   });
 
-  // ── assignSessionToTrainee() ──────────────────────────────────────────────
+  // ── saveOwnedSession() / assignSessionToTrainee() ───────────────────────
   //
   // Regression coverage for the "assignment never reached Supabase" bug in
   // the prior-art branches: asserts against the fake REMOTE data source's
   // recorded calls, not a Hive-box inspection, since proving the write
-  // reaches "remote" is the entire point.
-  group('assignSessionToTrainee()', () {
+  // reaches "remote" is the entire point. Two separate calls now (session
+  // content vs. who it's assigned to) — one session, any number of
+  // trainees, via the session_assignments join table.
+  group('saveOwnedSession()', () {
     final trainer = FakeAuthRepository(
         initialUser: const AppUser(id: 'trainer-1', email: 't@b.com'));
 
@@ -659,19 +695,14 @@ void main() {
 
       final session = TrainingSession(
           id: 0, title: 'For Ali', description: 'x', difficulty: 2);
-      await repo.assignSessionToTrainee(
-        session: session,
-        items: makeItems(),
-        traineeUserId: 'trainee-1',
-      );
+      await repo.saveOwnedSession(session: session, items: makeItems());
 
       expect(remote.upsertedSessions, hasLength(1),
           reason: 'must call the real remote datasource, not just Hive');
       final row = remote.upsertedSessions.single;
       expect(row['title'], 'For Ali');
       expect(row['is_public'], false);
-      expect(row['assigned_to_user_id'], 'trainee-1');
-      expect(row['assigned_by_trainer_id'], 'trainer-1');
+      expect(row['owner_trainer_id'], 'trainer-1');
 
       expect(remote.replacedItems, hasLength(1));
       expect(remote.replacedItems.single.items.single['exercise_id'], 20);
@@ -685,15 +716,15 @@ void main() {
 
       final newSession =
           TrainingSession(id: 0, title: 'New', description: 'x', difficulty: 2);
-      final assigned = await repo.assignSessionToTrainee(
-          session: newSession, items: makeItems(), traineeUserId: 'u1');
-      expect(assigned.id, isNot(0));
+      final saved =
+          await repo.saveOwnedSession(session: newSession, items: makeItems());
+      expect(saved.id, isNot(0));
 
       final existingSession = TrainingSession(
           id: 42, title: 'Existing', description: 'x', difficulty: 2);
-      final reassigned = await repo.assignSessionToTrainee(
-          session: existingSession, items: makeItems(), traineeUserId: 'u1');
-      expect(reassigned.id, 42);
+      final resaved = await repo.saveOwnedSession(
+          session: existingSession, items: makeItems());
+      expect(resaved.id, 42);
     });
 
     test('throws when no trainer is signed in', () async {
@@ -702,8 +733,41 @@ void main() {
           TrainingSession(id: 0, title: 'X', description: 'x', difficulty: 2);
 
       expect(
-        () => repo.assignSessionToTrainee(
-            session: session, items: makeItems(), traineeUserId: 'u1'),
+        () => repo.saveOwnedSession(session: session, items: makeItems()),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
+  group('assignSessionToTrainee() / listAssignments()', () {
+    final trainer = FakeAuthRepository(
+        initialUser: const AppUser(id: 'trainer-1', email: 't@b.com'));
+
+    test(
+        'assigning the same session to several trainees creates one row '
+        'per trainee, not one duplicated session', () async {
+      final remote = _FakeRemoteDataSource();
+      final repo = _makeRepo(remote: remote, authRepository: trainer);
+
+      await repo.assignSessionToTrainee(sessionId: 7, traineeUserId: 'u1');
+      await repo.assignSessionToTrainee(sessionId: 7, traineeUserId: 'u2');
+      await repo.assignSessionToTrainee(sessionId: 7, traineeUserId: 'u3');
+
+      expect(remote.insertedAssignments, hasLength(3));
+      expect(remote.insertedAssignments.map((a) => a.traineeUserId),
+          containsAll(['u1', 'u2', 'u3']));
+      expect(remote.insertedAssignments.every((a) => a.sessionId == 7), isTrue,
+          reason: 'one underlying session, many assignment rows — not '
+              'one session row per trainee');
+
+      final assignments = await repo.listAssignments(7);
+      expect(assignments, hasLength(3));
+    });
+
+    test('throws when no trainer is signed in', () async {
+      final repo = _makeRepo(authRepository: FakeAuthRepository());
+      expect(
+        () => repo.assignSessionToTrainee(sessionId: 1, traineeUserId: 'u1'),
         throwsA(isA<StateError>()),
       );
     });

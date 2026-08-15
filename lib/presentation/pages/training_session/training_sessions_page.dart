@@ -136,13 +136,16 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     if (editResult == null || !mounted) return;
     final editedSession = editResult['session'] as TrainingSession;
     final editedItems = editResult['items'] as List<ItemDetail>;
+    // Save the session's own content first (real remote write) — it isn't
+    // assigned to anyone yet, that's AssignSessionPage's job.
+    final saved = await cubit.saveOwnedSession(
+        session: editedSession, items: editedItems);
+    if (saved == null || !mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
           builder: (_) => AssignSessionPage(
-                session: editedSession,
-                items: editedItems,
-              )),
+              sessionId: saved.id, sessionTitle: saved.title)),
     );
   }
 
@@ -669,7 +672,7 @@ class _BannerCard extends StatelessWidget {
                         _YoursChip(colors: colors),
                         const SizedBox(height: 4),
                       ],
-                      if (session.assignedByTrainerId != null) ...[
+                      if (session.ownerTrainerId != null) ...[
                         _AssignedChip(colors: colors),
                         const SizedBox(height: 4),
                       ],
@@ -827,7 +830,7 @@ class _CompactCard extends StatelessWidget {
                     const SizedBox(width: 7),
                     _YoursChip(colors: colors),
                   ],
-                  if (session.assignedByTrainerId != null) ...[
+                  if (session.ownerTrainerId != null) ...[
                     const SizedBox(width: 7),
                     _AssignedChip(colors: colors),
                   ],

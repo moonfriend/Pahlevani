@@ -19,6 +19,17 @@ abstract class TrainingSessionRemoteDataSource {
   /// TrainingSessionRepositoryImpl._saveItemDetails().
   Future<void> replaceTrainingSessionItems(
       int sessionId, List<Map<String, dynamic>> items);
+
+  /// Assigns [sessionId] to [traineeUserId]. Upserts on the
+  /// (session_id, trainee_user_id) unique constraint — re-assigning the
+  /// same trainee is a no-op rather than a duplicate row or an error.
+  Future<void> insertSessionAssignment({
+    required int sessionId,
+    required String traineeUserId,
+    required String trainerId,
+  });
+
+  Future<List<Map<String, dynamic>>> fetchSessionAssignments(int sessionId);
 }
 
 /// Implementation of [TrainingSessionRemoteDataSource] using Supabase.
@@ -110,6 +121,38 @@ class TrainingSessionRemoteDataSourceImpl
       }
     } catch (e) {
       throw Exception('Failed to replace training_session_item rows: $e');
+    }
+  }
+
+  @override
+  Future<void> insertSessionAssignment({
+    required int sessionId,
+    required String traineeUserId,
+    required String trainerId,
+  }) async {
+    try {
+      await _client.from('session_assignments').upsert({
+        'session_id': sessionId,
+        'trainee_user_id': traineeUserId,
+        'assigned_by_trainer_id': trainerId,
+      }, onConflict: 'session_id,trainee_user_id');
+    } catch (e) {
+      throw Exception('Failed to assign session to trainee: $e');
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchSessionAssignments(
+      int sessionId) async {
+    try {
+      final response = await _client
+          .from('session_assignments')
+          .select()
+          .eq('session_id', sessionId);
+      return List<Map<String, dynamic>>.from(
+          response.cast<Map<String, dynamic>>());
+    } catch (e) {
+      throw Exception('Failed to fetch session assignments: $e');
     }
   }
 }

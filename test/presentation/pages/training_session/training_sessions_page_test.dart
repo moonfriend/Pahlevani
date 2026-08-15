@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
@@ -45,12 +46,20 @@ class _StubRepository implements TrainingSessionRepository {
   Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 
   @override
-  Future<TrainingSession> assignSessionToTrainee({
+  Future<TrainingSession> saveOwnedSession({
     required TrainingSession session,
     required List<ItemDetail> items,
-    required String traineeUserId,
   }) async =>
       session;
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {}
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
 class _StubDownloadRepository implements DownloadRepository {

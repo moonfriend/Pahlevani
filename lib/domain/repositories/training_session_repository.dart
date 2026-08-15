@@ -1,3 +1,4 @@
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 
@@ -21,12 +22,23 @@ abstract class TrainingSessionRepository {
 
   /// Trainer-only. Unlike saveTrainingSession()/updateTrainingSession()
   /// (intentionally local-only, for the unrelated isUserCreated concept),
-  /// this performs a real remote write — required for the assignment to
-  /// ever reach the trainee's own device. [session.id] of 0 means "new";
-  /// nonzero edits an existing assignment.
-  Future<TrainingSession> assignSessionToTrainee({
+  /// this performs a real remote write — required for the session to ever
+  /// reach an assigned trainee's own device. [session.id] of 0 means "new".
+  /// This only saves the session's own content — it isn't assigned to
+  /// anyone until assignSessionToTrainee() is also called.
+  Future<TrainingSession> saveOwnedSession({
     required TrainingSession session,
     required List<ItemDetail> items,
+  });
+
+  /// Trainer-only. Assigns an already-saved owned session to one trainee —
+  /// call once per trainee to assign to several. Idempotent (re-assigning
+  /// the same trainee updates rather than duplicates).
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
     required String traineeUserId,
   });
+
+  /// Trainer-only. All assignments for a session this trainer owns.
+  Future<List<SessionAssignment>> listAssignments(int sessionId);
 }

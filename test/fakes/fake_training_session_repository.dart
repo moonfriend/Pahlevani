@@ -1,4 +1,5 @@
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -63,28 +64,49 @@ class FakeTrainingSessionRepository implements TrainingSessionRepository {
     );
   }
 
-  List<({TrainingSession session, String traineeUserId})> assignedSessions = [];
+  List<TrainingSession> ownedSessionsSaved = [];
 
   @override
-  Future<TrainingSession> assignSessionToTrainee({
+  Future<TrainingSession> saveOwnedSession({
     required TrainingSession session,
     required List<ItemDetail> items,
-    required String traineeUserId,
   }) async {
-    final assigned = session.copyWith(
+    final owned = session.copyWith(
       id: session.id == 0 ? DateTime.now().millisecondsSinceEpoch : session.id,
       isPublic: false,
-      assignedToUserId: traineeUserId,
     );
-    assignedSessions.add((session: assigned, traineeUserId: traineeUserId));
+    ownedSessionsSaved.add(owned);
     _snapshot = DomainSnapshot(
-      sessionsById: {..._snapshot.sessionsById, assigned.id: assigned},
+      sessionsById: {..._snapshot.sessionsById, owned.id: owned},
       itemsBySessionId: {
         ..._snapshot.itemsBySessionId,
-        assigned.id: items.map((d) => d.item).toList(),
+        owned.id: items.map((d) => d.item).toList(),
       },
       exercisesById: {..._snapshot.exercisesById},
     );
-    return assigned;
+    return owned;
+  }
+
+  List<({int sessionId, String traineeUserId})> assignments = [];
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {
+    assignments.add((sessionId: sessionId, traineeUserId: traineeUserId));
+  }
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async {
+    return assignments
+        .where((a) => a.sessionId == sessionId)
+        .map((a) => SessionAssignment(
+              id: 0,
+              sessionId: a.sessionId,
+              traineeUserId: a.traineeUserId,
+              assignedAt: DateTime.now(),
+            ))
+        .toList();
   }
 }

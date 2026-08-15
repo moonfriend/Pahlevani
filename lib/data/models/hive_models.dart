@@ -34,11 +34,18 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(7)
   final bool? isPublic;
 
+  // Dead — the single-assignee design (session_assignments' predecessor)
+  // this held is gone. Never reuse index 8 for anything else: a real crash
+  // (a differently-typed value from an older schema landing here) is
+  // exactly what taught us that lesson. Always null going forward.
   @HiveField(8)
-  final String? assignedToUserId;
+  final String? deprecatedAssignedToUserId;
 
+  /// The trainer who authored this private session, if any. Same
+  /// underlying field (index 9) as the pre-redesign assignedByTrainerId —
+  /// only the Dart-side name changed, so old boxes still read correctly.
   @HiveField(9)
-  final String? assignedByTrainerId;
+  final String? ownerTrainerId;
 
   HiveTrainingSession({
     required this.id,
@@ -49,8 +56,8 @@ class HiveTrainingSession extends HiveObject {
     this.isUserCreated = false,
     this.titleFa,
     this.isPublic,
-    this.assignedToUserId,
-    this.assignedByTrainerId,
+    this.deprecatedAssignedToUserId,
+    this.ownerTrainerId,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -65,8 +72,7 @@ class HiveTrainingSession extends HiveObject {
       isUserCreated: json['is_user_created'] as bool? ?? false,
       titleFa: json['title_fa'] as String?,
       isPublic: json['is_public'] as bool? ?? true,
-      assignedToUserId: json['assigned_to_user_id'] as String?,
-      assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
+      ownerTrainerId: json['owner_trainer_id'] as String?,
     );
   }
 
@@ -79,9 +85,7 @@ class HiveTrainingSession extends HiveObject {
         'is_user_created': isUserCreated,
         if (titleFa != null) 'title_fa': titleFa,
         'is_public': isPublic ?? true,
-        if (assignedToUserId != null) 'assigned_to_user_id': assignedToUserId,
-        if (assignedByTrainerId != null)
-          'assigned_by_trainer_id': assignedByTrainerId,
+        if (ownerTrainerId != null) 'owner_trainer_id': ownerTrainerId,
       };
 
   factory HiveTrainingSession.fromDomain(TrainingSession s) {
@@ -94,8 +98,7 @@ class HiveTrainingSession extends HiveObject {
       isUserCreated: s.isUserCreated,
       titleFa: s.titleFa,
       isPublic: s.isPublic,
-      assignedToUserId: s.assignedToUserId,
-      assignedByTrainerId: s.assignedByTrainerId,
+      ownerTrainerId: s.ownerTrainerId,
     );
   }
 
@@ -109,8 +112,7 @@ class HiveTrainingSession extends HiveObject {
       createdAt: createdAt,
       isUserCreated: isUserCreated,
       isPublic: isPublic ?? true,
-      assignedToUserId: assignedToUserId,
-      assignedByTrainerId: assignedByTrainerId,
+      ownerTrainerId: ownerTrainerId,
     );
   }
 }

@@ -3,23 +3,23 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
-import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 
-/// Trainer-only. Takes an already-edited session (see
+/// Trainer-only. Picks which trainee(s) an already-saved session (see
 /// EditTrainingSessionPage, reused as the content-editing step before this
-/// page — not duplicated here) and picks who it's assigned to.
+/// page — not duplicated here) is assigned to. One session can be assigned
+/// to any number of trainees — see session_assignments
+/// (supabase/migrations/0014_session_assignment.sql).
 class AssignSessionPage extends StatefulWidget {
   const AssignSessionPage({
     super.key,
-    required this.session,
-    required this.items,
+    required this.sessionId,
+    required this.sessionTitle,
   });
 
-  final TrainingSession session;
-  final List<ItemDetail> items;
+  final int sessionId;
+  final String sessionTitle;
 
   @override
   State<AssignSessionPage> createState() => _AssignSessionPageState();
@@ -27,7 +27,7 @@ class AssignSessionPage extends StatefulWidget {
 
 class _AssignSessionPageState extends State<AssignSessionPage> {
   late final Future<List<AppUser>> _trainees;
-  AppUser? _selected;
+  final Set<String> _selectedIds = {};
   bool _submitting = false;
 
   @override
@@ -37,19 +37,17 @@ class _AssignSessionPageState extends State<AssignSessionPage> {
   }
 
   Future<void> _confirm() async {
-    final trainee = _selected;
-    if (trainee == null || _submitting) return;
+    if (_selectedIds.isEmpty || _submitting) return;
     setState(() => _submitting = true);
-    await context.read<TrainingSessionCubit>().assignSessionToTrainee(
-          session: widget.session,
-          items: widget.items,
-          traineeUserId: trainee.id,
+    await context.read<TrainingSessionCubit>().assignToTrainees(
+          sessionId: widget.sessionId,
+          traineeUserIds: _selectedIds.toList(),
         );
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          '${widget.session.title} assigned to ${trainee.email ?? trainee.id}'),
+      content: Text('${widget.sessionTitle} assigned to '
+          '${_selectedIds.length} trainee${_selectedIds.length == 1 ? '' : 's'}'),
       duration: const Duration(milliseconds: 2200),
     ));
   }
@@ -60,7 +58,7 @@ class _AssignSessionPageState extends State<AssignSessionPage> {
 
     return Scaffold(
       backgroundColor: colors.bg,
-      appBar: AppBar(title: Text('Assign "${widget.session.title}"')),
+      appBar: AppBar(title: Text('Assign "${widget.sessionTitle}"')),
       body: FutureBuilder<List<AppUser>>(
         future: _trainees,
         builder: (context, snapshot) {
@@ -86,10 +84,15 @@ class _AssignSessionPageState extends State<AssignSessionPage> {
                   itemCount: trainees.length,
                   itemBuilder: (context, i) {
                     final t = trainees[i];
-                    return RadioListTile<AppUser>(
-                      value: t,
-                      groupValue: _selected,
-                      onChanged: (v) => setState(() => _selected = v),
+                    return CheckboxListTile(
+                      value: _selectedIds.contains(t.id),
+                      onChanged: (checked) => setState(() {
+                        if (checked ?? false) {
+                          _selectedIds.add(t.id);
+                        } else {
+                          _selectedIds.remove(t.id);
+                        }
+                      }),
                       title: Text(t.email ?? t.id),
                     );
                   },
@@ -100,13 +103,15 @@ class _AssignSessionPageState extends State<AssignSessionPage> {
                   padding: const EdgeInsets.all(16),
                   child: FilledButton(
                     onPressed:
-                        _selected == null || _submitting ? null : _confirm,
+                        _selectedIds.isEmpty || _submitting ? null : _confirm,
                     child: _submitting
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Assign'),
+                        : Text(_selectedIds.length <= 1
+                            ? 'Assign'
+                            : 'Assign to ${_selectedIds.length}'),
                   ),
                 ),
               ),

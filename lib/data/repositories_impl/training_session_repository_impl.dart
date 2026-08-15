@@ -10,6 +10,7 @@ import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -252,35 +253,31 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
   }
 
   @override
-  Future<TrainingSession> assignSessionToTrainee({
+  Future<TrainingSession> saveOwnedSession({
     required TrainingSession session,
     required List<ItemDetail> items,
-    required String traineeUserId,
   }) async {
     final trainer = authRepository.currentUser;
     if (trainer == null) {
-      throw StateError(
-          'assignSessionToTrainee() called with no signed-in trainer');
+      throw StateError('saveOwnedSession() called with no signed-in trainer');
     }
 
-    final assigned = session.copyWith(
+    final owned = session.copyWith(
       id: session.id == 0 ? DateTime.now().millisecondsSinceEpoch : session.id,
       isPublic: false,
-      assignedToUserId: traineeUserId,
-      assignedByTrainerId: trainer.id,
+      ownerTrainerId: trainer.id,
     );
 
     // The real fix for the "assignment never reached the trainee" bug —
     // an actual Supabase write, not a local Hive/in-memory shortcut.
     await remoteDataSource.upsertTrainingSession({
-      'id': assigned.id,
-      'title': assigned.title,
-      'description': assigned.description,
-      'difficulty': assigned.difficulty,
-      if (assigned.titleFa != null) 'title_fa': assigned.titleFa,
+      'id': owned.id,
+      'title': owned.title,
+      'description': owned.description,
+      'difficulty': owned.difficulty,
+      if (owned.titleFa != null) 'title_fa': owned.titleFa,
       'is_public': false,
-      'assigned_to_user_id': assigned.assignedToUserId,
-      'assigned_by_trainer_id': assigned.assignedByTrainerId,
+      'owner_trainer_id': owned.ownerTrainerId,
     });
 
     final itemRows = items.asMap().entries.map((entry) {
@@ -290,23 +287,24 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           ? (detail.item.prescription as RepsPresc).count
           : 1;
       return {
-        'training_session_id': assigned.id,
+        'training_session_id': owned.id,
         'exercise_id': detail.item.exerciseId,
         'position': position,
         'reps_to_do': reps,
       };
     }).toList();
-    await remoteDataSource.replaceTrainingSessionItems(assigned.id, itemRows);
+    await remoteDataSource.replaceTrainingSessionItems(owned.id, itemRows);
 
     // Patch the trainer's own in-memory snapshot for immediate UI
-    // reflection — the trainee picks it up via their own next sync, since
-    // correct RLS already scopes what the unfiltered select returns.
+    // reflection — an assigned trainee picks it up via their own next
+    // sync, since correct RLS already scopes what the unfiltered select
+    // returns.
     if (_domainSnapshot != null) {
-      _domainSnapshot!.sessionsById[assigned.id] = assigned;
-      _domainSnapshot!.itemsBySessionId[assigned.id] = itemRows
+      _domainSnapshot!.sessionsById[owned.id] = owned;
+      _domainSnapshot!.itemsBySessionId[owned.id] = itemRows
           .map((r) => TrainingItem(
-                id: assigned.id * 10000 + (r['position'] as int),
-                sessionId: assigned.id,
+                id: owned.id * 10000 + (r['position'] as int),
+                sessionId: owned.id,
                 exerciseId: r['exercise_id'] as int,
                 position: r['position'] as int,
                 prescription: RepsPresc(r['reps_to_do'] as int),
@@ -314,7 +312,39 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
           .toList();
     }
 
-    return assigned;
+    return owned;
+  }
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {
+    final trainer = authRepository.currentUser;
+    if (trainer == null) {
+      throw StateError(
+          'assignSessionToTrainee() called with no signed-in trainer');
+    }
+    await remoteDataSource.insertSessionAssignment(
+      sessionId: sessionId,
+      traineeUserId: traineeUserId,
+      trainerId: trainer.id,
+    );
+  }
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async {
+    final rows = await remoteDataSource.fetchSessionAssignments(sessionId);
+    return rows
+        .map((r) => SessionAssignment(
+              id: r['id'] as int,
+              sessionId: r['session_id'] as int,
+              traineeUserId: r['trainee_user_id'] as String,
+              assignedByTrainerId: r['assigned_by_trainer_id'] as String?,
+              assignedAt: DateTime.parse(r['assigned_at'] as String),
+              traineeNote: r['trainee_note'] as String?,
+            ))
+        .toList();
   }
 
   /// Replaces all HiveTrainingSessionItems for [sessionId] with [items].

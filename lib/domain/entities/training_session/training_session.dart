@@ -7,17 +7,16 @@ class TrainingSession {
   final DateTime? createdAt;
   final bool isUserCreated;
 
-  /// Public catalog session (default) vs. an individualized one a trainer
-  /// built for a specific trainee. Existing/public sessions are unaffected —
-  /// this defaults to true everywhere.
+  /// Public catalog session (default) vs. one a trainer authored privately.
+  /// Existing/public sessions are unaffected — this defaults to true
+  /// everywhere.
   final bool isPublic;
 
-  /// Set together: the trainee this session was assigned to, and the
-  /// trainer who assigned it. Both null for public catalog sessions.
-  final String? assignedToUserId;
-  final String? assignedByTrainerId;
-
-  bool get isIndividualized => assignedToUserId != null;
+  /// The trainer who authored this private session, if any (null for public
+  /// catalog sessions). Deliberately not paired with a single assignee —
+  /// who it's assigned to lives in SessionAssignment, since one session can
+  /// be assigned to any number of trainees.
+  final String? ownerTrainerId;
 
   TrainingSession({
     required this.id,
@@ -28,8 +27,7 @@ class TrainingSession {
     this.createdAt,
     this.isUserCreated = false,
     this.isPublic = true,
-    this.assignedToUserId,
-    this.assignedByTrainerId,
+    this.ownerTrainerId,
   });
 
   TrainingSession copyWith({
@@ -41,8 +39,7 @@ class TrainingSession {
     DateTime? createdAt,
     bool? isUserCreated,
     bool? isPublic,
-    String? assignedToUserId,
-    String? assignedByTrainerId,
+    String? ownerTrainerId,
   }) {
     return TrainingSession(
       id: id ?? this.id,
@@ -53,8 +50,7 @@ class TrainingSession {
       createdAt: createdAt ?? this.createdAt,
       isUserCreated: isUserCreated ?? this.isUserCreated,
       isPublic: isPublic ?? this.isPublic,
-      assignedToUserId: assignedToUserId ?? this.assignedToUserId,
-      assignedByTrainerId: assignedByTrainerId ?? this.assignedByTrainerId,
+      ownerTrainerId: ownerTrainerId ?? this.ownerTrainerId,
     );
   }
 }

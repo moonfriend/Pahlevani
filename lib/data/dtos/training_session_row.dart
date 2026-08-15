@@ -7,8 +7,7 @@ class TrainingSessionRow {
   final DateTime? createdAt;
   final bool? isUserCreated;
   final bool? isPublic;
-  final String? assignedToUserId;
-  final String? assignedByTrainerId;
+  final String? ownerTrainerId;
 
   TrainingSessionRow({
     required this.id,
@@ -19,8 +18,7 @@ class TrainingSessionRow {
     this.createdAt,
     this.isUserCreated,
     this.isPublic,
-    this.assignedToUserId,
-    this.assignedByTrainerId,
+    this.ownerTrainerId,
   });
 
   factory TrainingSessionRow.fromJson(Map<String, dynamic> json) {
@@ -39,8 +37,7 @@ class TrainingSessionRow {
       // Defaults true so a response predating this column (or a stale
       // cached response) is treated as the public catalog it always was.
       isPublic: json['is_public'] as bool? ?? true,
-      assignedToUserId: json['assigned_to_user_id'] as String?,
-      assignedByTrainerId: json['assigned_by_trainer_id'] as String?,
+      ownerTrainerId: json['owner_trainer_id'] as String?,
     );
   }
 }
