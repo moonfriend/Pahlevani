@@ -9,12 +9,14 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_connectivity_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -106,6 +108,10 @@ Widget _buildHarness(TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
     providers: [
       BlocProvider.value(value: cubit),
       BlocProvider.value(value: settingsCubit),
+      BlocProvider<AuthCubit>(
+        create: (_) =>
+            AuthCubit(repository: FakeAuthRepository())..initialize(),
+      ),
     ],
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),

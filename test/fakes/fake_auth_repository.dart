@@ -1,0 +1,79 @@
+import 'dart:async';
+
+import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/repositories/auth_repository.dart';
+
+class FakeAuthRepository implements AuthRepository {
+  AppUser? _currentUser;
+  bool throwOnSignIn = false;
+  bool throwOnSignUp = false;
+  bool throwOnAcceptConsent = false;
+  List<AppUser> trainees = const [];
+
+  int signInCallCount = 0;
+  int signUpCallCount = 0;
+  int signOutCallCount = 0;
+  int acceptPrivacyConsentCallCount = 0;
+
+  final _controller = StreamController<AppUser?>.broadcast();
+
+  FakeAuthRepository({AppUser? initialUser}) : _currentUser = initialUser;
+
+  @override
+  AppUser? get currentUser => _currentUser;
+
+  @override
+  Stream<AppUser?> authStateChanges() => _controller.stream;
+
+  /// Test helper — pushes a user (or null) through the stream without going
+  /// through signIn/signUp, simulating an externally-driven auth event.
+  void emitUser(AppUser? user) {
+    _currentUser = user;
+    _controller.add(user);
+  }
+
+  @override
+  Future<AppUser> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    signInCallCount++;
+    if (throwOnSignIn) throw Exception('Invalid email or password');
+    final user = AppUser(id: 'user-1', email: email);
+    _currentUser = user;
+    return user;
+  }
+
+  @override
+  Future<AppUser> signUpWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    signUpCallCount++;
+    if (throwOnSignUp) throw Exception('Could not create account');
+    final user = AppUser(id: 'user-1', email: email);
+    _currentUser = user;
+    return user;
+  }
+
+  @override
+  Future<void> signOut() async {
+    signOutCallCount++;
+    _currentUser = null;
+  }
+
+  @override
+  Future<AppUser> acceptPrivacyConsent() async {
+    acceptPrivacyConsentCallCount++;
+    if (throwOnAcceptConsent) throw Exception('Could not save consent');
+    final updated = (_currentUser ?? const AppUser(id: 'user-1'))
+        .copyWith(consentAccepted: true, consentedAt: DateTime.now());
+    _currentUser = updated;
+    return updated;
+  }
+
+  @override
+  Future<List<AppUser>> listTrainees() async => trainees;
+
+  void dispose() => _controller.close();
+}

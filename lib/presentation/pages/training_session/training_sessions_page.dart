@@ -5,10 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
+import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
@@ -349,6 +353,20 @@ class _Header extends StatelessWidget {
                   onTap: onRefresh,
                   spinController: refreshing ? refreshSpin : null,
                 ),
+                const SizedBox(width: 8),
+                // login / account — optional, never blocks browsing
+                BlocBuilder<AuthCubit, AuthState>(
+                  builder: (authContext, authState) {
+                    return _IconBtn(
+                      icon: authState is AuthAuthenticated
+                          ? Icons.person_rounded
+                          : Icons.person_outline_rounded,
+                      color: colors.onMuted,
+                      bg: colors.surface2,
+                      onTap: () => _handleAccountTap(authContext, authState),
+                    );
+                  },
+                ),
               ]),
             ),
           ],
@@ -366,6 +384,60 @@ class _Header extends StatelessWidget {
       ]),
     );
   }
+}
+
+void _handleAccountTap(BuildContext context, AuthState state) {
+  switch (state) {
+    case AuthAuthenticated(:final user):
+      _showAccountSheet(context, user);
+    case AuthNeedsConsent():
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const PrivacyConsentPage()));
+    case AuthAnonymous():
+    case AuthChecking():
+    case AuthSubmitting():
+    case AuthFailure():
+      Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const AuthPage()));
+  }
+}
+
+void _showAccountSheet(BuildContext context, AppUser user) {
+  final colors = Theme.of(context).extension<PahlevaniColors>()!;
+  final cubit = context.read<AuthCubit>();
+
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+                color: colors.border, borderRadius: BorderRadius.circular(9))),
+        ListTile(
+          leading: const Icon(Icons.account_circle_outlined),
+          title: Text('Signed in as',
+              style: TextStyle(fontSize: 12, color: colors.onMuted)),
+          subtitle: Text(user.email ?? user.id,
+              style: const TextStyle(
+                  fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout_rounded),
+          title: const Text('Sign out',
+              style: TextStyle(
+                  fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+          onTap: () {
+            Navigator.pop(context);
+            cubit.signOut();
+          },
+        ),
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
 }
 
 class _IconBtn extends StatelessWidget {

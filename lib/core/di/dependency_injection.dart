@@ -7,6 +7,7 @@ import 'package:get_it/get_it.dart';
 import '../../data/datasources/training_session/training_session_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_datasource.dart';
 import '../../data/datasources/training_session/training_session_remote_datasource.dart';
+import '../../data/repositories_impl/auth_repository_impl.dart';
 import '../../data/repositories_impl/download_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
 import '../../data/repositories_impl/version_gate_repository_impl.dart';
@@ -16,6 +17,7 @@ import '../../data/services/just_audio_player_service.dart';
 import '../../data/services/just_audio_web_player_service.dart';
 import '../../data/services/no_op_notification_service.dart';
 import '../../data/services/pahlevani_audio_handler.dart';
+import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/download_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/repositories/version_gate_repository.dart';
@@ -104,6 +106,8 @@ class DependencyInjection {
 
     getIt.registerLazySingleton<VersionGateRepository>(
         () => SupabaseVersionGateRepository());
+
+    getIt.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl());
   }
 
   Future<void> ensureInitialized() async {
