@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:fvp/fvp.dart' as fvp;
 import 'package:pahlevani/data/services/pahlevani_audio_handler.dart';
 import 'package:pahlevani/firebase_options.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // video_player has no Linux/Windows desktop implementation of its own —
+  // fvp registers a libmdk-backed platform implementation for exactly those
+  // two, leaving the official implementation in place everywhere else
+  // (Android/iOS/macOS/web). Safe to call unconditionally; a no-op elsewhere.
+  fvp.registerWith(options: {
+    'platforms': ['linux', 'windows']
+  });
 
   // Firebase Crashlytics — requires android/app/google-services.json.
   // Replace the placeholder file with the real one from the Firebase Console
