@@ -276,6 +276,32 @@ def extract_frame_at(src_path_or_url: str, timestamp: float) -> bytes | None:
     finally:
         Path(out_path).unlink(missing_ok=True)
 
+def extract_audio_snippet_at(
+    src_url: str, timestamp: float, pad: float = 0.6, duration: float = 1.5
+) -> bytes | None:
+    """Extract a short MP3 snippet centered a bit before [timestamp] — for
+    hearing exactly what's at a candidate audio anchor point. A browser
+    audio player's scrubber (unlike video's) has no frame-level analogue to
+    confirm against visually, so this is the audio equivalent of
+    extract_frame_at: play back just the moment, not the whole track."""
+    start = max(timestamp - pad, 0.0)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+        out_path = tmp.name
+    cmd = [
+        "ffmpeg", "-y", "-ss", str(start), "-i", src_url, "-t", str(duration),
+        "-c:a", "libmp3lame", "-q:a", "4",
+        out_path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            return None
+        return Path(out_path).read_bytes()
+    except subprocess.TimeoutExpired:
+        return None
+    finally:
+        Path(out_path).unlink(missing_ok=True)
+
 def extract_preview_frame(src_path: str, crop_w: int, crop_h: int, crop_x: int, crop_y: int, timestamp: float) -> bytes | None:
     """Extract one cropped preview frame as JPEG bytes, for eyeballing before a full encode."""
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
@@ -479,8 +505,9 @@ def tab_exercises():
     st.caption(
         "Sets the beat moment (e.g. the bottom of a push-up) used to sync "
         "this exercise's audio to its movement's video demonstration, if one "
-        "exists. Listen to the clip below, scrub to the moment, then enter "
-        "its timestamp."
+        "exists. The full clip below is only for finding the rough area — "
+        "its scrubber isn't precise. Nudge the timestamp and use \"Preview "
+        "snippet\" to hear just that moment until it's exactly on the beat."
     )
     ex_opts = {f"{exercise_label(r)}  (id {r['id']})": r["id"] for _, r in df.iterrows()}
     if ex_opts:
@@ -497,6 +524,16 @@ def tab_exercises():
             format="%.3f", key="audio_anchor_s",
         )
         audio_col2.markdown(f"**{format_mmss(anchor_s)}**")
+        if st.button("🔊 Preview snippet", key="audio_anchor_preview_btn"):
+            snippet = extract_audio_snippet_at(ex_row["url"], anchor_s)
+            if snippet:
+                st.audio(snippet, format="audio/mp3")
+                st.caption(
+                    f"~0.6s of lead-in, so the anchor moment lands shortly "
+                    f"after the snippet starts (not at 0:00)."
+                )
+            else:
+                st.error("Snippet extraction failed.")
         if st.button("💾 Save anchor", key="sv_audio_anchor"):
             save_rows("exercise", [{"id": int(ex_id), "audio_anchor_ms": round(anchor_s * 1000)}])
             st.success("Anchor saved.")

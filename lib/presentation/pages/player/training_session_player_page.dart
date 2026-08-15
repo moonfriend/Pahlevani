@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
@@ -428,6 +429,9 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
         setState(() => _ready = true);
         final plan = computeVideoSyncPlan(
             widget.startOffsetMs, _controller.value.duration.inMilliseconds);
+        AppLogger.d('video sync: startOffsetMs=${widget.startOffsetMs} '
+            'videoDurationMs=${_controller.value.duration.inMilliseconds} '
+            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
         if (plan.seekToMs != null) {
           await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
           if (!mounted) return;
