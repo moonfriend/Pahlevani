@@ -21,6 +21,7 @@ void main() {
       String? mediaType,
       String? mediaSrc,
       String? mediaPoster,
+      int? audioAnchorMs,
     }) =>
         ExerciseRow(
           id: id,
@@ -32,6 +33,7 @@ void main() {
           mediaType: mediaType,
           mediaSrc: mediaSrc,
           mediaPoster: mediaPoster,
+          audioAnchorMs: audioAnchorMs,
         );
 
     MovementRow baseMovement({
@@ -43,6 +45,7 @@ void main() {
       String mediaType = 'photo',
       String? mediaSrc,
       String? mediaPoster,
+      int? videoAnchorMs,
     }) =>
         MovementRow(
           id: id,
@@ -53,6 +56,7 @@ void main() {
           mediaType: mediaType,
           mediaSrc: mediaSrc,
           mediaPoster: mediaPoster,
+          videoAnchorMs: videoAnchorMs,
         );
 
     test('uses movement name when movement is present', () {
@@ -117,6 +121,29 @@ void main() {
     test('media src falls back to row when no movement', () {
       final ex = mapExercise(baseRow(mediaSrc: 'row-src.jpg'));
       expect(ex.media.src, 'row-src.jpg');
+    });
+
+    test('audioAnchorMs comes from the exercise row', () {
+      final ex = mapExercise(baseRow(audioAnchorMs: 1250));
+      expect(ex.audioAnchorMs, 1250);
+    });
+
+    test('audioAnchorMs is null when not set on the row', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.audioAnchorMs, isNull);
+    });
+
+    test('media videoAnchorMs comes from movement when present', () {
+      final ex = mapExercise(
+        baseRow(),
+        movement: baseMovement(videoAnchorMs: 900),
+      );
+      expect(ex.media.videoAnchorMs, 900);
+    });
+
+    test('media videoAnchorMs is null when no movement', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.media.videoAnchorMs, isNull);
     });
 
     test('movementId is set from row when present', () {

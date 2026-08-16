@@ -223,8 +223,20 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
             type: 'video',
             src: localVideo ?? exercise.media.src,
             poster: localPoster ?? posterUrl,
+            videoAnchorMs: exercise.media.videoAnchorMs,
           );
         }
+
+        // Constant start-offset so the video's "sarzarb"/main beat lines up
+        // with the audio's, when both anchors are set (see migration 0012).
+        // Null when either is missing — video then plays decoupled, as
+        // before this feature existed.
+        final audioAnchorMs = exercise.audioAnchorMs;
+        final videoAnchorMs = exercise.media.videoAnchorMs;
+        final videoStartOffsetMs =
+            (audioAnchorMs != null && videoAnchorMs != null)
+                ? videoAnchorMs - audioAnchorMs
+                : null;
 
         tracksToLoad.add(TrainingItemWithAudio(
           id: item.id.toString(),
@@ -233,6 +245,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           media: resolvedMedia,
           defaultRepetitions: exercise.repetitionsDefault,
           userRepetitions: repsToDo,
+          videoStartOffsetMs: videoStartOffsetMs,
         ));
       }
 

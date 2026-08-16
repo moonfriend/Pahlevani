@@ -3,7 +3,12 @@ class ExerciseMedia {
   final String? src;
   final String? poster;
 
-  const ExerciseMedia({required this.type, this.src, this.poster});
+  /// "Sarzarb"/main-beat timestamp (ms) in the video, for video/audio sync.
+  /// Only meaningful when type == 'video'. Null = no anchor set.
+  final int? videoAnchorMs;
+
+  const ExerciseMedia(
+      {required this.type, this.src, this.poster, this.videoAnchorMs});
 
   static const none = ExerciseMedia(type: 'none');
 
@@ -30,6 +35,10 @@ class Exercise {
   /// Demonstration video URL for the info page (from `movement_info`).
   final String? videoUrl;
 
+  /// "Sarzarb"/main-beat timestamp (ms) in this exercise's audio recording,
+  /// for video/audio sync. Null = no anchor set.
+  final int? audioAnchorMs;
+
   const Exercise({
     required this.id,
     this.movementId,
@@ -44,5 +53,6 @@ class Exercise {
     this.media = ExerciseMedia.none,
     this.description,
     this.videoUrl,
+    this.audioAnchorMs,
   });
 }

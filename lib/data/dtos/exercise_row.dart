@@ -13,6 +13,10 @@ class ExerciseRow {
   final String? mediaSrc; // present before migration; null after
   final String? mediaPoster; // present before migration; null after
 
+  /// "Sarzarb"/main-beat timestamp (ms) in this exercise's audio recording,
+  /// for video/audio sync. Null = no anchor set.
+  final int? audioAnchorMs;
+
   ExerciseRow({
     required this.id,
     this.movementId,
@@ -27,6 +31,7 @@ class ExerciseRow {
     this.mediaType,
     this.mediaSrc,
     this.mediaPoster,
+    this.audioAnchorMs,
   });
 
   factory ExerciseRow.fromJson(Map<String, Object?> m) => ExerciseRow(
@@ -43,5 +48,6 @@ class ExerciseRow {
         mediaType: m['media_type'] as String?,
         mediaSrc: m['media_src'] as String?,
         mediaPoster: m['media_poster'] as String?,
+        audioAnchorMs: (m['audio_anchor_ms'] as num?)?.toInt(),
       );
 }

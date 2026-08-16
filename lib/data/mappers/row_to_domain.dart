@@ -29,10 +29,12 @@ Exercise mapExercise(
       durationSeconds: r.durationSeconds,
       description: movementInfo?.description,
       videoUrl: movementInfo?.videoUrl,
+      audioAnchorMs: r.audioAnchorMs,
       media: ExerciseMedia(
         type: movement?.mediaType ?? r.mediaType ?? 'none',
         src: movement?.mediaSrc ?? r.mediaSrc,
         poster: movement?.mediaPoster ?? r.mediaPoster,
+        videoAnchorMs: movement?.videoAnchorMs,
       ),
     );
 

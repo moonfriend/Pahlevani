@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
@@ -275,6 +276,7 @@ class _Stage extends StatelessWidget {
                 key: ValueKey(track.media.src),
                 path: track.media.src!,
                 isPlaying: state.isPlaying,
+                startOffsetMs: track.videoStartOffsetMs,
               ),
             )
           else if (hasPhoto || hasVideoPoster)
@@ -359,16 +361,46 @@ class _Stage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video/audio sync — a constant one-time offset (see
+// TrainingItemWithAudio.videoStartOffsetMs) so the video's "sarzarb"/main
+// beat lines up with the audio's, applied once when the video starts.
+// Deliberately not re-applied on every loop (v1 scope, see plan): re-seeking
+// video_player on a timer is a real jank risk (seekTo triggers a genuine
+// buffering pause on Android, not an instant jump), so drift across many
+// loops is an accepted limitation for now rather than something to build
+// continuous correction for.
+// ─────────────────────────────────────────────────────────────────────────────
+({int? seekToMs, int? delayMs}) computeVideoSyncPlan(
+    int? startOffsetMs, int videoDurationMs) {
+  if (startOffsetMs == null || videoDurationMs <= 0) {
+    return (seekToMs: null, delayMs: null);
+  }
+  if (startOffsetMs >= 0) {
+    // Modulo handles an anchor beyond one loop length — start partway into
+    // the current loop iteration rather than failing to seek at all.
+    return (seekToMs: startOffsetMs % videoDurationMs, delayMs: null);
+  }
+  // Audio's beat lands later in its own file than video's does, so video
+  // needs to wait at frame 0, not seek to a negative position.
+  return (seekToMs: null, delayMs: -startOffsetMs);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Exercise demonstration video — muted, looping, local-file only. Play/pause
 // follows the audio cubit's isPlaying (the audio guidance drives the actual
 // timeline; this is a silent visual companion, not an independently
 // controlled player), so it never exposes its own transport controls.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ExerciseVideo extends StatefulWidget {
-  const _ExerciseVideo(
-      {super.key, required this.path, required this.isPlaying});
+  const _ExerciseVideo({
+    super.key,
+    required this.path,
+    required this.isPlaying,
+    this.startOffsetMs,
+  });
   final String path;
   final bool isPlaying;
+  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -377,6 +409,18 @@ class _ExerciseVideo extends StatefulWidget {
 class _ExerciseVideoState extends State<_ExerciseVideo> {
   late final VideoPlayerController _controller;
   bool _ready = false;
+
+  // True from the moment initialize() succeeds until the computed sync plan
+  // (seek or delay) has been fully applied. _Stage rebuilds far more often
+  // than once — every ~200ms audio tick — and didUpdateWidget reacts to
+  // each one by auto-playing whenever isPlaying=true but the controller
+  // isn't yet playing. Without this guard, a rebuild landing during the
+  // sync window (which _ready alone doesn't prevent, since it becomes true
+  // immediately on initialize(), before the plan is even computed) races
+  // straight past a pending seek or delay and starts playback from
+  // position 0 immediately — confirmed live: a real negative offset that
+  // should have delayed play() by ~1.3s instead started right away.
+  bool _syncPending = true;
 
   @override
   void initState() {
@@ -392,10 +436,28 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     _controller
       ..setLooping(true)
       ..setVolume(0)
-      ..initialize().then((_) {
+      ..initialize().then((_) async {
         if (!mounted) return;
         setState(() => _ready = true);
-        if (widget.isPlaying) _controller.play();
+        final plan = computeVideoSyncPlan(
+            widget.startOffsetMs, _controller.value.duration.inMilliseconds);
+        AppLogger.d('video sync: startOffsetMs=${widget.startOffsetMs} '
+            'videoDurationMs=${_controller.value.duration.inMilliseconds} '
+            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
+        if (plan.seekToMs != null) {
+          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
+          if (!mounted) return;
+        }
+        if (plan.delayMs != null) {
+          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+            if (!mounted) return;
+            _syncPending = false;
+            if (widget.isPlaying) unawaited(_controller.play());
+          }));
+          return;
+        }
+        _syncPending = false;
+        if (widget.isPlaying) unawaited(_controller.play());
       }).catchError((_) {
         // Corrupt/unreadable local file — fail silently, same as a broken
         // image falls back to errorBuilder rather than crashing the stage.
@@ -405,7 +467,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_ready) return;
+    if (!_ready || _syncPending) return;
     if (widget.isPlaying && !_controller.value.isPlaying) {
       _controller.play();
     } else if (!widget.isPlaying && _controller.value.isPlaying) {

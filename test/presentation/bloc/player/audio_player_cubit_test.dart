@@ -357,6 +357,59 @@ void main() {
         expect(media.poster, '/local/poster.jpg');
       });
     });
+
+    group('video sync offset', () {
+      Exercise videoExercise({int? audioAnchorMs, int? videoAnchorMs}) =>
+          Exercise(
+            id: 10,
+            name: 'Video Ex',
+            audioFileUrl: 'https://audio.mp3',
+            audioAnchorMs: audioAnchorMs,
+            media: ExerciseMedia(
+              type: 'video',
+              src: 'https://cdn.example.com/clip.mp4',
+              videoAnchorMs: videoAnchorMs,
+            ),
+          );
+
+      Future<int?> offsetFor(Exercise exercise) async {
+        final session = _session(1);
+        final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+        final snap = _snapshotWithItems(session, items, [exercise]);
+        final cubit = _makeCubit(snap);
+        addTearDown(cubit.close);
+        await cubit.loadTracks();
+        return cubit.state.tracks[0].videoStartOffsetMs;
+      }
+
+      test('both anchors present: offset is video - audio (positive)',
+          () async {
+        final offset = await offsetFor(
+            videoExercise(audioAnchorMs: 500, videoAnchorMs: 1200));
+        expect(offset, 700);
+      });
+
+      test('both anchors present: offset can be negative', () async {
+        final offset = await offsetFor(
+            videoExercise(audioAnchorMs: 1200, videoAnchorMs: 500));
+        expect(offset, -700);
+      });
+
+      test('audio anchor missing: offset is null', () async {
+        final offset = await offsetFor(videoExercise(videoAnchorMs: 500));
+        expect(offset, isNull);
+      });
+
+      test('video anchor missing: offset is null', () async {
+        final offset = await offsetFor(videoExercise(audioAnchorMs: 500));
+        expect(offset, isNull);
+      });
+
+      test('neither anchor set: offset is null', () async {
+        final offset = await offsetFor(videoExercise());
+        expect(offset, isNull);
+      });
+    });
   });
 
   // ---------- next / prev ----------
