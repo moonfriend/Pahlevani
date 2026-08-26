@@ -19,7 +19,10 @@ if (keyPropertiesFile.exists()) {
 
 android {
     namespace = "com.pahlevani.app"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned above Flutter's default (35) — the fvp plugin (video_player's
+    // Linux/Windows desktop backend) requires compileSdk 36. SDKs are
+    // backward-compatible, so this doesn't change runtime behavior.
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
