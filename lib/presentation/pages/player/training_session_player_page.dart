@@ -860,11 +860,17 @@ class _TrackListState extends State<_TrackList> {
               // ⓘ — opens the move's info page.
               if (exercise != null)
                 GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => ExerciseInfoPage(exercise: exercise)),
-                  ),
+                  onTap: () {
+                    // Explicit pause, not togglePlay() — opening the info
+                    // page must always stop playback, never resume it.
+                    widget.cubit.pause();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => ExerciseInfoPage(
+                              exercise: exercise, media: track.media)),
+                    );
+                  },
                   child: SizedBox(
                     width: 30,
                     height: 30,

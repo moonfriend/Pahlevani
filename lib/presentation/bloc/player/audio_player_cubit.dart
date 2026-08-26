@@ -461,11 +461,20 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (state.isFinished) {
       replay();
     } else if (state.isPlaying) {
-      _audioService.pause();
-      emit(state.copyWith(isPlaying: false));
+      pause();
     } else {
       play();
     }
+  }
+
+  /// Explicit, non-toggling pause intent — unlike [togglePlay], calling this
+  /// while already paused is a safe no-op rather than resuming playback.
+  /// Callers that need to guarantee playback stops (e.g. opening the info
+  /// page) must use this, not togglePlay().
+  void pause() {
+    if (!state.isPlaying) return;
+    _audioService.pause();
+    emit(state.copyWith(isPlaying: false));
   }
 
   Future<void> seekTo(Duration position) async {
