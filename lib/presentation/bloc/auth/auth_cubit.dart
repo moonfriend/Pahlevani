@@ -10,6 +10,7 @@ part 'auth_state.dart';
 class AuthCubit extends Cubit<AuthState> {
   final AuthRepository _repo;
   StreamSubscription<AppUser?>? _authSub;
+  StreamSubscription<AppUser>? _googleSub;
 
   AuthCubit({required AuthRepository repository})
       : _repo = repository,
@@ -25,7 +26,25 @@ class AuthCubit extends Cubit<AuthState> {
     _authSub = _repo.authStateChanges().listen((user) {
       if (!isClosed) _emitForUser(user);
     });
+
+    // Web's Google button reports completion here instead of through a
+    // return value — see AuthRepository.googleSignInEvents.
+    unawaited(_googleSub?.cancel());
+    _googleSub = _repo.googleSignInEvents.listen(
+      (user) {
+        if (!isClosed) _emitForUser(user);
+      },
+      onError: (Object e) {
+        if (!isClosed) {
+          emit(AuthFailure(message: e.toString(), previous: state));
+        }
+      },
+    );
   }
+
+  /// Lets a platform-rendered Google button (web) start showing once its
+  /// SDK is ready. A no-op on platforms that sign in imperatively instead.
+  Future<void> ensureGoogleSignInReady() => _repo.initializeGoogleSignIn();
 
   void _emitForUser(AppUser? user) {
     if (user == null) {
@@ -75,6 +94,21 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  Future<void> signInWithGoogle() async {
+    if (isClosed) return;
+    final previous = state;
+    emit(const AuthSubmitting());
+    try {
+      final user = await _repo.signInWithGoogle();
+      if (isClosed) return;
+      _emitForUser(user);
+    } catch (e) {
+      if (!isClosed) {
+        emit(AuthFailure(message: e.toString(), previous: previous));
+      }
+    }
+  }
+
   /// Only acts while gated behind consent — a no-op from any other state.
   Future<void> acceptConsent() async {
     final current = state;
@@ -100,6 +134,7 @@ class AuthCubit extends Cubit<AuthState> {
   @override
   Future<void> close() async {
     await _authSub?.cancel();
+    await _googleSub?.cancel();
     return super.close();
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_policy_page.dart';
+import 'package:pahlevani/presentation/widgets/common/app_error_dialog.dart';
 
 /// Shown once after a successful sign-in/sign-up, and reachable again via
 /// the menu icon until accepted. Not a full-app gate — declining just signs
@@ -17,10 +18,16 @@ class PrivacyConsentPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: colors.bg,
       body: SafeArea(
-        child: BlocBuilder<AuthCubit, AuthState>(
+        child: BlocConsumer<AuthCubit, AuthState>(
+          listener: (context, state) {
+            if (state is AuthAuthenticated) {
+              Navigator.pop(context);
+            } else if (state is AuthFailure) {
+              showAppErrorDialog(context, message: state.message);
+            }
+          },
           builder: (context, state) {
             final submitting = state is AuthSubmitting;
-            final errorMessage = state is AuthFailure ? state.message : null;
             return Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -46,12 +53,6 @@ class PrivacyConsentPage extends StatelessWidget {
                     ),
                     child: const Text('Read the full notice'),
                   ),
-                  if (errorMessage != null) ...[
-                    const SizedBox(height: 8),
-                    Text(errorMessage,
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.error)),
-                  ],
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: submitting

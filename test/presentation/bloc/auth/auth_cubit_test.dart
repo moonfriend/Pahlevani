@@ -96,6 +96,74 @@ void main() {
     });
   });
 
+  group('signInWithGoogle()', () {
+    test('success without consent transitions to AuthNeedsConsent', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signInWithGoogle();
+
+      expect(cubit.state, isA<AuthNeedsConsent>());
+      expect(repo.signInWithGoogleCallCount, 1);
+    });
+
+    test('failure emits AuthFailure and keeps AuthAnonymous as previous',
+        () async {
+      final repo = FakeAuthRepository()..throwOnGoogleSignIn = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signInWithGoogle();
+
+      expect(cubit.state, isA<AuthFailure>());
+      expect((cubit.state as AuthFailure).previous, isA<AuthAnonymous>());
+    });
+  });
+
+  group('googleSignInEvents (web button path)', () {
+    test(
+        'an event without consent transitions to AuthNeedsConsent, same as '
+        'the imperative signInWithGoogle() path', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      repo.emitGoogleSignInEvent(
+          const AppUser(id: 'g1', email: 'g@example.com'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state, isA<AuthNeedsConsent>());
+    });
+
+    test('an error on the stream emits AuthFailure', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      repo.emitGoogleSignInError(Exception('popup closed'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state, isA<AuthFailure>());
+    });
+
+    test('ensureGoogleSignInReady() calls repo.initializeGoogleSignIn()',
+        () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.ensureGoogleSignInReady();
+
+      expect(repo.initializeGoogleSignInCallCount, 1);
+    });
+  });
+
   group('acceptConsent()', () {
     test('success transitions AuthNeedsConsent to AuthAuthenticated', () async {
       final repo = FakeAuthRepository(

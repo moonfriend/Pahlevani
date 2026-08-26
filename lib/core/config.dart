@@ -10,3 +10,9 @@ const String supabaseAnonKey = String.fromEnvironment(
   defaultValue:
       "REDACTED-SUPABASE-ANON-KEY",
 );
+
+// Google OAuth "Web" client ID — counterintuitively, this is the one used by
+// the Android app (passed as serverClientId), not the Android client ID.
+// Empty default: Google sign-in stays unavailable until a real value is
+// supplied via .supabase.env, rather than shipping a broken hardcoded stub.
+const String googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
