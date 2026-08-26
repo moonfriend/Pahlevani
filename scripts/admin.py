@@ -10,9 +10,12 @@ Credentials (required — use the service-role key, not the anon key):
   • .streamlit/secrets.toml with those two keys (preferred)
 
 Storage:
-  Set BUCKET_PUBLIC = True once you make the 'tracks' bucket public in Supabase
-  Dashboard (Storage → tracks → Make public).  Until then, new uploads generate
-  a 10-year signed URL and store that.
+  All new uploads (audio, images, video) go to Cloudflare R2 — see
+  R2_ACCOUNT_ID/R2_BUCKET/R2_*_PREFIX below. Credentials: R2_ACCESS_KEY_ID
+  and R2_SECRET_ACCESS_KEY, same lookup order (env var / secrets.toml /
+  creds/r2). The legacy Supabase Storage buckets ('tracks', 'movement-media')
+  were fully migrated off and deleted 2026-08-26 — nothing in this tool
+  writes to Supabase Storage any more.
 """
 
 import io
@@ -61,14 +64,6 @@ def _creds_file(key: str, filename: str = "r2") -> str:
 SUPABASE_URL = os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
 
-STORAGE_BUCKET = "tracks"
-# Bucket for movement photos / poster images.
-MEDIA_BUCKET = "movement-media"
-# Set True after making the bucket public in Supabase Dashboard.
-# False → generate a 10-year signed URL on upload.
-BUCKET_PUBLIC = False
-MEDIA_BUCKET_PUBLIC = False
-SIGNED_URL_EXPIRY = 60 * 60 * 24 * 365 * 10  # 10 years in seconds
 
 # R2 — demonstration videos. Same account/bucket as the rest of the app's
 # media (photos/audio).
@@ -120,6 +115,8 @@ R2_PUBLIC_BASE = (
 )
 R2_VIDEO_PREFIX = "video/movements/"
 R2_VIDEO_POSTER_PREFIX = "images/posters/"
+R2_IMAGE_MOVEMENT_PREFIX = "images/movements/"
+R2_AUDIO_EXERCISE_PREFIX = "audio/exercises/"
 
 # ── DB / Storage client ───────────────────────────────────────────────────────
 
@@ -214,14 +211,6 @@ def bust_cache():
     load_items.clear()
     load_movements.clear()
     load_release_gate.clear()
-
-def make_media_url(storage_path: str) -> str:
-    if MEDIA_BUCKET_PUBLIC:
-        return f"{SUPABASE_URL}/storage/v1/object/public/{MEDIA_BUCKET}/{storage_path}"
-    r = get_client().storage.from_(MEDIA_BUCKET).create_signed_url(
-        storage_path, SIGNED_URL_EXPIRY
-    )
-    return r.get("signedURL") or r.get("signed_url") or ""
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -352,9 +341,19 @@ def extract_poster(video_path: str, out_path: str, timestamp: float = 1.0) -> bo
     result = subprocess.run(cmd, capture_output=True, timeout=30)
     return result.returncode == 0
 
-def upload_video_asset_to_r2(local_path: str, r2_key: str, content_type: str) -> str:
+def upload_asset_to_r2(local_path: str, r2_key: str, content_type: str) -> str:
+    """Upload a file already on disk (video/poster output from ffmpeg)."""
     get_r2_client().upload_file(
         local_path, R2_BUCKET, r2_key, ExtraArgs={"ContentType": content_type}
+    )
+    return f"{R2_PUBLIC_BASE}/{r2_key}"
+
+def upload_bytes_to_r2(data: bytes, r2_key: str, content_type: str) -> str:
+    """Upload in-memory bytes straight from a Streamlit file_uploader — no
+    temp file needed (unlike upload_asset_to_r2, which is for ffmpeg output
+    that's already on disk)."""
+    get_r2_client().put_object(
+        Bucket=R2_BUCKET, Key=r2_key, Body=data, ContentType=content_type
     )
     return f"{R2_PUBLIC_BASE}/{r2_key}"
 
@@ -378,14 +377,17 @@ def guess_movement_name(filename: str) -> str:
     stem = stem.replace("_", " ").strip()
     return stem or filename
 
-def make_url(storage_path: str) -> str:
-    if BUCKET_PUBLIC:
-        return f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{storage_path}"
-    # Generate a signed URL
-    r = get_client().storage.from_(STORAGE_BUCKET).create_signed_url(
-        storage_path, SIGNED_URL_EXPIRY
-    )
-    return r.get("signedURL") or r.get("signed_url") or ""
+def find_or_create_movement(name: str, known: dict[str, int]) -> tuple[int, bool]:
+    """Case-insensitive-exact match against `known` (name.lower() -> id); inserts
+    a new bare `movement` row (name only) if there's no match. `known` is
+    mutated in place so later rows in the same batch reuse a movement just
+    created by an earlier row. Returns (movement_id, created)."""
+    key = name.strip().lower()
+    if key in known:
+        return known[key], False
+    row = get_client().table("movement").insert({"name": name.strip()}).execute().data[0]
+    known[key] = row["id"]
+    return row["id"], True
 
 def exercise_label(row: pd.Series) -> str:
     dur   = f"{int(row['duration_seconds'])}s" if pd.notna(row.get("duration_seconds")) else "—"
@@ -596,18 +598,14 @@ def tab_batch_import():
     st.header("Batch Import — Audio Tracks")
     st.caption(
         "Upload multiple MP3 files. Duration is auto-detected. "
-        "Edit movement names and reps in the table before inserting."
+        "Edit movement names and reps in the table before inserting. "
+        "Each row's movement name is matched case-insensitively against "
+        "existing movements (reused if found) or created fresh — check the "
+        "**Movement** column below before inserting."
     )
 
-    if not BUCKET_PUBLIC:
-        st.info(
-            "🔒 Bucket is **private** — uploads will generate 10-year signed URLs. "
-            "To use permanent public URLs, make the `tracks` bucket public in "
-            "Supabase Dashboard and set `BUCKET_PUBLIC = True` in admin.py."
-        )
-
     # ── Batch settings ────────────────────────────────────────────────────────
-    c1, c2, c3 = st.columns([2, 1, 2])
+    c1, c2 = st.columns([2, 1])
     with c1:
         batch_author = st.text_input(
             "Morshed / Author (for whole batch)",
@@ -615,13 +613,6 @@ def tab_batch_import():
         )
     with c2:
         batch_reps = st.number_input("Default reps (batch)", min_value=1, max_value=999, value=1)
-    with c3:
-        subfolder = st.text_input(
-            "Storage subfolder",
-            value=slugify(batch_author) if batch_author else "",
-            placeholder="e.g. morshed_karimi",
-            help="Files will be stored as: tracks/{subfolder}/{filename}",
-        )
 
     # ── File uploader ─────────────────────────────────────────────────────────
     uploads = st.file_uploader(
@@ -652,12 +643,20 @@ def tab_batch_import():
                     "author":           batch_author,
                     "default_reps":     batch_reps,
                     "duration_seconds": dur,
-                    "storage_path":     f"{subfolder}/{fname}" if subfolder else fname,
                 }
             )
         st.session_state.batch_preview = pd.DataFrame(rows)
 
     preview_df = st.session_state.batch_preview.copy()
+
+    # ── Existing-movement lookup, for the preview column below ──────────────────
+    existing_names = {
+        str(n).strip().lower()
+        for n in load_movements().get("name", pd.Series(dtype=str)).dropna()
+    }
+    preview_df["movement"] = preview_df["movement_name"].apply(
+        lambda n: "existing" if str(n).strip().lower() in existing_names else "new"
+    )
 
     # ── Editable preview ──────────────────────────────────────────────────────
     st.subheader("Preview — edit before inserting")
@@ -665,10 +664,10 @@ def tab_batch_import():
     cfg = {
         "filename":         st.column_config.TextColumn("File",           disabled=True, width=200),
         "movement_name":    st.column_config.TextColumn("Movement name ✏️", width=200),
+        "movement":         st.column_config.TextColumn("Movement",       disabled=True, width=90),
         "author":           st.column_config.TextColumn("Author ✏️",       width=150),
         "default_reps":     st.column_config.NumberColumn("Default reps ✏️", min_value=1, max_value=999, width=100),
         "duration_seconds": st.column_config.NumberColumn("Duration (s)",  disabled=True, width=100),
-        "storage_path":     st.column_config.TextColumn("Storage path ✏️", width=250),
     }
 
     edited = st.data_editor(
@@ -684,38 +683,47 @@ def tab_batch_import():
         st.warning("⚠️ Some rows are missing Author or Movement name — fill them in before inserting.")
 
     # ── Upload & Insert ───────────────────────────────────────────────────────
-    if st.button("🚀 Upload to Storage + Insert exercises", type="primary", key="do_import"):
+    if st.button("🚀 Upload to R2 + Insert exercises", type="primary", key="do_import"):
         db = get_client()
         progress = st.progress(0)
         status   = st.empty()
         errors   = []
+        known_movements = {
+            str(n).strip().lower(): int(mid)
+            for mid, n in load_movements().set_index("id")["name"].items()
+        }
+        # exercise.id has no sequence — compute next id manually, same
+        # workaround already used for training_session in tab_session_builder.
+        max_row = db.table("exercise").select("id").order("id", desc=True).limit(1).execute()
+        next_exercise_id = (max_row.data[0]["id"] + 1) if max_row.data else 1
 
         for i, (_, row) in enumerate(edited.iterrows()):
-            fname   = row["filename"]
-            s_path  = row["storage_path"].strip("/")
-            data    = file_map.get(fname, b"")
-            status.text(f"Uploading {fname}…")
+            fname = row["filename"]
+            data  = file_map.get(fname, b"")
+            status.text(f"Importing {fname}…")
 
             try:
-                # Upload to Supabase Storage
-                db.storage.from_(STORAGE_BUCKET).upload(
-                    path=s_path,
-                    file=data,
-                    file_options={"content-type": "audio/mpeg", "upsert": "true"},
-                )
-                url = make_url(s_path)
+                movement_id, _ = find_or_create_movement(row["movement_name"], known_movements)
 
-                # Insert exercise row
+                # Insert the exercise row first (url set after upload) so the
+                # R2 key can be ID-prefixed the same way video/photo assets
+                # are — immune to a later rename, never collides with a
+                # sibling recording of the same movement.
                 payload = {
-                    "name":             row["movement_name"],
-                    "author":           row["author"] or None,
-                    "repetitions":      int(row["default_reps"]),
-                    "url":              url,
+                    "id":          next_exercise_id,
+                    "movement_id": movement_id,
+                    "author":      row["author"] or None,
+                    "repetitions": int(row["default_reps"]),
                 }
+                next_exercise_id += 1
                 if pd.notna(row["duration_seconds"]):
                     payload["duration_seconds"] = int(row["duration_seconds"])
+                exercise = db.table("exercise").insert(payload).execute().data[0]
 
-                db.table("exercise").insert(payload).execute()
+                slug = slugify(row["movement_name"] or f"exercise-{exercise['id']}")
+                r2_key = f"{R2_AUDIO_EXERCISE_PREFIX}{exercise['id']}-{slug}.mp3"
+                url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
+                db.table("exercise").update({"url": url}).eq("id", exercise["id"]).execute()
 
             except Exception as e:
                 errors.append(f"{fname}: {e}")
@@ -1177,12 +1185,6 @@ def tab_movement_media():
 
     # ── Upload image ──────────────────────────────────────────────────────────
     with tab_upload:
-        if not MEDIA_BUCKET_PUBLIC:
-            st.info(
-                "🔒 `movement-media` bucket is **private** — uploads will use "
-                "10-year signed URLs. Make it public in Supabase Dashboard and "
-                "set `MEDIA_BUCKET_PUBLIC = True` in admin.py for permanent links."
-            )
         uploaded = st.file_uploader(
             "Choose image (jpg / png / webp)",
             type=["jpg", "jpeg", "png", "webp"],
@@ -1194,19 +1196,15 @@ def tab_movement_media():
             mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                         ".png": "image/png", ".webp": "image/webp"}
             mime = mime_map.get(ext, "image/jpeg")
-            storage_path = f"{movement_id}/{uploaded.name}"
-            st.caption(f"Will upload to: `{MEDIA_BUCKET}/{storage_path}`")
+            slug = slugify(mov_row.get("name") or f"movement-{movement_id}")
+            r2_key = f"{R2_IMAGE_MOVEMENT_PREFIX}{movement_id}-{slug}{ext}"
+            st.caption(f"Will upload to R2: `{r2_key}`")
 
             if st.button("Upload & save", type="primary", key="mm_up_btn"):
                 data = uploaded.getvalue()
                 try:
                     with st.spinner("Uploading…"):
-                        get_client().storage.from_(MEDIA_BUCKET).upload(
-                            path=storage_path,
-                            file=data,
-                            file_options={"content-type": mime, "upsert": "true"},
-                        )
-                        url = make_media_url(storage_path)
+                        url = upload_bytes_to_r2(data, r2_key, mime)
                         get_client().table("movement").update(
                             {"media_type": "photo", "media_src": url, "media_poster": None}
                         ).eq("id", movement_id).execute()
@@ -1436,10 +1434,10 @@ def tab_video_upload():
             try:
                 video_anchor_ms = round(anchor_s * 1000)
                 with st.spinner("Uploading to R2…"):
-                    video_url = upload_video_asset_to_r2(
+                    video_url = upload_asset_to_r2(
                         st.session_state["vid_encoded_path"], video_key, "video/mp4"
                     )
-                    poster_url = upload_video_asset_to_r2(
+                    poster_url = upload_asset_to_r2(
                         st.session_state["vid_poster_path"], poster_key, "image/jpeg"
                     )
 
