@@ -636,6 +636,46 @@ void main() {
     });
   });
 
+  // ---------- pause() ----------
+
+  group('pause()', () {
+    test('stops playback when playing', () async {
+      final session = _session(1);
+      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks(); // starts playing
+      expect(cubit.state.isPlaying, isTrue);
+
+      cubit.pause();
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.paused, isTrue);
+    });
+
+    test('is a no-op (does not resume) when already paused', () async {
+      final session = _session(1);
+      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
+      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap, audioService: audioService);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.pause();
+      expect(cubit.state.isPlaying, isFalse);
+      audioService.paused = false; // reset spy flag
+
+      cubit.pause(); // must not flip back to playing, unlike togglePlay()
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.paused, isFalse); // pause() wasn't called again
+    });
+  });
+
   // ---------- seekTo ----------
 
   group('seekTo()', () {

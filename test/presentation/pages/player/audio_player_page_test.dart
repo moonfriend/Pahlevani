@@ -213,6 +213,25 @@ void main() {
     expect(find.text('Kabbadeh'), findsWidgets);
   });
 
+  testWidgets('tapping the info icon pauses playback', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // Playback auto-starts on load.
+    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded).first);
+    await tester.pumpAndSettle();
+
+    // Now on the info page; go back to the player and confirm it's paused,
+    // not still playing (or — worse — resumed by a toggle).
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.pause_rounded), findsNothing);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+  });
+
   // ── Error state ────────────────────────────────────────────────────────────
 
   testWidgets('shows error message when session has no items', (tester) async {
