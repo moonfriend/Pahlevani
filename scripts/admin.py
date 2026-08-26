@@ -184,6 +184,13 @@ def load_release_gate() -> dict | None:
     rows = get_client().table("app_release_gate").select("*").eq("id", 1).execute().data
     return rows[0] if rows else None
 
+@st.cache_data(ttl=30)
+def load_profiles() -> list[dict]:
+    """All signed-up users. Service-role key bypasses RLS, so this sees
+    every row regardless of the profiles_select_own/profiles_select_trainer_all
+    policies (supabase/migrations/0013_profiles_and_consent.sql)."""
+    return get_client().table("profiles").select("*").order("created_at").execute().data
+
 @st.cache_data(ttl=60)
 def load_movements() -> pd.DataFrame:
     try:
@@ -1559,6 +1566,71 @@ def tab_release_gate():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Trainer Role
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_grant_trainer():
+    st.header("Trainer Role")
+    st.caption(
+        "Grants/revokes is_trainer on a profile — the only way this ever "
+        "changes, no self-serve flow in the app. A trainer can assign "
+        "individualized sessions to any signed-up trainee."
+    )
+
+    if st.button("↺ Reload", key="trainer_reload"):
+        load_profiles.clear()
+
+    try:
+        profiles = load_profiles()
+    except Exception:
+        st.error(
+            "⚠️ `profiles` table not found. "
+            "Run `supabase/migrations/0013_profiles_and_consent.sql` in the "
+            "Supabase SQL Editor first."
+        )
+        return
+
+    trainers = [p for p in profiles if p.get("is_trainer")]
+
+    col1, col2 = st.columns(2)
+    col1.metric("Trainees", len(profiles) - len(trainers))
+    col2.metric("Trainers", len(trainers))
+
+    st.divider()
+
+    if trainers:
+        st.subheader("Current trainers")
+        st.dataframe(
+            pd.DataFrame(trainers)[["email", "id", "created_at"]],
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.subheader("Grant / revoke")
+
+    if not profiles:
+        st.info("No signed-up accounts yet.")
+        return
+
+    options = {f"{p.get('email') or p['id']}": p for p in profiles}
+    selected_label = st.selectbox("Account", options=list(options.keys()), key="trainer_select")
+    selected = options[selected_label]
+    is_trainer_now = bool(selected.get("is_trainer"))
+
+    st.write(f"Currently: {'🔴 Trainer' if is_trainer_now else '🟢 Trainee'}")
+
+    label = "Revoke trainer" if is_trainer_now else "✅ Make trainer"
+    if st.button(label, type="primary", key="trainer_toggle"):
+        get_client().table("profiles").update(
+            {"is_trainer": not is_trainer_now}
+        ).eq("id", selected["id"]).execute()
+        st.success(f"✅ {selected_label} is now {'a trainee' if is_trainer_now else 'a trainer'}.")
+        load_profiles.clear()
+        st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1568,7 +1640,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
@@ -1577,6 +1649,7 @@ def main():
         "📸  Movement Media",
         "🎬  Video Upload",
         "🚦  Release Gate",
+        "🧑‍🏫  Trainer Role",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
@@ -1586,6 +1659,7 @@ def main():
     with t6: tab_movement_media()
     with t7: tab_video_upload()
     with t8: tab_release_gate()
+    with t9: tab_grant_trainer()
 
 
 if __name__ == "__main__":

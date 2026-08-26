@@ -5,6 +5,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -40,6 +41,22 @@ class _FakeSessionRepo implements TrainingSessionRepository {
 
   @override
   Future<void> deleteTrainingSession(int id) async {}
+
+  @override
+  Future<TrainingSession> saveOwnedSession({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+  }) async =>
+      session;
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {}
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
 class _FakeDownloadRepo implements DownloadRepository {

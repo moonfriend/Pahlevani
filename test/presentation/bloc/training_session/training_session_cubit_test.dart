@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -57,6 +58,22 @@ class _SpyRepository implements TrainingSessionRepository {
 
   @override
   Future<DomainSnapshot> syncFromRemote() async => _snapshot;
+
+  @override
+  Future<TrainingSession> saveOwnedSession({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+  }) async =>
+      session;
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {}
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
 class _DownloadRepoWithStream implements DownloadRepository {

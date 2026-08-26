@@ -40,6 +40,9 @@ dependencies:
   hive: ^2.2.3
   equatable: ^2.0.5
   supabase_flutter: ^2.3.4
+  google_sign_in: ^7.2.0    # native Google sign-in (Android) — no browser/deep-link needed
+  google_sign_in_web: ^1.1.0 # direct import for the GIS button widget (web can't call authenticate())
+  crypto: ^3.0.6 # SHA-256 the nonce for Google/Supabase's OIDC nonce check (web)
   dio: ^5.4.0
   get_it: ^7.6.7
   path_provider: ^2.1.2
@@ -83,6 +86,14 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   uses-material-design: true
+
+  assets:
+    # Google's own pre-approved "Sign in with Google" button images —
+    # https://developers.google.com/identity/branding-guidelines. Using
+    # the shipped image (not a hand-built button) is what keeps this
+    # compliant: exact logo, colors and padding without us reproducing
+    # Google's proprietary spec ourselves.
+    - assets/google_signin/
 
   fonts:
     - family: Lora

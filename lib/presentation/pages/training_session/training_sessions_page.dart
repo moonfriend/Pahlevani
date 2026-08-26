@@ -5,11 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
+import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/trainer/assign_session_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/difficulty_pips.dart';
@@ -117,10 +122,40 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
     }
   }
 
+  Future<void> _assignToTrainee(TrainingSession session) async {
+    final cubit = context.read<TrainingSessionCubit>();
+    final detail = cubit.getSessionDetail(session.id);
+    final editResult = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => EditTrainingSessionPage(
+                trainingSession: session,
+                items: detail?.items ?? const [],
+              )),
+    );
+    if (editResult == null || !mounted) return;
+    final editedSession = editResult['session'] as TrainingSession;
+    final editedItems = editResult['items'] as List<ItemDetail>;
+    // Save the session's own content first (real remote write) — it isn't
+    // assigned to anyone yet, that's AssignSessionPage's job.
+    final saved = await cubit.saveOwnedSession(
+        session: editedSession, items: editedItems);
+    if (saved == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => AssignSessionPage(
+              sessionId: saved.id, sessionTitle: saved.title)),
+    );
+  }
+
   void _showOverflowSheet(
       BuildContext context, TrainingSession session, DownloadStatus dlStatus) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cubit = context.read<TrainingSessionCubit>();
+    final authState = context.read<AuthCubit>().state;
+    final isTrainer =
+        authState is AuthAuthenticated && authState.user.isTrainer;
 
     showModalBottomSheet(
       context: context,
@@ -143,6 +178,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               _openEdit(session);
             },
           ),
+          if (isTrainer)
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Assign to a trainee',
+                  style: TextStyle(
+                      fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                _assignToTrainee(session);
+              },
+            ),
           // No local filesystem on Flutter Web (path_provider has no web
           // implementation) — nothing to download to, so hide the entry
           // point entirely rather than show a control that silently no-ops.
@@ -349,6 +395,20 @@ class _Header extends StatelessWidget {
                   onTap: onRefresh,
                   spinController: refreshing ? refreshSpin : null,
                 ),
+                const SizedBox(width: 8),
+                // login / account — optional, never blocks browsing
+                BlocBuilder<AuthCubit, AuthState>(
+                  builder: (authContext, authState) {
+                    return _IconBtn(
+                      icon: authState is AuthAuthenticated
+                          ? Icons.person_rounded
+                          : Icons.person_outline_rounded,
+                      color: colors.onMuted,
+                      bg: colors.surface2,
+                      onTap: () => _handleAccountTap(authContext, authState),
+                    );
+                  },
+                ),
               ]),
             ),
           ],
@@ -366,6 +426,60 @@ class _Header extends StatelessWidget {
       ]),
     );
   }
+}
+
+void _handleAccountTap(BuildContext context, AuthState state) {
+  switch (state) {
+    case AuthAuthenticated(:final user):
+      _showAccountSheet(context, user);
+    case AuthNeedsConsent():
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const PrivacyConsentPage()));
+    case AuthAnonymous():
+    case AuthChecking():
+    case AuthSubmitting():
+    case AuthFailure():
+      Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const AuthPage()));
+  }
+}
+
+void _showAccountSheet(BuildContext context, AppUser user) {
+  final colors = Theme.of(context).extension<PahlevaniColors>()!;
+  final cubit = context.read<AuthCubit>();
+
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+                color: colors.border, borderRadius: BorderRadius.circular(9))),
+        ListTile(
+          leading: const Icon(Icons.account_circle_outlined),
+          title: Text('Signed in as',
+              style: TextStyle(fontSize: 12, color: colors.onMuted)),
+          subtitle: Text(user.email ?? user.id,
+              style: const TextStyle(
+                  fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout_rounded),
+          title: const Text('Sign out',
+              style: TextStyle(
+                  fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+          onTap: () {
+            Navigator.pop(context);
+            cubit.signOut();
+          },
+        ),
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
 }
 
 class _IconBtn extends StatelessWidget {
@@ -558,6 +672,10 @@ class _BannerCard extends StatelessWidget {
                         _YoursChip(colors: colors),
                         const SizedBox(height: 4),
                       ],
+                      if (session.ownerTrainerId != null) ...[
+                        _AssignedChip(colors: colors),
+                        const SizedBox(height: 4),
+                      ],
                       Text(session.title,
                           style: PTextStyles.of(context)
                               .cardTitleBanner
@@ -712,6 +830,10 @@ class _CompactCard extends StatelessWidget {
                     const SizedBox(width: 7),
                     _YoursChip(colors: colors),
                   ],
+                  if (session.ownerTrainerId != null) ...[
+                    const SizedBox(width: 7),
+                    _AssignedChip(colors: colors),
+                  ],
                 ])),
                 GestureDetector(
                   onTap: onMenu,
@@ -811,6 +933,33 @@ class _YoursChip extends StatelessWidget {
               fontSize: 11,
               color: colors.teal,
               letterSpacing: 0.3)),
+    );
+  }
+}
+
+/// Shown on a session a trainer individually assigned (as opposed to the
+/// public catalog) — sibling to _YoursChip, same shape, distinct color.
+class _AssignedChip extends StatelessWidget {
+  const _AssignedChip({required this.colors});
+  final PahlevaniColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+          color: colors.surface3, borderRadius: BorderRadius.circular(99)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.person_rounded, size: 11, color: colors.onMuted),
+        const SizedBox(width: 3),
+        Text('Assigned',
+            style: TextStyle(
+                fontFamily: PFonts.ui,
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                color: colors.onMuted,
+                letterSpacing: 0.3)),
+      ]),
     );
   }
 }

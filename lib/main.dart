@@ -13,7 +13,9 @@ import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
+import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
+import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
@@ -133,6 +135,11 @@ class PahlevaniApp extends StatelessWidget {
             repository: getIt<VersionGateRepository>(),
             currentBuildNumber: currentBuildNumber,
           ),
+          lazy: false,
+        ),
+        BlocProvider<AuthCubit>(
+          create: (_) =>
+              AuthCubit(repository: getIt<AuthRepository>())..initialize(),
           lazy: false,
         ),
       ],

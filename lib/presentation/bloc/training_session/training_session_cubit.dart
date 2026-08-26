@@ -229,6 +229,54 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     }
   }
 
+  /// Trainer-only. See TrainingSessionRepository.saveOwnedSession — a real
+  /// remote write, unlike updateTrainingSession/saveTrainingSession. Saves
+  /// the session's own content; not assigned to anyone until
+  /// assignToTrainees() is also called.
+  Future<TrainingSession?> saveOwnedSession({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+  }) async {
+    try {
+      final saved = await _sessionRepository.saveOwnedSession(
+        session: session,
+        items: items,
+      );
+      _currentTSSnapshot =
+          await _sessionRepository.getTrainingSessions(refresh: false);
+      emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      return saved;
+    } catch (e) {
+      emit(TrainingSessionError(
+        message: 'Failed to save session: $e',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
+      return null;
+    }
+  }
+
+  /// Trainer-only. Assigns [sessionId] to every trainee in [traineeUserIds]
+  /// — one call per trainee under the hood, so a partial failure still
+  /// leaves the successful ones assigned rather than rolling back.
+  Future<void> assignToTrainees({
+    required int sessionId,
+    required List<String> traineeUserIds,
+  }) async {
+    try {
+      for (final traineeUserId in traineeUserIds) {
+        await _sessionRepository.assignSessionToTrainee(
+          sessionId: sessionId,
+          traineeUserId: traineeUserId,
+        );
+      }
+    } catch (e) {
+      emit(TrainingSessionError(
+        message: 'Failed to assign session: $e',
+        uiModel: buildTrainingSessionsUiModel(),
+      ));
+    }
+  }
+
   Future<void> deleteTrainingSession(int sessionId) async {
     try {
       await _sessionRepository.deleteTrainingSession(sessionId);

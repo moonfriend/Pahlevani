@@ -16,7 +16,17 @@ class TrainingSessionLocalDatabase {
   static const String _lastSyncKey = 'last_sync';
 
   // Increment this when the Hive schema changes to trigger a cache wipe.
-  static const int _cacheVersion = 2;
+  //
+  // 3: HiveTrainingSession fields 7-9 (isPublic/assignedToUserId/
+  // assignedByTrainerId) were added as nullable, on the assumption that a
+  // missing field just reads as null. True for a legacy box that never had
+  // those indices at all — but a machine that had ever run a *different*
+  // branch/build using byte-index 7 for something else (e.g. a String
+  // field) leaves a box where fields[7] is non-null and the wrong type,
+  // which throws instead of defaulting. Confirmed via a real crash:
+  // "type 'String' is not a subtype of type 'bool?'" reading fields[7] as
+  // isPublic. The version bump forces exactly the wipe this needs.
+  static const int _cacheVersion = 3;
   static const String _cacheVersionKey = 'cache_version';
 
   /// Initialize Hive and register adapters.

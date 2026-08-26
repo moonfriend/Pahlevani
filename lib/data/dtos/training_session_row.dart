@@ -6,6 +6,8 @@ class TrainingSessionRow {
   final int? difficulty;
   final DateTime? createdAt;
   final bool? isUserCreated;
+  final bool? isPublic;
+  final String? ownerTrainerId;
 
   TrainingSessionRow({
     required this.id,
@@ -15,6 +17,8 @@ class TrainingSessionRow {
     this.difficulty,
     this.createdAt,
     this.isUserCreated,
+    this.isPublic,
+    this.ownerTrainerId,
   });
 
   factory TrainingSessionRow.fromJson(Map<String, dynamic> json) {
@@ -30,6 +34,10 @@ class TrainingSessionRow {
       difficulty: json['difficulty'] as int? ?? 1,
       createdAt: parsedDate,
       isUserCreated: json['is_user_created'] as bool? ?? false,
+      // Defaults true so a response predating this column (or a stale
+      // cached response) is treated as the public catalog it always was.
+      isPublic: json['is_public'] as bool? ?? true,
+      ownerTrainerId: json['owner_trainer_id'] as String?,
     );
   }
 }

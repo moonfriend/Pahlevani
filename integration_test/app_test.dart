@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
@@ -26,6 +27,7 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 
 import '../test/fakes/fake_audio_player_service.dart';
+import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
@@ -66,6 +68,7 @@ void main() {
     );
     getIt.registerLazySingleton<VersionGateRepository>(
         () => FakeVersionGateRepository());
+    getIt.registerLazySingleton<AuthRepository>(() => FakeAuthRepository());
     // Page's initState reads this; default online so the no-connection
     // dialog never fires during the journey tests.
     getIt.registerLazySingleton<ConnectivityService>(
@@ -293,6 +296,52 @@ void main() {
     expect(currentIcon(), Icons.pause_rounded);
     await tester.pump(const Duration(milliseconds: 300));
     expect(currentIcon(), Icons.pause_rounded);
+  });
+
+  // ── Optional login — UI-only walkthrough (no network) ───────────────────────
+
+  testWidgets(
+      'login icon opens the auth page; fields, toggle and back all work',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    // Anonymous state — outline icon, session list still fully usable.
+    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+    expect(find.text('Beginner Warm-up'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.person_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+
+    // Submit stays disabled until both fields have content.
+    final submitFinder = find.widgetWithText(FilledButton, 'Sign in');
+    expect(tester.widget<FilledButton>(submitFinder).onPressed, isNull,
+        reason: 'must not be submittable with empty fields');
+
+    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'a@b.com');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Password'), 'secret123');
+    await tester.pump();
+
+    expect(tester.widget<FilledButton>(submitFinder).onPressed, isNotNull,
+        reason: 'must become submittable once both fields are filled');
+
+    // Toggle to sign-up mode — label and toggle text swap.
+    await tester.tap(find.text("Don't have an account? Create one"));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
+
+    // Back out WITHOUT submitting — no network call, nothing to clean up.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Beginner Warm-up'), findsOneWidget,
+        reason: 'session list must be intact after returning');
+    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget,
+        reason: 'still anonymous — no submit happened');
   });
 }
 
