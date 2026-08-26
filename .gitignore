@@ -72,6 +72,9 @@ supabase/.db.env
 # Supabase snapshot — table data + media files downloaded by scripts/dump_supabase.py
 supabase/dump/
 
+# One-off prod DB snapshot (roles/schema/data dump + low-priv .env) — never commit
+supabase/db_snapshot/
+
 # Challenge bot — real Telegram token + Supabase service-role key (copy from .env.example)
 challenge_bot/.env
 
