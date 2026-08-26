@@ -93,7 +93,6 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
 # Flutter app cares what the path looks like either way.
 R2_ACCOUNT_ID = (
     os.getenv("R2_ACCOUNT_ID") or _secret("R2_ACCOUNT_ID") or _creds_file("ACCOUNT_ID")
-    or "52a61783f2d01cd161e65ac58f130716"
 )
 R2_BUCKET = os.getenv("R2_BUCKET") or _secret("R2_BUCKET") or _creds_file("BUCKET") or "morshed-sounds"
 # Note: R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3-compatible API key
@@ -133,10 +132,10 @@ def get_client() -> Client:
 
 @st.cache_resource
 def get_r2_client():
-    if not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
+    if not R2_ACCOUNT_ID or not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
         st.error(
-            "R2 credentials not configured. Add R2_ACCESS_KEY_ID and "
-            "R2_SECRET_ACCESS_KEY to scripts/.streamlit/secrets.toml "
+            "R2 credentials not configured. Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID "
+            "and R2_SECRET_ACCESS_KEY to scripts/.streamlit/secrets.toml "
             "(Cloudflare Dashboard → R2 → Manage API Tokens → Object Read & "
             "Write, scoped to the 'morshed-sounds' bucket)."
         )
