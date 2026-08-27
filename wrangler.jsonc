@@ -1,5 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Top-level name is the main/production Worker. Every other Cloudflare
+  // Workers Builds project connected to this same repo (e.g. the
+  // release/staging one, "pahlevani") gets its own block under "env"
+  // instead of a different committed file per branch — "name" and the
+  // other keys below are inherited into every env unless overridden, so
+  // this one file is correct on every branch without editing. The only
+  // other piece is telling that Cloudflare project's dashboard build
+  // config to pass --env <key> on its deploy command (see README/ops
+  // notes) — the committed config never needs to change per branch.
   "name": "shy-forest-12a7",
   "compatibility_date": "2026-08-02",
   "observability": {
@@ -12,5 +21,10 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  "env": {
+    "staging": {
+      "name": "pahlevani"
+    }
+  }
 }
