@@ -59,6 +59,32 @@ class _FakeSessionRepo implements TrainingSessionRepository {
   Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
+/// Like [_FakeSessionRepo] but with a settable snapshot, for tests that need
+/// to simulate a reload (e.g. an edit) landing between two loadTracks() calls.
+class _MutableSessionRepo implements TrainingSessionRepository {
+  DomainSnapshot snapshot;
+  _MutableSessionRepo(this.snapshot);
+
+  @override
+  Future<DomainSnapshot> getTrainingSessions({bool refresh = false}) async =>
+      snapshot;
+
+  @override
+  Future<DomainSnapshot> syncFromRemote() async => snapshot;
+
+  @override
+  Future<TrainingSession> saveTrainingSession(TrainingSession s,
+          {List<ItemDetail>? items}) async =>
+      s;
+
+  @override
+  Future<void> updateTrainingSession(TrainingSession s,
+      {List<ItemDetail>? items}) async {}
+
+  @override
+  Future<void> deleteTrainingSession(int id) async {}
+}
+
 class _FakeDownloadRepo implements DownloadRepository {
   // Instrumentation for resolvePlayableAudioPath — lets tests assert it's
   // called exactly once per track and that its result (not the raw remote
@@ -84,6 +110,15 @@ class _FakeDownloadRepo implements DownloadRepository {
   final List<String> cacheImageCalls = [];
   final List<String> cacheVideoCalls = [];
 
+  // Null by default (matches the real repo's "download failed/still in
+  // flight" outcome) — a test opts in to a successful cache by setting this.
+  String? Function(String url)? cacheVideoResultBuilder;
+
+  // When set, cacheVideo() resolves via this instead of the builder above —
+  // lets a test control precisely *when* a cache result lands (e.g. after a
+  // reload has already happened), not just whether it succeeds.
+  Completer<String?>? cacheVideoCompleter;
+
   @override
   Future<String?> getLocalImagePath(String imageUrl) async =>
       localImagePathBuilder?.call(imageUrl);
@@ -101,7 +136,8 @@ class _FakeDownloadRepo implements DownloadRepository {
   @override
   Future<String?> cacheVideo(String url) async {
     cacheVideoCalls.add(url);
-    return null;
+    if (cacheVideoCompleter != null) return cacheVideoCompleter!.future;
+    return cacheVideoResultBuilder?.call(url);
   }
 
   @override
@@ -1196,6 +1232,122 @@ void main() {
 
       expect(cubit.state.tracks[0].media.src, '/local/clip.mp4');
       expect(downloadRepo.cacheVideoCalls, isEmpty);
+    });
+
+    test(
+        "swaps a track's media to the local path once background caching "
+        'finishes, without needing loadTracks() called again', () async {
+      final session = _session(1);
+      const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          repetitionsDefault: 1,
+          media: ExerciseMedia(
+              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
+      final downloadRepo = _FakeDownloadRepo()
+        ..cacheVideoResultBuilder = (_) => '/cached/clip.mp4';
+      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      await Future<void>.delayed(
+          Duration.zero); // let the background cache land
+
+      expect(cubit.state.tracks[0].media.src, '/cached/clip.mp4');
+      expect(cubit.state.tracks[0].media.type, 'video');
+    });
+
+    test(
+        'playback proceeds normally, and the poster-fallback path stays '
+        'intact, even when the video never gets cached', () async {
+      final session = _session(1);
+      const exercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          repetitionsDefault: 1,
+          media: ExerciseMedia(
+              type: 'video',
+              src: 'https://cdn.example.com/clip.mp4',
+              poster: 'https://cdn.example.com/poster.jpg'));
+      final snap = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
+      // cacheVideoResultBuilder deliberately left unset — cacheVideo()
+      // resolves to null, simulating a download that failed or never
+      // finished, same as _FakeDownloadRepo's default.
+      final downloadRepo = _FakeDownloadRepo();
+      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(cubit.state.errorMessage, isNull);
+
+      await Future<void>.delayed(Duration.zero);
+
+      // No bad state written from the failed cache — src/poster untouched,
+      // so _Stage's poster-fallback rendering keeps working exactly as
+      // before this change.
+      expect(
+          cubit.state.tracks[0].media.src, 'https://cdn.example.com/clip.mp4');
+      expect(cubit.state.tracks[0].media.poster,
+          'https://cdn.example.com/poster.jpg');
+      expect(cubit.state.isPlaying, isTrue);
+    });
+
+    test(
+        'a late-arriving cache result does not patch a track after a reload '
+        'changed what is at that index', () async {
+      final session = _session(1);
+      const videoExercise = Exercise(
+          id: 10,
+          name: 'Video Ex',
+          audioFileUrl: 'https://audio.mp3',
+          repetitionsDefault: 1,
+          media: ExerciseMedia(
+              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
+      final snapWithVideo = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 10, position: 0)], [videoExercise]);
+
+      final completer = Completer<String?>();
+      final downloadRepo = _FakeDownloadRepo()..cacheVideoCompleter = completer;
+      final sessionRepo = _MutableSessionRepo(snapWithVideo);
+      final cubit = TrainingSessionPlayerCubit(
+        trainingSession: session,
+        audioPlayerService: FakeAudioPlayerService(),
+        downloadRepository: downloadRepo,
+        sessionRepository: sessionRepo,
+        notificationService: FakePlayerNotificationService(),
+      );
+      addTearDown(cubit.close);
+
+      await cubit
+          .loadTracks(); // kicks off caching clip.mp4, pending on completer
+
+      // Simulate an edit/refresh landing before the video finishes
+      // downloading — position 0 now has a different exercise with no
+      // video at all.
+      const plainExercise = Exercise(
+          id: 11,
+          name: 'Plain Ex',
+          audioFileUrl: 'https://audio2.mp3',
+          repetitionsDefault: 1);
+      sessionRepo.snapshot = _snapshotWithItems(session,
+          [_item(sessionId: 1, exerciseId: 11, position: 0)], [plainExercise]);
+      await cubit.loadTracks();
+
+      expect(cubit.state.tracks[0].media, ExerciseMedia.none);
+
+      // Now the ORIGINAL (stale) download finishes.
+      completer.complete('/cached/clip.mp4');
+      await Future<void>.delayed(Duration.zero);
+
+      // Must not have been patched with the stale video path.
+      expect(cubit.state.tracks[0].media, ExerciseMedia.none);
     });
   });
 

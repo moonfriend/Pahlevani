@@ -374,8 +374,40 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       // marked downloaded before this exercise had a video would otherwise
       // never get a chance to fetch it. This lookahead runs on every
       // playthrough regardless of that flag.
-      _downloadRepo.cacheVideo(track.media.src!);
+      //
+      // Live swap-in: once the download actually finishes, patch this
+      // track's media so the stage picks up the now-local, playable video
+      // without the user needing to leave and reopen the player. A failed
+      // or never-finishing download (localPath == null) is a silent no-op —
+      // playback and the poster-image fallback are entirely unaffected.
+      final originalSrc = track.media.src!;
+      unawaited(_downloadRepo.cacheVideo(originalSrc).then((localPath) {
+        if (localPath == null) return;
+        _applyResolvedVideo(index, originalSrc, localPath);
+      }));
     }
+  }
+
+  /// Applies a background-cached video's local path to `tracks[index]`, but
+  /// only if that slot still holds the same media it did when caching
+  /// started — a reload (e.g. an edit save) between then and now may have
+  /// replaced it with different content, and a late-arriving result must
+  /// not clobber that.
+  void _applyResolvedVideo(int index, String originalSrc, String localPath) {
+    if (isClosed || index < 0 || index >= state.tracks.length) return;
+    final current = state.tracks[index];
+    if (current.media.src != originalSrc) return;
+
+    final updatedTracks = [...state.tracks];
+    updatedTracks[index] = current.copyWith(
+      media: ExerciseMedia(
+        type: 'video',
+        src: localPath,
+        poster: current.media.poster,
+        videoAnchorMs: current.media.videoAnchorMs,
+      ),
+    );
+    emit(state.copyWith(tracks: updatedTracks));
   }
 
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {

@@ -31,6 +31,19 @@ class TrainingItemWithAudio extends Equatable {
     this.videoStartOffsetMs,
   });
 
+  TrainingItemWithAudio copyWith({ExerciseMedia? media}) =>
+      TrainingItemWithAudio(
+        id: id,
+        title: title,
+        audioFilePath: audioFilePath,
+        imagePath: imagePath,
+        media: media ?? this.media,
+        duration: duration,
+        defaultRepetitions: defaultRepetitions,
+        userRepetitions: userRepetitions,
+        videoStartOffsetMs: videoStartOffsetMs,
+      );
+
   /// Get the effective number of repetitions for this track
   /// Priority: userRepetitions > defaultRepetitions > 1 (fallback)
   int get effectiveRepetitions => userRepetitions ?? defaultRepetitions ?? 1;
