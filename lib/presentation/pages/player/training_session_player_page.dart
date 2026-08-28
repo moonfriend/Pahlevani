@@ -277,6 +277,8 @@ class _Stage extends StatelessWidget {
                 path: track.media.src!,
                 isPlaying: state.isPlaying,
                 startOffsetMs: track.videoStartOffsetMs,
+                resyncGeneration: state.videoResyncGeneration,
+                resyncPositionMs: state.videoResyncPositionMs,
               ),
             )
           else if (hasPhoto || hasVideoPoster)
@@ -369,6 +371,10 @@ class _Stage extends StatelessWidget {
 // buffering pause on Android, not an instant jump), so drift across many
 // loops is an accepted limitation for now rather than something to build
 // continuous correction for.
+//
+// Discrete, user-initiated repositioning (a seek-bar drag, restarting the
+// track) is a different, cheaper case — see computeVideoResyncTargetMs below,
+// driven by AudioPlayerState.videoResyncGeneration.
 // ─────────────────────────────────────────────────────────────────────────────
 ({int? seekToMs, int? delayMs}) computeVideoSyncPlan(
     int? startOffsetMs, int videoDurationMs) {
@@ -385,6 +391,20 @@ class _Stage extends StatelessWidget {
   return (seekToMs: null, delayMs: -startOffsetMs);
 }
 
+/// Video position (ms, wrapped into [0, videoDurationMs)) that corresponds to
+/// the audio being at [audioLoopPositionMs] within its current loop. Used
+/// only for discrete resyncs — every place AudioPlayerState authoritatively
+/// (re)establishes audio position (a fresh source load, or a mid-track seek)
+/// bumps videoResyncGeneration, and _ExerciseVideo applies exactly one seek
+/// in response. Never called on a timer, so this doesn't reintroduce the
+/// continuous-reseek jank risk noted above computeVideoSyncPlan.
+int computeVideoResyncTargetMs(
+    int audioLoopPositionMs, int? startOffsetMs, int videoDurationMs) {
+  if (videoDurationMs <= 0) return 0;
+  final raw = audioLoopPositionMs + (startOffsetMs ?? 0);
+  return ((raw % videoDurationMs) + videoDurationMs) % videoDurationMs;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Exercise demonstration video — muted, looping, local-file only. Play/pause
 // follows the audio cubit's isPlaying (the audio guidance drives the actual
@@ -397,10 +417,17 @@ class _ExerciseVideo extends StatefulWidget {
     required this.path,
     required this.isPlaying,
     this.startOffsetMs,
+    this.resyncGeneration = 0,
+    this.resyncPositionMs = 0,
   });
   final String path;
   final bool isPlaying;
   final int? startOffsetMs;
+
+  /// Bumped by the cubit every time audio position is authoritatively reset
+  /// (a fresh load or a seek) — see AudioPlayerState.videoResyncGeneration.
+  final int resyncGeneration;
+  final int resyncPositionMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -409,6 +436,10 @@ class _ExerciseVideo extends StatefulWidget {
 class _ExerciseVideoState extends State<_ExerciseVideo> {
   late final VideoPlayerController _controller;
   bool _ready = false;
+
+  // Set in initState so a resync that was already in flight when this widget
+  // mounted doesn't immediately re-fire on top of the cold-start sync plan.
+  late int _lastAppliedResyncGeneration;
 
   // True from the moment initialize() succeeds until the computed sync plan
   // (seek or delay) has been fully applied. _Stage rebuilds far more often
@@ -425,6 +456,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void initState() {
     super.initState();
+    _lastAppliedResyncGeneration = widget.resyncGeneration;
     // dart:io's File doesn't exist on web — video_player_web only supports
     // networkUrl()/asset(). widget.path is the remote R2 URL there (the
     // cubit never resolves a local cache path on web), so this streams
@@ -468,6 +500,18 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_ready || _syncPending) return;
+    if (widget.resyncGeneration != _lastAppliedResyncGeneration) {
+      // A discrete resync (restart, seek-bar drag) — apply exactly one seek,
+      // never on a timer, so this doesn't reintroduce the continuous-reseek
+      // jank risk noted above computeVideoSyncPlan. Only consume the
+      // generation once actually applied — if the controller isn't ready
+      // (guarded above), the next rebuild (already happening every ~200ms
+      // via the audio timer) retries rather than silently dropping it.
+      _lastAppliedResyncGeneration = widget.resyncGeneration;
+      final targetMs = computeVideoResyncTargetMs(widget.resyncPositionMs,
+          widget.startOffsetMs, _controller.value.duration.inMilliseconds);
+      unawaited(_controller.seekTo(Duration(milliseconds: targetMs)));
+    }
     if (widget.isPlaying && !_controller.value.isPlaying) {
       _controller.play();
     } else if (!widget.isPlaying && _controller.value.isPlaying) {

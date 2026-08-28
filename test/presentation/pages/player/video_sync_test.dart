@@ -39,4 +39,35 @@ void main() {
       expect(plan.delayMs, isNull);
     });
   });
+
+  group('computeVideoResyncTargetMs', () {
+    test('no offset: video position equals audio position directly', () {
+      expect(computeVideoResyncTargetMs(1500, null, 5000), 1500);
+    });
+
+    test('positive offset: shifts forward', () {
+      expect(computeVideoResyncTargetMs(1000, 700, 5000), 1700);
+    });
+
+    test('negative offset: shifts backward', () {
+      expect(computeVideoResyncTargetMs(2000, -700, 5000), 1300);
+    });
+
+    test('wraps forward past the video duration via modulo', () {
+      expect(computeVideoResyncTargetMs(4500, 1000, 5000), 500);
+    });
+
+    test('wraps backward below zero via modulo (never negative)', () {
+      // audio at 200ms with a -700ms offset would be "-500" without wrapping.
+      expect(computeVideoResyncTargetMs(200, -700, 5000), 4500);
+    });
+
+    test('lands exactly on the video duration boundary: wraps to 0', () {
+      expect(computeVideoResyncTargetMs(5000, 0, 5000), 0);
+    });
+
+    test('zero or negative video duration: no-op, returns 0', () {
+      expect(computeVideoResyncTargetMs(1200, 500, 0), 0);
+    });
+  });
 }

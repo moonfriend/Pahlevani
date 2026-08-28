@@ -23,6 +23,18 @@ class AudioPlayerState {
   final Duration logicalDuration;
   final bool isFinished;
 
+  /// Bumped every time audio position is authoritatively (re)established — a
+  /// fresh source load or a mid-track seek, never a normal playback tick.
+  /// _ExerciseVideo watches this to apply exactly one discrete resync seek;
+  /// see computeVideoResyncTargetMs.
+  final int videoResyncGeneration;
+
+  /// The audio-loop-relative position (ms) at the moment
+  /// [videoResyncGeneration] was last bumped — captured directly at the call
+  /// site, not read back from the async position stream, to avoid a race
+  /// with the engine's own event timing.
+  final int videoResyncPositionMs;
+
   TrainingItemWithAudio? get currentTrack =>
       tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
           ? tracks[playingIndex]
@@ -47,6 +59,8 @@ class AudioPlayerState {
     this.logicalPosition = Duration.zero,
     this.logicalDuration = Duration.zero,
     this.isFinished = false,
+    this.videoResyncGeneration = 0,
+    this.videoResyncPositionMs = 0,
   });
 
   AudioPlayerState copyWith({
@@ -60,6 +74,8 @@ class AudioPlayerState {
     Duration? logicalPosition,
     Duration? logicalDuration,
     bool? isFinished,
+    int? videoResyncGeneration,
+    int? videoResyncPositionMs,
   }) =>
       AudioPlayerState(
         playingIndex: playingIndex ?? this.playingIndex,
@@ -72,6 +88,10 @@ class AudioPlayerState {
         logicalPosition: logicalPosition ?? this.logicalPosition,
         logicalDuration: logicalDuration ?? this.logicalDuration,
         isFinished: isFinished ?? this.isFinished,
+        videoResyncGeneration:
+            videoResyncGeneration ?? this.videoResyncGeneration,
+        videoResyncPositionMs:
+            videoResyncPositionMs ?? this.videoResyncPositionMs,
       );
 
   AudioPlayerState withError(String message) => AudioPlayerState(
@@ -441,12 +461,22 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // playback later STOPS (e.g. on the user's next pause). Emitting
         // isPlaying:true after that await would resurrect a pause the user just
         // made — the play/pause desync. isLoading is cleared up-front instead.
-        emit(state.copyWith(isPlaying: true, isLoading: false));
+        emit(state.copyWith(
+          isPlaying: true,
+          isLoading: false,
+          videoResyncGeneration: state.videoResyncGeneration + 1,
+          videoResyncPositionMs: 0,
+        ));
         await _audioService.play(sourcePath);
       } else {
         await _audioService.stop();
         await _audioService.setSource(sourcePath);
-        emit(state.copyWith(isPlaying: false, isLoading: false));
+        emit(state.copyWith(
+          isPlaying: false,
+          isLoading: false,
+          videoResyncGeneration: state.videoResyncGeneration + 1,
+          videoResyncPositionMs: 0,
+        ));
       }
 
       // Update the OS notification (lock screen / dropdown card).
@@ -519,7 +549,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _logicalElapsed = clamped;
     final seekMs = clamped.inMilliseconds % _originalDuration!.inMilliseconds;
     await _audioService.seek(Duration(milliseconds: seekMs));
-    emit(state.copyWith(logicalPosition: clamped));
+    emit(state.copyWith(
+      logicalPosition: clamped,
+      videoResyncGeneration: state.videoResyncGeneration + 1,
+      videoResyncPositionMs: seekMs,
+    ));
     if (state.isPlaying) _startLogicalTimer();
   }
 
