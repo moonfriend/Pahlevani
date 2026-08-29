@@ -93,6 +93,10 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setVolume(int playerId, double volume) async {}
 
   @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async =>
+      _log('setMixWithOthers:$mixWithOthers');
+
+  @override
   Future<void> play(int playerId) async => _log('play');
 
   @override
@@ -208,7 +212,10 @@ void main() {
 
     // The controller has called createWithOptions by now; fire the
     // "initialized" event a real platform decoder would send.
-    expect(fakePlatform.calls, isEmpty); // nothing yet — not initialized
+    // setMixWithOthers fires synchronously at construction (before
+    // initialize()) — nothing else (play/pause/seekTo) should have happened
+    // yet, since the controller isn't initialized.
+    expect(fakePlatform.calls.map((c) => c.method), ['setMixWithOthers:true']);
     fakePlatform.sendInitialized(0, duration: const Duration(seconds: 30));
     await tester.pump(); // let initialize().then(...) run
 
@@ -308,6 +315,56 @@ void main() {
       expect(seekIndex, lessThan(playIndex),
           reason: 'seekTo must be applied before play(), never after');
     }
+
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
+  testWidgets(
+      'sets mixWithOthers so the muted demo video does not steal Android '
+      'audio focus from the real exercise audio', (tester) async {
+    // No anchors needed — this is about the video controller's own creation
+    // options, unrelated to the seek/delay sync plan.
+    const exercise = Exercise(
+      id: 12,
+      name: 'Video Ex 3',
+      audioFileUrl: 'https://audio.mp3',
+      repetitionsDefault: 1,
+      media: ExerciseMedia(
+        type: 'video',
+        src: 'https://cdn.example.com/clip3.mp4',
+      ),
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [
+          const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 12,
+              position: 0,
+              prescription: RepsPresc(1))
+        ]
+      },
+      exercisesById: {12: exercise},
+    );
+    _registerFakes(snap, onAudioServiceCreated: (_) {});
+
+    await tester.binding.setSurfaceSize(const Size(800, 900));
+    await tester.pumpWidget(_buildPage(snap));
+    await tester.pump();
+    await tester.pump();
+
+    expect(fakePlatform.calls.map((c) => c.method),
+        contains('setMixWithOthers:true'),
+        reason: 'muting the video (setVolume(0)) does not release Android '
+            'audio focus on its own — mixWithOthers must be set explicitly '
+            'so the real exercise audio is never ducked by the silent demo '
+            'video');
 
     addTearDown(() async {
       await tester.binding.setSurfaceSize(null);

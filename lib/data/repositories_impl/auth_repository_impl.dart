@@ -207,7 +207,8 @@ class AuthRepositoryImpl implements AuthRepository {
     String? hashedNonce;
     if (kIsWeb) {
       _googleSignInRawNonce = _generateNonce();
-      hashedNonce = sha256.convert(utf8.encode(_googleSignInRawNonce!)).toString();
+      hashedNonce =
+          sha256.convert(utf8.encode(_googleSignInRawNonce!)).toString();
     }
     await googleSignIn.initialize(
       clientId: kIsWeb ? googleWebClientId : null,
@@ -222,7 +223,8 @@ class AuthRepositoryImpl implements AuthRepository {
     googleSignIn.authenticationEvents.listen((event) async {
       if (event is! GoogleSignInAuthenticationEventSignIn) return;
       try {
-        _googleSignInEventsController.add(await _completeGoogleSignIn(event.user));
+        _googleSignInEventsController
+            .add(await _completeGoogleSignIn(event.user));
       } catch (e) {
         _googleSignInEventsController.addError(e);
       }

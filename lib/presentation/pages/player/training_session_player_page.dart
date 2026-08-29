@@ -462,9 +462,20 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     // cubit never resolves a local cache path on web), so this streams
     // directly rather than downloading first, matching normal browser
     // video behavior.
+    //
+    // mixWithOthers: true — this video is muted (setVolume(0) below), but on
+    // Android that alone doesn't stop ExoPlayer from requesting/holding audio
+    // focus (see video_player_android's VideoPlayer.java: it calls
+    // exoPlayer.setAudioAttributes(attrs, handleAudioFocus) where
+    // handleAudioFocus defaults to true). A silent video was found ducking
+    // the real exercise audio on Android as a result — muting output and
+    // holding focus are separate concerns in ExoPlayer.
+    final options = VideoPlayerOptions(mixWithOthers: true);
     _controller = kIsWeb
-        ? VideoPlayerController.networkUrl(Uri.parse(widget.path))
-        : VideoPlayerController.file(File(widget.path));
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.path),
+            videoPlayerOptions: options)
+        : VideoPlayerController.file(File(widget.path),
+            videoPlayerOptions: options);
     _controller
       ..setLooping(true)
       ..setVolume(0)
