@@ -33,24 +33,12 @@ class TrainingSessionPage extends StatefulWidget {
   State<TrainingSessionPage> createState() => _TrainingSessionPageState();
 }
 
-class _TrainingSessionPageState extends State<TrainingSessionPage>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _refreshSpin = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 800),
-  );
-
+class _TrainingSessionPageState extends State<TrainingSessionPage> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _checkConnectivityOnce());
-  }
-
-  @override
-  void dispose() {
-    _refreshSpin.dispose();
-    super.dispose();
   }
 
   Future<void> _checkConnectivityOnce() async {
@@ -78,12 +66,9 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
   }
 
   Future<void> _refresh() async {
-    unawaited(_refreshSpin.repeat());
     await context
         .read<TrainingSessionCubit>()
         .fetchTrainingSessions(forceRefresh: true);
-    _refreshSpin.stop();
-    _refreshSpin.reset();
   }
 
   Future<void> _openPlayer(TrainingSession session) async {
@@ -277,7 +262,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _Header(
-                  refreshSpin: _refreshSpin,
                   refreshing: isLoading,
                   onRefresh: _refresh,
                 ),
@@ -316,12 +300,8 @@ class _TrainingSessionPageState extends State<TrainingSessionPage>
 // Header
 // ─────────────────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
-  const _Header(
-      {required this.refreshSpin,
-      required this.refreshing,
-      required this.onRefresh});
+  const _Header({required this.refreshing, required this.onRefresh});
 
-  final AnimationController refreshSpin;
   final bool refreshing;
   final VoidCallback onRefresh;
 
@@ -367,54 +347,17 @@ class _Header extends StatelessWidget {
                   ]),
             ),
             BlocBuilder<SettingsCubit, SettingsState>(
-              builder: (ctx, s) => Row(children: [
-                // density toggle
-                _IconBtn(
-                  icon: s.listDensity == ListDensity.banner
-                      ? Icons.view_agenda_outlined
-                      : Icons.view_list_rounded,
-                  color: colors.onMuted,
-                  bg: colors.surface2,
-                  onTap: () => ctx.read<SettingsCubit>().setListDensity(
-                        s.listDensity == ListDensity.banner
-                            ? ListDensity.compact
-                            : ListDensity.banner,
-                      ),
+              builder: (settingsContext, s) =>
+                  BlocBuilder<AuthCubit, AuthState>(
+                builder: (authContext, authState) => _OverflowMenu(
+                  themeMode: s.themeMode,
+                  authState: authState,
+                  onRefresh: onRefresh,
+                  onToggleTheme: () =>
+                      settingsContext.read<SettingsCubit>().toggleTheme(),
+                  onAccountTap: () => _handleAccountTap(authContext, authState),
                 ),
-                const SizedBox(width: 8),
-                // theme toggle
-                _IconBtn(
-                  icon: s.themeMode == ThemeMode.dark
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  color: colors.onMuted,
-                  bg: colors.surface2,
-                  onTap: () => ctx.read<SettingsCubit>().toggleTheme(),
-                ),
-                const SizedBox(width: 8),
-                // refresh
-                _IconBtn(
-                  icon: Icons.refresh_rounded,
-                  color: colors.onMuted,
-                  bg: colors.surface2,
-                  onTap: onRefresh,
-                  spinController: refreshing ? refreshSpin : null,
-                ),
-                const SizedBox(width: 8),
-                // login / account — optional, never blocks browsing
-                BlocBuilder<AuthCubit, AuthState>(
-                  builder: (authContext, authState) {
-                    return _IconBtn(
-                      icon: authState is AuthAuthenticated
-                          ? Icons.person_rounded
-                          : Icons.person_outline_rounded,
-                      color: colors.onMuted,
-                      bg: colors.surface2,
-                      onTap: () => _handleAccountTap(authContext, authState),
-                    );
-                  },
-                ),
-              ]),
+              ),
             ),
           ],
         ),
@@ -487,34 +430,81 @@ void _showAccountSheet(BuildContext context, AppUser user) {
   );
 }
 
-class _IconBtn extends StatelessWidget {
-  const _IconBtn(
-      {required this.icon,
-      required this.color,
-      required this.bg,
-      required this.onTap,
-      this.spinController});
-  final IconData icon;
-  final Color color;
-  final Color bg;
-  final VoidCallback onTap;
-  final AnimationController? spinController;
+enum _MenuAction { refresh, toggleTheme, account }
+
+/// Consolidated "..." menu — refresh, theme toggle, and account/login all
+/// live here instead of as separate always-visible icon buttons, so the
+/// header row stays narrow enough not to overflow on smaller phones.
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu({
+    required this.themeMode,
+    required this.authState,
+    required this.onRefresh,
+    required this.onToggleTheme,
+    required this.onAccountTap,
+  });
+
+  final ThemeMode themeMode;
+  final AuthState authState;
+  final VoidCallback onRefresh;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onAccountTap;
 
   @override
   Widget build(BuildContext context) {
-    Widget ic = Icon(icon, size: 21, color: color);
-    if (spinController != null) {
-      ic = RotationTransition(turns: spinController!, child: ic);
-    }
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final isDark = themeMode == ThemeMode.dark;
+    final isSignedIn = authState is AuthAuthenticated;
+
+    return PopupMenuButton<_MenuAction>(
+      padding: EdgeInsets.zero,
+      icon: Container(
         width: 40,
         height: 40,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+        decoration:
+            BoxDecoration(color: colors.surface2, shape: BoxShape.circle),
         alignment: Alignment.center,
-        child: ic,
+        child: Icon(Icons.more_vert_rounded, size: 21, color: colors.onMuted),
       ),
+      onSelected: (action) {
+        switch (action) {
+          case _MenuAction.refresh:
+            onRefresh();
+          case _MenuAction.toggleTheme:
+            onToggleTheme();
+          case _MenuAction.account:
+            onAccountTap();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _MenuAction.refresh,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.refresh_rounded),
+            title: Text('Refresh'),
+          ),
+        ),
+        PopupMenuItem(
+          value: _MenuAction.toggleTheme,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+            title: Text(isDark ? 'Light mode' : 'Dark mode'),
+          ),
+        ),
+        PopupMenuItem(
+          value: _MenuAction.account,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(isSignedIn
+                ? Icons.person_rounded
+                : Icons.person_outline_rounded),
+            title: Text(isSignedIn ? 'Account' : 'Sign in'),
+          ),
+        ),
+      ],
     );
   }
 }

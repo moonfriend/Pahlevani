@@ -199,6 +199,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'overflow menu replaces the individual density/theme/refresh/account icon buttons',
+      (tester) async {
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    // Only the "..." trigger is visible directly in the header now.
+    expect(find.byIcon(Icons.more_vert_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+    expect(find.byIcon(Icons.dark_mode_rounded), findsNothing);
+    expect(find.byIcon(Icons.light_mode_rounded), findsNothing);
+    expect(find.byIcon(Icons.person_outline_rounded), findsNothing);
+    expect(find.byIcon(Icons.view_agenda_outlined), findsNothing);
+    expect(find.byIcon(Icons.view_list_rounded), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.text('Light mode'), findsOneWidget); // default theme is dark
+    expect(find.text('Sign in'), findsOneWidget); // default auth is anonymous
+  });
+
+  testWidgets('tapping theme in the overflow menu toggles dark/light mode',
+      (tester) async {
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    expect(settingsCubit.state.themeMode, ThemeMode.dark);
+
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Light mode'));
+    await tester.pumpAndSettle();
+
+    expect(settingsCubit.state.themeMode, ThemeMode.light);
+  });
+
   testWidgets('compact density shows Yours chip for user-created session',
       (tester) async {
     final cubit = TrainingSessionCubit(
