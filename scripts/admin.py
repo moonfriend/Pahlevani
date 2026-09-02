@@ -18,13 +18,16 @@ Storage:
   writes to Supabase Storage any more.
 """
 
+import hashlib
 import io
 import json
 import os
 import re
+import secrets
 import subprocess
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
@@ -190,6 +193,13 @@ def load_profiles() -> list[dict]:
     every row regardless of the profiles_select_own/profiles_select_trainer_all
     policies (supabase/migrations/0013_profiles_and_consent.sql)."""
     return get_client().table("profiles").select("*").order("created_at").execute().data
+
+@st.cache_data(ttl=30)
+def load_invite_codes() -> list[dict]:
+    """Trainer-issued signup codes (supabase/migrations/0016_invite_code_signup.sql).
+    Only the sha256 hash is ever stored — the plaintext is shown once, at
+    creation time, and never persisted anywhere."""
+    return get_client().table("invite_codes").select("*").order("created_at", desc=True).execute().data
 
 @st.cache_data(ttl=60)
 def load_movements() -> pd.DataFrame:
@@ -1630,6 +1640,96 @@ def tab_grant_trainer():
         st.rerun()
 
 
+def tab_invite_codes():
+    st.header("Invite Codes")
+    st.caption(
+        "Trainer-issued codes gating student signup (username/password, no "
+        "email involved) — supabase/migrations/0016_invite_code_signup.sql. "
+        "The plaintext code is shown only once, right here, at creation "
+        "time; only its sha256 hash is ever stored, matching what the "
+        "database itself checks against at signup."
+    )
+
+    if st.button("↺ Reload", key="invite_codes_reload"):
+        load_invite_codes.clear()
+        load_profiles.clear()
+
+    try:
+        codes = load_invite_codes()
+    except Exception:
+        st.error(
+            "⚠️ `invite_codes` table not found. "
+            "Run `supabase/migrations/0016_invite_code_signup.sql` in the "
+            "Supabase SQL Editor first."
+        )
+        return
+
+    st.subheader("Generate a new code")
+    with st.form("new_invite_code"):
+        label = st.text_input(
+            "Label",
+            placeholder="e.g. Fall 2026 Class A, or a specific student's name",
+            help="Your own bookkeeping only — not shown to whoever uses the code.",
+        )
+        submitted = st.form_submit_button("Generate", type="primary")
+    if submitted:
+        plaintext = secrets.token_urlsafe(9)  # short, readable, ~12 chars
+        code_hash = hashlib.sha256(plaintext.encode()).hexdigest()
+        get_client().table("invite_codes").insert(
+            {"code_hash": code_hash, "label": label or None}
+        ).execute()
+        load_invite_codes.clear()
+        st.success("✅ Code created — copy it now, it will not be shown again:")
+        st.code(plaintext, language=None)
+
+    st.divider()
+    st.subheader("Existing codes")
+
+    if not codes:
+        st.info("No invite codes yet.")
+        return
+
+    usage_by_code_id: dict[int, int] = {}
+    for p in load_profiles():
+        code_id = p.get("signed_up_via_invite_code_id")
+        if code_id is not None:
+            usage_by_code_id[code_id] = usage_by_code_id.get(code_id, 0) + 1
+
+    rows = [
+        {
+            "label": c.get("label") or "(untitled)",
+            "created_at": c["created_at"],
+            "status": "🔴 revoked" if c.get("revoked_at") else "🟢 active",
+            "signups": usage_by_code_id.get(c["id"], 0),
+        }
+        for c in codes
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    st.divider()
+    st.subheader("Revoke a code")
+    active = [c for c in codes if not c.get("revoked_at")]
+    if not active:
+        st.info("No active codes to revoke.")
+        return
+
+    options = {
+        f"{c.get('label') or '(untitled)'} (created {c['created_at'][:10]})": c
+        for c in active
+    }
+    selected_label = st.selectbox(
+        "Code", options=list(options.keys()), key="invite_code_revoke_select"
+    )
+    selected = options[selected_label]
+    if st.button("Revoke", key="invite_code_revoke_button"):
+        get_client().table("invite_codes").update(
+            {"revoked_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", selected["id"]).execute()
+        st.success(f"✅ Revoked '{selected_label}'.")
+        load_invite_codes.clear()
+        st.rerun()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1640,7 +1740,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
@@ -1650,6 +1750,7 @@ def main():
         "🎬  Video Upload",
         "🚦  Release Gate",
         "🧑‍🏫  Trainer Role",
+        "🎟️  Invite Codes",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
@@ -1660,6 +1761,7 @@ def main():
     with t7: tab_video_upload()
     with t8: tab_release_gate()
     with t9: tab_grant_trainer()
+    with t10: tab_invite_codes()
 
 
 if __name__ == "__main__":

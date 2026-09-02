@@ -1,5 +1,15 @@
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
 
+/// Thrown by [AuthRepository.signUpWithInviteCode] when the code doesn't
+/// match a live (non-revoked) invite code — see
+/// supabase/migrations/0016_invite_code_signup.sql. The database itself
+/// still enforces this via a trigger regardless of whether this exception
+/// fires; this is a pre-check so the app can show a clean error before
+/// even attempting the underlying signup.
+class InvalidInviteCodeException implements Exception {
+  const InvalidInviteCodeException();
+}
+
 /// Login stays fully opt-in — anonymous users never call anything on this
 /// repository.
 abstract class AuthRepository {
@@ -16,6 +26,25 @@ abstract class AuthRepository {
 
   Future<AppUser> signInWithEmail({
     required String email,
+    required String password,
+  });
+
+  /// Admin-managed student login — no email involved at all. A trainer
+  /// generates the invite code out of band (scripts/admin.py) and hands it
+  /// to the student directly; the database rejects the whole signup if it
+  /// doesn't match a live code (see
+  /// supabase/migrations/0016_invite_code_signup.sql), and records which
+  /// code was used for the trainer's own bookkeeping.
+  Future<AppUser> signUpWithInviteCode({
+    required String username,
+    required String password,
+    required String inviteCode,
+  });
+
+  /// Signs back in to an account created via [signUpWithInviteCode], by the
+  /// same username chosen at signup.
+  Future<AppUser> signInWithUsername({
+    required String username,
     required String password,
   });
 

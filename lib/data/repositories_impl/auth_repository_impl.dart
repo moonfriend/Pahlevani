@@ -106,6 +106,58 @@ class AuthRepositoryImpl implements AuthRepository {
     return user;
   }
 
+  // Usernames aren't a real Supabase auth concept — synthesized into a
+  // fake address so this can reuse the same email/password auth machinery
+  // as everything else. Never shown to the user; a data-layer detail only.
+  String _usernameEmail(String username) =>
+      '${username.trim().toLowerCase()}@students.pahlevani.internal';
+
+  @override
+  Future<AppUser> signUpWithInviteCode({
+    required String username,
+    required String password,
+    required String inviteCode,
+  }) async {
+    final isValid = await _client
+        .rpc('is_invite_code_valid', params: {'code': inviteCode}) as bool;
+    if (!isValid) throw const InvalidInviteCodeException();
+
+    // 0016_invite_code_signup.sql's trigger is the actual enforced gate —
+    // this metadata is what it reads. The pre-check above is just so a bad
+    // code fails cleanly before this call, rather than surfacing whatever
+    // error text GoTrue happens to wrap a rejected-trigger exception in.
+    final res = await _client.auth.signUp(
+      email: _usernameEmail(username),
+      password: password,
+      data: {
+        'signup_method': 'invite_code',
+        'invite_code': inviteCode,
+        'username': username.trim(),
+      },
+    );
+    final authUser = res.user;
+    if (authUser == null) throw Exception('Sign up failed');
+    final user = await _fetchProfile(authUser);
+    _cachedProfile = user;
+    return user;
+  }
+
+  @override
+  Future<AppUser> signInWithUsername({
+    required String username,
+    required String password,
+  }) async {
+    final res = await _client.auth.signInWithPassword(
+      email: _usernameEmail(username),
+      password: password,
+    );
+    final authUser = res.user;
+    if (authUser == null) throw Exception('Sign in failed');
+    final user = await _fetchProfile(authUser);
+    _cachedProfile = user;
+    return user;
+  }
+
   // Memoized rather than a bool flag so concurrent callers (signInWithGoogle
   // racing initializeGoogleSignIn) share one in-flight init instead of both
   // calling GoogleSignIn.initialize() themselves.

@@ -96,6 +96,85 @@ void main() {
     });
   });
 
+  group('signUpWithInviteCode()', () {
+    test('success without consent transitions to AuthNeedsConsent', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signUpWithInviteCode(
+        username: 'alice',
+        password: 'secret',
+        inviteCode: 'letmein123',
+      );
+
+      expect(cubit.state, isA<AuthNeedsConsent>());
+      expect(repo.signUpWithInviteCodeCallCount, 1);
+    });
+
+    test('invalid code emits a clean, specific AuthFailure message',
+        () async {
+      final repo = FakeAuthRepository()..throwInvalidInviteCode = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signUpWithInviteCode(
+        username: 'alice',
+        password: 'secret',
+        inviteCode: 'wrong-code',
+      );
+
+      expect(cubit.state, isA<AuthFailure>());
+      expect((cubit.state as AuthFailure).message,
+          'That invite code is not valid.');
+    });
+
+    test('other failures emit AuthFailure with the raw error', () async {
+      final repo = FakeAuthRepository()..throwOnSignUpWithInviteCode = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signUpWithInviteCode(
+        username: 'alice',
+        password: 'secret',
+        inviteCode: 'letmein123',
+      );
+
+      expect(cubit.state, isA<AuthFailure>());
+      expect((cubit.state as AuthFailure).previous, isA<AuthAnonymous>());
+    });
+  });
+
+  group('signInWithUsername()', () {
+    test('success without consent transitions to AuthNeedsConsent', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signInWithUsername(username: 'alice', password: 'secret');
+
+      expect(cubit.state, isA<AuthNeedsConsent>());
+      expect(repo.signInWithUsernameCallCount, 1);
+    });
+
+    test('failure emits AuthFailure and keeps AuthAnonymous as previous',
+        () async {
+      final repo = FakeAuthRepository()..throwOnSignInWithUsername = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signInWithUsername(username: 'alice', password: 'wrong');
+
+      expect(cubit.state, isA<AuthFailure>());
+      expect((cubit.state as AuthFailure).previous, isA<AuthAnonymous>());
+    });
+  });
+
   group('signInWithGoogle()', () {
     test('success without consent transitions to AuthNeedsConsent', () async {
       final repo = FakeAuthRepository();

@@ -94,6 +94,57 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  Future<void> signUpWithInviteCode({
+    required String username,
+    required String password,
+    required String inviteCode,
+  }) async {
+    if (isClosed) return;
+    final previous = state;
+    emit(const AuthSubmitting());
+    try {
+      final user = await _repo.signUpWithInviteCode(
+        username: username,
+        password: password,
+        inviteCode: inviteCode,
+      );
+      if (isClosed) return;
+      _emitForUser(user);
+    } on InvalidInviteCodeException {
+      if (!isClosed) {
+        emit(AuthFailure(
+          message: 'That invite code is not valid.',
+          previous: previous,
+        ));
+      }
+    } catch (e) {
+      if (!isClosed) {
+        emit(AuthFailure(message: e.toString(), previous: previous));
+      }
+    }
+  }
+
+  Future<void> signInWithUsername({
+    required String username,
+    required String password,
+  }) async {
+    if (isClosed) return;
+    final previous = state;
+    emit(const AuthSubmitting());
+    try {
+      final user = await _repo.signInWithUsername(
+        username: username,
+        password: password,
+      );
+      if (isClosed) return;
+      _emitForUser(user);
+    } catch (e) {
+      if (!isClosed) {
+        emit(AuthFailure(message: e.toString(), previous: previous));
+      }
+    }
+  }
+
   Future<void> signInWithGoogle() async {
     if (isClosed) return;
     final previous = state;

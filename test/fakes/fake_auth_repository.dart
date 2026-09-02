@@ -9,6 +9,9 @@ class FakeAuthRepository implements AuthRepository {
   bool throwOnSignUp = false;
   bool throwOnAcceptConsent = false;
   bool throwOnGoogleSignIn = false;
+  bool throwOnSignUpWithInviteCode = false;
+  bool throwInvalidInviteCode = false;
+  bool throwOnSignInWithUsername = false;
   List<AppUser> trainees = const [];
 
   int signInCallCount = 0;
@@ -17,6 +20,8 @@ class FakeAuthRepository implements AuthRepository {
   int acceptPrivacyConsentCallCount = 0;
   int signInWithGoogleCallCount = 0;
   int initializeGoogleSignInCallCount = 0;
+  int signUpWithInviteCodeCallCount = 0;
+  int signInWithUsernameCallCount = 0;
 
   final _controller = StreamController<AppUser?>.broadcast();
   final _googleEventsController = StreamController<AppUser>.broadcast();
@@ -56,6 +61,32 @@ class FakeAuthRepository implements AuthRepository {
     signUpCallCount++;
     if (throwOnSignUp) throw Exception('Could not create account');
     final user = AppUser(id: 'user-1', email: email);
+    _currentUser = user;
+    return user;
+  }
+
+  @override
+  Future<AppUser> signUpWithInviteCode({
+    required String username,
+    required String password,
+    required String inviteCode,
+  }) async {
+    signUpWithInviteCodeCallCount++;
+    if (throwInvalidInviteCode) throw const InvalidInviteCodeException();
+    if (throwOnSignUpWithInviteCode) throw Exception('Could not create account');
+    const user = AppUser(id: 'user-1', email: null);
+    _currentUser = user;
+    return user;
+  }
+
+  @override
+  Future<AppUser> signInWithUsername({
+    required String username,
+    required String password,
+  }) async {
+    signInWithUsernameCallCount++;
+    if (throwOnSignInWithUsername) throw Exception('Invalid username or password');
+    const user = AppUser(id: 'user-1', email: null);
     _currentUser = user;
     return user;
   }

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
+import 'package:pahlevani/presentation/pages/auth/username_login_page.dart';
 import 'package:pahlevani/presentation/widgets/auth/google_branded_button.dart';
 import 'package:pahlevani/presentation/widgets/auth/google_sign_in_web_button.dart';
 import 'package:pahlevani/presentation/widgets/common/app_error_dialog.dart';
@@ -60,6 +61,20 @@ class AuthPage extends StatelessWidget {
                                       .signInWithGoogle(),
                               loading: submitting,
                             ),
+                    ),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: TextButton(
+                        onPressed: submitting
+                            ? null
+                            : () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const UsernameLoginPage()),
+                                ),
+                        child: const Text('Have a class access code?'),
+                      ),
                     ),
                   ],
                 ),
