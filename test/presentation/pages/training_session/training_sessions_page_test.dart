@@ -173,6 +173,32 @@ void main() {
     expect(find.text('Session B'), findsOneWidget);
   });
 
+  testWidgets('header title does not overflow at a narrow device width',
+      (tester) async {
+    // Regression test: at a realistic narrow phone width (360dp logical),
+    // the "Pahlevani" / "پهلوانی" title row overflowed the header by ~19px
+    // because neither Text had a way to shrink.
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('compact density shows Yours chip for user-created session',
       (tester) async {
     final cubit = TrainingSessionCubit(

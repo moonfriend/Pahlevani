@@ -340,20 +340,25 @@ class _Header extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text('Pahlevani',
-                              style: PTextStyles.of(context)
-                                  .homeTitle
-                                  .copyWith(color: cs.onSurface)),
-                          const SizedBox(width: 10),
-                          Text('پهلوانی',
-                              style: PTextStyles.of(context)
-                                  .homeTitleFa
-                                  .copyWith(color: cs.primary)),
-                        ]),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text('Pahlevani',
+                                style: PTextStyles.of(context)
+                                    .homeTitle
+                                    .copyWith(color: cs.onSurface)),
+                            const SizedBox(width: 10),
+                            Text('پهلوانی',
+                                style: PTextStyles.of(context)
+                                    .homeTitleFa
+                                    .copyWith(color: cs.primary)),
+                          ]),
+                    ),
                     const SizedBox(height: 2),
                     Text('Varzesh-e Bastani · house of strength',
                         style: PTextStyles.of(context)
