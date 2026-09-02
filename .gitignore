@@ -64,10 +64,16 @@ android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
 # Firebase local dev env (real keys for --dart-define-from-file)
-.firebase.env
+# Glob (not exact match) so per-environment copies (e.g. .firebase.prod.env)
+# stay covered automatically — only .firebase.env.example is meant to be
+# committed, and it doesn't match this (*.env, not *.example).
+.firebase*.env
 
-# Supabase staging env (real keys for --dart-define-from-file)
-.supabase.env
+# Supabase env (real keys for --dart-define-from-file) — same glob reasoning.
+# .supabase.env is "whichever environment is currently active"; keep
+# .supabase.prod.env / .supabase.staging.env as the actual per-project
+# copies and `cp` the one you want into .supabase.env to switch.
+.supabase*.env
 
 # DB migration test — real Supabase credentials (copy from supabase/.db.env.example)
 supabase/.db.env
