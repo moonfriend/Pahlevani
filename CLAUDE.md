@@ -51,6 +51,28 @@ Without both files, the app still launches but every Supabase call fails with
 `Invalid argument(s): No host specified in URI` (empty `SUPABASE_URL`), and the app
 silently falls back to the local Hive cache (empty on a fresh install).
 
+### Switching between prod and staging locally
+
+`.supabase.env` is "whichever Supabase project is currently active" — every build
+command and the Android Studio run config reference that one filename. Keep the two
+real per-project copies alongside it (same gitignore glob covers all three:
+`.supabase*.env`) and `cp` the one you want into place:
+
+```bash
+.supabase.prod.env       # real production project — real users, real data
+.supabase.staging.env    # staging project — safe to break
+
+cp .supabase.prod.env .supabase.env       # switch to prod
+cp .supabase.staging.env .supabase.env    # switch back to staging
+```
+
+**Never put a service-role key in any of these files.** They're read straight into a
+compiled app via `--dart-define`, so only the **anon/public** key belongs here (Supabase
+Dashboard → Settings → API → "anon public") — the same key `scripts/admin.py` uses is
+`SUPABASE_KEY`, but that one is a **service-role key** (see its own comment in
+`scripts/.streamlit/secrets.toml`) and must never be reused for this purpose; it has full
+DDL/bypass-RLS power and would ship inside the APK for anyone to extract.
+
 ---
 
 ## Build / Run / Test
