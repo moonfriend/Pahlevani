@@ -27,17 +27,94 @@ Flutter app for practising **Pahlevani** — traditional Persian warrior fitness
 
 ---
 
+## Credentials Setup (required before running or building)
+
+Supabase, Google Sign-In, and Firebase keys are read via `String.fromEnvironment` —
+there are **no hardcoded fallbacks** in source. Every `flutter run` / `flutter build`
+needs them injected via `--dart-define-from-file`, from two gitignored JSON files at
+the repo root:
+
+```bash
+cp .supabase.env.example .supabase.env   # SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_WEB_CLIENT_ID
+cp .firebase.env.example .firebase.env   # FIREBASE_ANDROID_API_KEY, FIREBASE_IOS_API_KEY, FIREBASE_WEB_API_KEY
+# then fill in real values — ask a project maintainer (see the admin creds vault convention)
+```
+
+`--dart-define-from-file` may be repeated — Flutter merges the files — so every command
+below that needs real credentials uses both:
+
+```bash
+--dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+```
+
+Without both files, the app still launches but every Supabase call fails with
+`Invalid argument(s): No host specified in URI` (empty `SUPABASE_URL`), and the app
+silently falls back to the local Hive cache (empty on a fresh install).
+
+---
+
 ## Build / Run / Test
 
 ```bash
 flutter pub get                                         # install deps
-flutter run                                            # run on device/emulator
-flutter test                                           # run tests
-flutter analyze                                        # lint (flutter_lints)
+
+# Run — mobile/emulator
+flutter run --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+
+# Run — Linux desktop (needs pkg-config path too)
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -d linux \
+  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+
+flutter test                                            # run tests (data sources are faked — no credentials needed)
+flutter analyze                                         # lint (flutter_lints)
 
 # Regenerate Hive adapters — run after every change to hive_models.dart
 dart run build_runner build --delete-conflicting-outputs
 ```
+
+**Android Studio / IntelliJ**: the `main.dart` run configuration
+(`.idea/runConfigurations/main_dart.xml`, gitignored — local-only, per-machine) already
+passes `--dart-define-from-file=.supabase.env` — just hit Run. It does **not** include
+`.firebase.env`; add `--dart-define-from-file=.firebase.env` to its `additionalArgs` too
+if you need Firebase-dependent features (Crashlytics) locally.
+
+### Release builds (Play Store)
+
+```bash
+# Bump pubspec.yaml's `version:` (X.Y.Z+buildNumber) first
+
+flutter build appbundle --release \
+  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+# → build/app/outputs/bundle/release/app-release.aab
+```
+
+Real release signing needs `android/key.properties` (gitignored, holds the keystore
+path/passwords) — without it Gradle falls back to debug signing.
+
+### Web build + deploy
+
+```bash
+flutter build web --release \
+  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+# → build/web/
+```
+
+Deployed via Cloudflare Workers Builds (`wrangler.jsonc`), connected directly to this
+repo — pushing to the tracked branch triggers an automatic rebuild. **The actual
+`flutter build web` command Cloudflare runs, including its dart-defines, is configured
+in the Cloudflare dashboard, not in this repo** — not reproducible from a checkout alone;
+ask a project maintainer before assuming what it does.
+
+### CI (`.github/workflows/ci.yml`)
+
+Runs automatically on every push/PR to `main`: format check → analyze → tests +
+coverage gate (≥50%) → debug + release APK builds. Secrets come from GitHub Actions
+repo secrets (Settings → Secrets → Actions), not from the local `.env` files above.
+
+**Known gap**: CI's APK build steps only pass the 3 Firebase dart-defines — `SUPABASE_URL`
+/ `SUPABASE_ANON_KEY` / `GOOGLE_WEB_CLIENT_ID` are not wired into `ci.yml` yet, so
+CI-built APKs currently ship with empty Supabase credentials. Tracked as backlog, not
+fixed here.
 
 ---
 
