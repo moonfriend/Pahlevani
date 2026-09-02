@@ -83,6 +83,22 @@ class _MutableSessionRepo implements TrainingSessionRepository {
 
   @override
   Future<void> deleteTrainingSession(int id) async {}
+
+  @override
+  Future<TrainingSession> saveOwnedSession({
+    required TrainingSession session,
+    required List<ItemDetail> items,
+  }) async =>
+      session;
+
+  @override
+  Future<void> assignSessionToTrainee({
+    required int sessionId,
+    required String traineeUserId,
+  }) async {}
+
+  @override
+  Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
 class _FakeDownloadRepo implements DownloadRepository {

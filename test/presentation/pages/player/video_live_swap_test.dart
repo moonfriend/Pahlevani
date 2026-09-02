@@ -67,6 +67,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setVolume(int playerId, double volume) async {}
 
   @override
+  Future<void> setMixWithOthers(bool mixWithOthers) async {}
+
+  @override
   Future<void> play(int playerId) async {}
 
   @override
