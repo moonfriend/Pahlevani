@@ -24,7 +24,9 @@ create table if not exists public.invite_codes (
   id          bigserial primary key,
   -- sha256 hex digest of the plaintext code — the plaintext is shown to
   -- the trainer exactly once at creation time (scripts/admin.py) and never
-  -- stored.
+  -- stored. May be trainer-chosen (e.g. a class name) rather than randomly
+  -- generated — admin.py warns about the guessability trade-off when that
+  -- option is used, but the schema/trigger don't distinguish the two.
   code_hash   text not null unique,
   -- Trainer's own label for the code — "Fall 2026 Class A", a specific
   -- student's name, etc. Purely for the trainer's own bookkeeping.
@@ -34,7 +36,18 @@ create table if not exists public.invite_codes (
   -- Null = still valid. Revoking never deletes the row, so
   -- profiles.signed_up_via_invite_code_id keeps resolving for existing
   -- signups.
-  revoked_at  timestamptz
+  revoked_at  timestamptz,
+  -- Null = unlimited. Quota is fixed at creation time — raising it later
+  -- isn't supported; revoke and issue a new code instead, to keep this
+  -- simple.
+  max_uses    integer,
+  -- Incremented atomically by check_invite_code() below, in the same
+  -- statement that validates the code — see that function's comment for
+  -- why this has to be one atomic UPDATE rather than a separate
+  -- check-then-increment (a race between two simultaneous signups right at
+  -- the quota boundary).
+  uses_count  integer not null default 0,
+  constraint invite_codes_max_uses_positive check (max_uses is null or max_uses > 0)
 );
 
 -- No anon/authenticated grants at all, deliberately — the trainer manages
@@ -53,25 +66,44 @@ alter table public.profiles
 
 -- Hard gate: rejects the auth.users insert outright if this is an
 -- invite-code signup (raw_user_meta_data.signup_method = 'invite_code')
--- and the submitted code doesn't match a live (non-revoked) row. Scoped to
--- that one metadata flag specifically — Google sign-in and any other auth
--- method never sets it, so they pass through untouched here.
+-- and the submitted code doesn't match a live, non-revoked, under-quota
+-- row. Scoped to that one metadata flag specifically — Google sign-in and
+-- any other auth method never sets it, so they pass through untouched
+-- here.
+--
+-- The validity check and the usage-count increment happen in one atomic
+-- UPDATE ... RETURNING, not a separate SELECT-then-UPDATE — Postgres takes
+-- a row lock for the UPDATE, so two signups racing for the last slot on a
+-- quota-limited code serialize correctly instead of both reading
+-- uses_count before either increments it (which would let a quota=1 code
+-- be used twice). If the whole transaction later fails for an unrelated
+-- reason, this increment rolls back with it, same as everything else in
+-- the transaction.
 create or replace function public.check_invite_code()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  matched_id bigint;
 begin
   if new.raw_user_meta_data->>'signup_method' is distinct from 'invite_code' then
     return new;
   end if;
 
-  if new.raw_user_meta_data->>'invite_code' is null or not exists (
-    select 1 from public.invite_codes
-    where code_hash = encode(digest(new.raw_user_meta_data->>'invite_code', 'sha256'), 'hex')
-      and revoked_at is null
-  ) then
+  if new.raw_user_meta_data->>'invite_code' is null then
+    raise exception 'invalid_invite_code';
+  end if;
+
+  update public.invite_codes
+  set uses_count = uses_count + 1
+  where code_hash = encode(digest(new.raw_user_meta_data->>'invite_code', 'sha256'), 'hex')
+    and revoked_at is null
+    and (max_uses is null or uses_count < max_uses)
+  returning id into matched_id;
+
+  if matched_id is null then
     raise exception 'invalid_invite_code';
   end if;
 
@@ -103,6 +135,7 @@ as $$
     select 1 from public.invite_codes
     where code_hash = encode(digest(code, 'sha256'), 'hex')
       and revoked_at is null
+      and (max_uses is null or uses_count < max_uses)
   );
 $$;
 

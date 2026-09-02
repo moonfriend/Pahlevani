@@ -1665,19 +1665,54 @@ def tab_invite_codes():
         return
 
     st.subheader("Generate a new code")
+
+    # Outside the form so it reruns immediately (form-internal widgets only
+    # rerun on submit) — needed so the warning + custom-code field actually
+    # appear/disappear as this is toggled, not just after submitting.
+    use_custom = st.checkbox("Use a custom code instead of auto-generating one")
+    if use_custom:
+        st.warning(
+            "⚠️ A custom code (e.g. a class or event name) is far easier to "
+            "guess than a random one — anyone who figures it out can create "
+            "an account with it. Best paired with a usage limit below, and "
+            "revoked once you're done handing it out."
+        )
+
     with st.form("new_invite_code"):
         label = st.text_input(
             "Label",
             placeholder="e.g. Fall 2026 Class A, or a specific student's name",
             help="Your own bookkeeping only — not shown to whoever uses the code.",
         )
+        custom_code = (
+            st.text_input("Custom code", placeholder="e.g. PahlevaniFall2026")
+            if use_custom
+            else None
+        )
+        max_uses = st.number_input(
+            "Max uses",
+            min_value=0,
+            value=0,
+            step=1,
+            help="0 = unlimited. Fixed at creation — to raise a quota later, revoke this code and issue a new one.",
+        )
         submitted = st.form_submit_button("Generate", type="primary")
+
     if submitted:
-        plaintext = secrets.token_urlsafe(9)  # short, readable, ~12 chars
+        if use_custom:
+            if not custom_code or not custom_code.strip():
+                st.error("Enter a custom code, or uncheck 'Use a custom code'.")
+                return
+            plaintext = custom_code.strip()
+        else:
+            plaintext = secrets.token_urlsafe(9)  # short, readable, ~12 chars
+
         code_hash = hashlib.sha256(plaintext.encode()).hexdigest()
-        get_client().table("invite_codes").insert(
-            {"code_hash": code_hash, "label": label or None}
-        ).execute()
+        get_client().table("invite_codes").insert({
+            "code_hash": code_hash,
+            "label": label or None,
+            "max_uses": int(max_uses) or None,
+        }).execute()
         load_invite_codes.clear()
         st.success("✅ Code created — copy it now, it will not be shown again:")
         st.code(plaintext, language=None)
@@ -1689,18 +1724,12 @@ def tab_invite_codes():
         st.info("No invite codes yet.")
         return
 
-    usage_by_code_id: dict[int, int] = {}
-    for p in load_profiles():
-        code_id = p.get("signed_up_via_invite_code_id")
-        if code_id is not None:
-            usage_by_code_id[code_id] = usage_by_code_id.get(code_id, 0) + 1
-
     rows = [
         {
             "label": c.get("label") or "(untitled)",
             "created_at": c["created_at"],
             "status": "🔴 revoked" if c.get("revoked_at") else "🟢 active",
-            "signups": usage_by_code_id.get(c["id"], 0),
+            "uses": f"{c.get('uses_count', 0)} / {c['max_uses'] if c.get('max_uses') else '∞'}",
         }
         for c in codes
     ]
