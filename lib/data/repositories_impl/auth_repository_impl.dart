@@ -109,8 +109,18 @@ class AuthRepositoryImpl implements AuthRepository {
   // Usernames aren't a real Supabase auth concept — synthesized into a
   // fake address so this can reuse the same email/password auth machinery
   // as everything else. Never shown to the user; a data-layer detail only.
+  //
+  // GoTrue rejects this with "email_address_invalid" if the domain doesn't
+  // resolve in DNS at all — found the hard way against staging: a made-up
+  // TLD like .internal fails (also reserved per RFC 2606/9476), but so did
+  // a made-up-but-ordinary-looking domain (students.pahlevani.app), because
+  // nobody owns pahlevani.app. It's not a TLD blocklist, it's a live
+  // lookup. rahaavi.com is a real domain the business owns and DNS
+  // confirms resolves. No subdomain prefix (e.g. "students.rahaavi.com")
+  // — there's no wildcard record on this zone, so an arbitrary subdomain
+  // has no DNS entry of its own and would fail the same check.
   String _usernameEmail(String username) =>
-      '${username.trim().toLowerCase()}@students.pahlevani.internal';
+      '${username.trim().toLowerCase()}@rahaavi.com';
 
   @override
   Future<AppUser> signUpWithInviteCode({

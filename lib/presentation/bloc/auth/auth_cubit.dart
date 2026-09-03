@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
@@ -34,7 +35,8 @@ class AuthCubit extends Cubit<AuthState> {
       (user) {
         if (!isClosed) _emitForUser(user);
       },
-      onError: (Object e) {
+      onError: (Object e, StackTrace st) {
+        AppLogger.w('googleSignInEvents stream error', error: e, stackTrace: st);
         if (!isClosed) {
           emit(AuthFailure(message: e.toString(), previous: state));
         }
@@ -68,7 +70,8 @@ class AuthCubit extends Cubit<AuthState> {
           await _repo.signInWithEmail(email: email, password: password);
       if (isClosed) return;
       _emitForUser(user);
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('signInWithEmail failed', error: e, stackTrace: st);
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: previous));
       }
@@ -87,7 +90,8 @@ class AuthCubit extends Cubit<AuthState> {
           await _repo.signUpWithEmail(email: email, password: password);
       if (isClosed) return;
       _emitForUser(user);
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('signUpWithEmail failed', error: e, stackTrace: st);
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: previous));
       }
@@ -110,14 +114,16 @@ class AuthCubit extends Cubit<AuthState> {
       );
       if (isClosed) return;
       _emitForUser(user);
-    } on InvalidInviteCodeException {
+    } on InvalidInviteCodeException catch (e) {
+      AppLogger.w('signUpWithInviteCode rejected an invalid code', error: e);
       if (!isClosed) {
         emit(AuthFailure(
           message: 'That invite code is not valid.',
           previous: previous,
         ));
       }
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('signUpWithInviteCode failed', error: e, stackTrace: st);
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: previous));
       }
@@ -138,7 +144,8 @@ class AuthCubit extends Cubit<AuthState> {
       );
       if (isClosed) return;
       _emitForUser(user);
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('signInWithUsername failed', error: e, stackTrace: st);
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: previous));
       }
@@ -153,7 +160,8 @@ class AuthCubit extends Cubit<AuthState> {
       final user = await _repo.signInWithGoogle();
       if (isClosed) return;
       _emitForUser(user);
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('signInWithGoogle failed', error: e, stackTrace: st);
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: previous));
       }
@@ -167,7 +175,8 @@ class AuthCubit extends Cubit<AuthState> {
     try {
       final user = await _repo.acceptPrivacyConsent();
       if (!isClosed) emit(AuthAuthenticated(user));
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.w('acceptPrivacyConsent failed', error: e, stackTrace: st);
       // Must never look like success — stays gated behind consent.
       if (!isClosed) {
         emit(AuthFailure(message: e.toString(), previous: current));
