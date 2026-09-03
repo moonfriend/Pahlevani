@@ -12,24 +12,20 @@ signed URLs in the DB remain valid; no database update is needed.
 
 Usage
 -----
-    cd scripts
-    uv run python compress_images.py            # compress & upload
-    uv run python compress_images.py --dry-run  # show sizes, no upload
+    bash scripts/run_admin.sh --script compress_images.py            # compress & upload
+    bash scripts/run_admin.sh --script compress_images.py --dry-run  # show sizes, no upload
 
 Credentials
 -----------
-Requires the SERVICE ROLE key (not the anon key) for storage writes.
-Set via env vars or .streamlit/secrets.toml:
-    SUPABASE_URL=https://xxx.supabase.co
-    SUPABASE_KEY=<service-role-key>
+Requires the SERVICE ROLE key (not the anon key) for storage writes. Read
+from process environment only — run via scripts/run_admin.sh, which exports
+it from the admin creds vault.
 """
 
 import argparse
 import io
 import os
 import sys
-import tomllib
-from pathlib import Path
 
 try:
     import requests
@@ -42,20 +38,12 @@ except ImportError:
 # ── Credentials ───────────────────────────────────────────────────────────────
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    secrets_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
-    if secrets_path.exists():
-        with open(secrets_path, "rb") as f:
-            secrets = tomllib.load(f)
-        SUPABASE_URL = SUPABASE_URL or secrets.get("SUPABASE_URL", "")
-        SUPABASE_KEY = SUPABASE_KEY or secrets.get("SUPABASE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print(
-        "ERROR: SUPABASE_URL and SUPABASE_KEY (service-role key) are required.\n"
-        "Add them to scripts/.streamlit/secrets.toml or set as env vars."
+        "ERROR: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.\n"
+        "Run via: bash scripts/run_admin.sh --script compress_images.py"
     )
     sys.exit(1)
 

@@ -2,12 +2,11 @@
 Challenge Bot Admin — browse and manage Telegram group-challenge data, and
 author ASCII-art "story" templates.
 
-Run:
-    cd challenge_bot
-    uv run streamlit run bot_admin.py
+Run (from repo root — sources admin-tier credentials from the vault):
+    bash challenge_bot/run.sh --admin
 
 Credentials (required — use the service-role key, not the anon key):
-  env vars, or challenge_bot/.env: SUPABASE_URL  SUPABASE_KEY
+  Read from process environment only — see challenge_bot/run.sh.
 """
 
 import pandas as pd

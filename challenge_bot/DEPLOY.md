@@ -41,11 +41,13 @@ Never commit these — create `.env` fresh on the box:
 
 ```bash
 cp .env.example .env
-nano .env   # fill in TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY
+nano .env   # fill in TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 chmod 600 .env
 ```
 
-`SUPABASE_KEY` must be the **service-role key** (see the main `README.md` for why).
+`SUPABASE_SERVICE_ROLE_KEY` must be the **service-role key** (see the main `README.md`
+for why). This file is separate from local dev's `run.sh` + admin creds vault flow — a
+VPS has no access to that vault, so this `.env` needs to be fully self-contained.
 
 ## 5. Create the systemd service
 

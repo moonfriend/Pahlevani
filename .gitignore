@@ -51,9 +51,6 @@ coverage/
 # FVM Version Cache
 .fvm/report/
 
-# Streamlit secrets
-scripts/.streamlit/secrets.toml
-
 # Android signing — NEVER commit these
 android/key.properties
 *.jks
@@ -63,17 +60,16 @@ android/key.properties
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
-# Firebase local dev env (real keys for --dart-define-from-file)
-# Glob (not exact match) so per-environment copies (e.g. .firebase.prod.env)
-# stay covered automatically — only .firebase.env.example is meant to be
-# committed, and it doesn't match this (*.env, not *.example).
-.firebase*.env
-
-# Supabase env (real keys for --dart-define-from-file) — same glob reasoning.
-# .supabase.env is "whichever environment is currently active"; keep
-# .supabase.prod.env / .supabase.staging.env as the actual per-project
-# copies and `cp` the one you want into .supabase.env to switch.
-.supabase*.env
+# env/ — every local operational credential (Flutter dart-define files,
+# challenge_bot's Telegram token) lives here as one directory now. Glob
+# (not exact match) covers real files regardless of name; *.example and
+# README.md are the only things meant to be committed. Admin-tier secrets
+# (service-role keys, DB passwords, R2, the release keystore) never land
+# here at all — see ~/StudioProjects/pahlevani-admin-creds/ instead,
+# sourced on demand by scripts/with_admin_creds.sh.
+env/*
+!env/*.example
+!env/README.md
 
 # DB migration test — real Supabase credentials (copy from supabase/.db.env.example)
 supabase/.db.env
@@ -81,14 +77,13 @@ supabase/.db.env
 # Supabase snapshot — table data + media files downloaded by scripts/dump_supabase.py
 supabase/dump/
 
-# One-off prod DB snapshot (roles/schema/data dump + low-priv .env) — never commit
+# One-off prod DB snapshot (roles/schema dump) — never commit
 supabase/db_snapshot/
 
-# Challenge bot — real Telegram token + Supabase service-role key (copy from .env.example)
+# Challenge bot standalone deployment env (VPS/systemd — no vault access
+# there, so this needs to be self-contained; see challenge_bot/DEPLOY.md).
+# Local dev doesn't use this file at all — see env/challenge_bot.env instead.
 challenge_bot/.env
-
-# Raw credential files (e.g. R2 API tokens) — never commit
-creds/
 
 # Python virtual environment and version pin (used by scripts/)
 .venv/

@@ -15,15 +15,12 @@ repetition tracking.
 ## Getting Started
 
 1. Install Flutter (this project is pinned to `3.29.0`) and run `flutter pub get`.
-2. Copy the two credential templates and fill in real values (ask a project maintainer
-   for them — never commit the filled-in files, they're gitignored):
+2. Set up `env/` from its templates and fill in real values (ask a project maintainer
+   for them — never commit the filled-in files, they're gitignored) — see
+   [`env/README.md`](./env/README.md) for the exact steps.
+3. Run the app with the credentials injected:
    ```bash
-   cp .supabase.env.example .supabase.env
-   cp .firebase.env.example .firebase.env
-   ```
-3. Run the app with both files' values injected:
-   ```bash
-   flutter run --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+   flutter run --dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
    ```
 
 Full build/run commands for every platform (Linux desktop, Play Store release builds,

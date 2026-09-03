@@ -9,12 +9,11 @@ and before updating the DB URLs, so you know nothing was missed.
 QUICK START
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    cd scripts
-    export SUPABASE_URL=https://<project-ref>.supabase.co
-    export SUPABASE_KEY=<service-role-key>      # NOT the anon key
-    export R2_ACCESS_KEY_ID=<r2-token-id>
-    export R2_SECRET_ACCESS_KEY=<r2-token-secret>
-    uv run python check_r2_completeness.py
+    bash scripts/run_admin.sh --script check_r2_completeness.py
+
+All required env vars below are exported automatically from the admin creds
+vault (~/StudioProjects/pahlevani-admin-creds/) by that wrapper — nothing
+needs setting by hand for routine use.
 
 Exit code 0 = all files present. Exit code 1 = one or more files missing.
 
@@ -23,9 +22,9 @@ ENVIRONMENT VARIABLES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Required:
-    SUPABASE_URL          Full project URL, e.g. https://abc123.supabase.co
-    SUPABASE_KEY          Service-role key (Settings → API → service_role).
-                          Needs SELECT on 'exercise' and 'movement' tables.
+    SUPABASE_URL              Full project URL, e.g. https://abc123.supabase.co
+    SUPABASE_SERVICE_ROLE_KEY Service-role key (Settings → API → service_role).
+                               Needs SELECT on 'exercise' and 'movement' tables.
     R2_ACCESS_KEY_ID      R2 API token ID with at least Object Read + List
                           permissions on the target bucket.
     R2_SECRET_ACCESS_KEY  Matching secret for the above token.
@@ -74,8 +73,6 @@ TYPICAL WORKFLOW
 
 import os
 import sys
-import tomllib
-from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 import boto3
@@ -85,24 +82,12 @@ from supabase import create_client
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-def _secret(key: str, default: str = "") -> str:
-    """env var first, falling back to scripts/.streamlit/secrets.toml."""
-    val = os.environ.get(key, "")
-    if val:
-        return val
-    secrets_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
-    if secrets_path.exists():
-        with open(secrets_path, "rb") as f:
-            return tomllib.load(f).get(key, default)
-    return default
-
-
-SUPABASE_URL = _secret("SUPABASE_URL")
-SUPABASE_KEY = _secret("SUPABASE_KEY")
-R2_ACCOUNT_ID = _secret("R2_ACCOUNT_ID", "52a61783f2d01cd161e65ac58f130716")
-R2_BUCKET = _secret("R2_BUCKET", "morshed-sounds")
-R2_ACCESS_KEY_ID = _secret("R2_ACCESS_KEY_ID")
-R2_SECRET_ACCESS_KEY = _secret("R2_SECRET_ACCESS_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "52a61783f2d01cd161e65ac58f130716")
+R2_BUCKET = os.environ.get("R2_BUCKET", "morshed-sounds")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
 
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
@@ -115,13 +100,14 @@ R2_IMAGE_PREFIX = "movement_images/"
 
 def _require_env() -> None:
     missing = [name for name, val in (
-        ("SUPABASE_URL", SUPABASE_URL), ("SUPABASE_KEY", SUPABASE_KEY),
+        ("SUPABASE_URL", SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_KEY),
         ("R2_ACCESS_KEY_ID", R2_ACCESS_KEY_ID),
         ("R2_SECRET_ACCESS_KEY", R2_SECRET_ACCESS_KEY),
     ) if not val]
     if missing:
         print(f"ERROR: missing credentials: {', '.join(missing)}")
-        print("Set as env vars or add to scripts/.streamlit/secrets.toml")
+        print("Run via: bash scripts/run_admin.sh --script check_r2_completeness.py")
         sys.exit(1)
 
 

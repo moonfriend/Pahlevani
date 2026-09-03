@@ -29,49 +29,51 @@ Flutter app for practising **Pahlevani** — traditional Persian warrior fitness
 
 ## Credentials Setup (required before running or building)
 
-Supabase, Google Sign-In, and Firebase keys are read via `String.fromEnvironment` —
-there are **no hardcoded fallbacks** in source. Every `flutter run` / `flutter build`
-needs them injected via `--dart-define-from-file`, from two gitignored JSON files at
-the repo root:
+Two tiers, split by blast radius (reorganized 2026-09-03 — see
+[[project_secrets_reorg_2026_09_03]] in memory for the full rationale if working from an
+agent session; the short version is below).
+
+**`env/` at the repo root** — routine credentials needed for ordinary local dev: Supabase
+**anon** keys (safe-by-design per Supabase's own model), Firebase client keys, the Google
+OAuth Web Client ID, the Telegram bot token. One gitignored directory
+(`env/*` ignored, `env/*.example` + `env/README.md` tracked). Set up from scratch:
 
 ```bash
-cp .supabase.env.example .supabase.env   # SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_WEB_CLIENT_ID
-cp .firebase.env.example .firebase.env   # FIREBASE_ANDROID_API_KEY, FIREBASE_IOS_API_KEY, FIREBASE_WEB_API_KEY
-# then fill in real values — ask a project maintainer (see the admin creds vault convention)
+cp env/supabase.staging.env.example env/supabase.staging.env
+cp env/supabase.prod.env.example env/supabase.prod.env
+cp env/supabase.staging.env env/supabase.active.env   # or prod.env — your call
+cp env/firebase.env.example env/firebase.env
+# then fill in real values — ask a project maintainer
 ```
 
-`--dart-define-from-file` may be repeated — Flutter merges the files — so every command
-below that needs real credentials uses both:
+`env/supabase.active.env` is "whichever Supabase project is currently active" — every
+build command and the Android Studio run config reference that one filename. Switch with:
 
 ```bash
---dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+cp env/supabase.prod.env env/supabase.active.env       # switch to prod
+cp env/supabase.staging.env env/supabase.active.env    # switch back to staging
+```
+
+`--dart-define-from-file` may be repeated — Flutter merges the files:
+
+```bash
+--dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
 ```
 
 Without both files, the app still launches but every Supabase call fails with
 `Invalid argument(s): No host specified in URI` (empty `SUPABASE_URL`), and the app
 silently falls back to the local Hive cache (empty on a fresh install).
 
-### Switching between prod and staging locally
+**`~/StudioProjects/pahlevani-admin-creds/`** (sibling to this repo, never inside it) —
+admin-tier credentials: Supabase service-role keys, DB passwords, R2 access keys, the
+Android release-signing keystore. Only needed for deliberate admin/release actions, never
+for routine `flutter run`. `scripts/with_admin_creds.sh` sources `<production|staging>.env`
+from there and execs whatever command follows — nothing service-role-tier is ever
+persisted inside the repo tree. Used by `scripts/run_admin.sh`, `challenge_bot/run.sh`,
+and the `scripts/*.py` one-off tools (see their own docstrings for exact invocation).
 
-`.supabase.env` is "whichever Supabase project is currently active" — every build
-command and the Android Studio run config reference that one filename. Keep the two
-real per-project copies alongside it (same gitignore glob covers all three:
-`.supabase*.env`) and `cp` the one you want into place:
-
-```bash
-.supabase.prod.env       # real production project — real users, real data
-.supabase.staging.env    # staging project — safe to break
-
-cp .supabase.prod.env .supabase.env       # switch to prod
-cp .supabase.staging.env .supabase.env    # switch back to staging
-```
-
-**Never put a service-role key in any of these files.** They're read straight into a
-compiled app via `--dart-define`, so only the **anon/public** key belongs here (Supabase
-Dashboard → Settings → API → "anon public") — the same key `scripts/admin.py` uses is
-`SUPABASE_KEY`, but that one is a **service-role key** (see its own comment in
-`scripts/.streamlit/secrets.toml`) and must never be reused for this purpose; it has full
-DDL/bypass-RLS power and would ship inside the APK for anyone to extract.
+**Never put a service-role key in anything under `env/`.** Those files get compiled
+straight into the app via `--dart-define` — only the **anon/public** key belongs there.
 
 ---
 
@@ -81,11 +83,11 @@ DDL/bypass-RLS power and would ship inside the APK for anyone to extract.
 flutter pub get                                         # install deps
 
 # Run — mobile/emulator
-flutter run --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+flutter run --dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
 
 # Run — Linux desktop (needs pkg-config path too)
 PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter run -d linux \
-  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+  --dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
 
 flutter test                                            # run tests (data sources are faked — no credentials needed)
 flutter analyze                                         # lint (flutter_lints)
@@ -96,9 +98,9 @@ dart run build_runner build --delete-conflicting-outputs
 
 **Android Studio / IntelliJ**: the `main.dart` run configuration
 (`.idea/runConfigurations/main_dart.xml`, gitignored — local-only, per-machine) already
-passes `--dart-define-from-file=.supabase.env` — just hit Run. It does **not** include
-`.firebase.env`; add `--dart-define-from-file=.firebase.env` to its `additionalArgs` too
-if you need Firebase-dependent features (Crashlytics) locally.
+passes `--dart-define-from-file=env/supabase.active.env` — just hit Run. It does **not**
+include `env/firebase.env`; add that too if you need Firebase-dependent features
+(Crashlytics) locally.
 
 ### Release builds (Play Store)
 
@@ -106,18 +108,19 @@ if you need Firebase-dependent features (Crashlytics) locally.
 # Bump pubspec.yaml's `version:` (X.Y.Z+buildNumber) first
 
 flutter build appbundle --release \
-  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+  --dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
 # → build/app/outputs/bundle/release/app-release.aab
 ```
 
 Real release signing needs `android/key.properties` (gitignored, holds the keystore
-path/passwords) — without it Gradle falls back to debug signing.
+path/passwords — the keystore itself lives in the admin creds vault, not on disk loose)
+— without it Gradle falls back to debug signing.
 
 ### Web build + deploy
 
 ```bash
 flutter build web --release \
-  --dart-define-from-file=.supabase.env --dart-define-from-file=.firebase.env
+  --dart-define-from-file=env/supabase.active.env --dart-define-from-file=env/firebase.env
 # → build/web/
 ```
 

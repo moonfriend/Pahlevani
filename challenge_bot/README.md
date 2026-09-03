@@ -7,16 +7,18 @@ silent running tally per group and reports the total on `/total`.
 Self-contained Python project — independent of the `scripts/` admin tooling elsewhere in
 this repo. Managed with [uv](https://docs.astral.sh/uv/).
 
-## Setup
+## Setup (local dev)
 
 ```bash
 cd challenge_bot
 uv sync
-cp .env.example .env   # fill in TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_KEY
+cp ../env/challenge_bot.env.example ../env/challenge_bot.env   # fill in TELEGRAM_BOT_TOKEN
 ```
 
-`SUPABASE_KEY` must be the **service-role key** — the bot writes to tables with RLS
-enabled and no policies, so only the service-role key (which bypasses RLS) can use them.
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are sourced automatically from the admin
+creds vault (`~/StudioProjects/pahlevani-admin-creds/`) when you run via `run.sh` — see
+below. They're a **service-role key** — the bot writes to tables with RLS enabled and no
+policies, so only the service-role key (which bypasses RLS) can use them.
 
 Apply `supabase/migrations/0008_challenge_bot.sql`, `0009_challenge_story.sql`, and
 `0010_challenge_story_cursor_glyph.sql` in order (see the repo-root `supabase/` setup)
@@ -36,7 +38,7 @@ ups". Without disabling this, the free-text logging path silently receives nothi
 ## Running the bot
 
 ```bash
-uv run python main.py
+bash run.sh
 ```
 
 Long-polling — no webhook, no public HTTPS endpoint needed.
@@ -86,7 +88,7 @@ A Streamlit app with two tabs:
   optionally set a cursor glyph, and save. Existing stories can also be edited here.
 
 ```bash
-uv run streamlit run bot_admin.py
+bash run.sh --admin
 ```
 
 ## Tests

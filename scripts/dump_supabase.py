@@ -9,35 +9,30 @@ Output: supabase/dump/  (gitignored)
   supabase/dump/tables/<table>.json
   supabase/dump/storage/<bucket>/<path>
 
-Reads credentials from scripts/.streamlit/secrets.toml (service role key gives
-full read access without RLS restrictions).
+Reads SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY from the process environment
+only (service role key gives full read access without RLS restrictions).
 
-Run: python3 scripts/dump_supabase.py
+Run: bash scripts/run_admin.sh --script dump_supabase.py
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 # ── credentials ───────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).parent.parent
-SECRETS_FILE = REPO_ROOT / "scripts" / ".streamlit" / "secrets.toml"
 
-if not SECRETS_FILE.exists():
-    sys.exit(f"❌  {SECRETS_FILE} not found. Copy secrets.toml.example and fill it in.")
-
-# Python 3.11+ ships tomllib; use it for correct inline-comment handling.
-import tomllib
-with open(SECRETS_FILE, "rb") as _f:
-    _creds = tomllib.load(_f)
-
-SUPABASE_URL = _creds.get("SUPABASE_URL", "")
-SUPABASE_KEY = _creds.get("SUPABASE_KEY", "")  # service_role key
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    sys.exit("❌  SUPABASE_URL or SUPABASE_KEY missing from secrets.toml")
+    sys.exit(
+        "❌  SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing.\n"
+        "Run via: bash scripts/run_admin.sh --script dump_supabase.py"
+    )
 
 # ── setup ─────────────────────────────────────────────────────────────────
 try:

@@ -1,21 +1,21 @@
 """
 Pahlevani Admin — data-entry tool for the exercise and session library.
 
-Run:
-    cd scripts
-    uv run streamlit run admin.py
+Run (from repo root — sources admin-tier credentials from the vault, see
+scripts/run_admin.sh):
+    bash scripts/run_admin.sh
 
 Credentials (required — use the service-role key, not the anon key):
-  • env vars:  SUPABASE_URL  SUPABASE_KEY
-  • .streamlit/secrets.toml with those two keys (preferred)
+  Read from process environment only — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+  R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY. scripts/run_admin.sh
+  exports all of these from ~/StudioProjects/pahlevani-admin-creds/<env>.env
+  before launching Streamlit — nothing is persisted inside the repo tree.
 
 Storage:
   All new uploads (audio, images, video) go to Cloudflare R2 — see
-  R2_ACCOUNT_ID/R2_BUCKET/R2_*_PREFIX below. Credentials: R2_ACCESS_KEY_ID
-  and R2_SECRET_ACCESS_KEY, same lookup order (env var / secrets.toml /
-  creds/r2). The legacy Supabase Storage buckets ('tracks', 'movement-media')
-  were fully migrated off and deleted 2026-08-26 — nothing in this tool
-  writes to Supabase Storage any more.
+  R2_ACCOUNT_ID/R2_BUCKET/R2_*_PREFIX below. The legacy Supabase Storage
+  buckets ('tracks', 'movement-media') were fully migrated off and deleted
+  2026-08-26 — nothing in this tool writes to Supabase Storage any more.
 """
 
 import io
@@ -37,34 +37,11 @@ from mutagen.mp3 import MP3
 from supabase import create_client, Client
 
 # ── Config ────────────────────────────────────────────────────────────────────
+# Every value below comes from the process environment only — see the module
+# docstring. scripts/run_admin.sh is the one place that populates it.
 
-def _secret(key: str) -> str:
-    try:
-        return st.secrets[key]
-    except Exception:
-        return ""
-
-def _creds_file(key: str, filename: str = "r2") -> str:
-    """Simple KEY=value reader for gitignored files under the repo-root
-    creds/ folder — a lower-ceremony alternative to .streamlit/secrets.toml
-    for credentials that don't need Streamlit's TOML parsing."""
-    path = Path(__file__).parent.parent / "creds" / filename
-    if not path.exists():
-        return ""
-    try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            if k.strip() == key:
-                return v.strip()
-    except Exception:
-        pass
-    return ""
-
-SUPABASE_URL = os.getenv("SUPABASE_URL") or _secret("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
 # R2 — demonstration videos. Same account/bucket as the rest of the app's
@@ -93,26 +70,17 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY") or _secret("SUPABASE_KEY")
 # is a separate, one-time, zero-urgency task if ever wanted; this app's
 # caching is fully URL-based (DJB2 hash of the full URL), so nothing in the
 # Flutter app cares what the path looks like either way.
-R2_ACCOUNT_ID = (
-    os.getenv("R2_ACCOUNT_ID") or _secret("R2_ACCOUNT_ID") or _creds_file("ACCOUNT_ID")
-)
-R2_BUCKET = os.getenv("R2_BUCKET") or _secret("R2_BUCKET") or _creds_file("BUCKET") or "morshed-sounds"
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_BUCKET = os.environ.get("R2_BUCKET", "") or "morshed-sounds"
 # Note: R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY are the S3-compatible API key
 # pair from R2 > Manage API Tokens — NOT a general Cloudflare account API
 # token (those are single bearer-token values and cannot be used for the
-# S3-compatible signature boto3 computes). Save both into creds/r2 as
-# ACCESS_KEY_ID=... / SECRET_ACCESS_KEY=... once created.
-R2_ACCESS_KEY_ID = (
-    os.getenv("R2_ACCESS_KEY_ID") or _secret("R2_ACCESS_KEY_ID") or _creds_file("ACCESS_KEY_ID")
-)
-R2_SECRET_ACCESS_KEY = (
-    os.getenv("R2_SECRET_ACCESS_KEY") or _secret("R2_SECRET_ACCESS_KEY")
-    or _creds_file("SECRET_ACCESS_KEY")
-)
+# S3-compatible signature boto3 computes).
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-R2_PUBLIC_BASE = (
-    os.getenv("R2_PUBLIC_BASE") or _secret("R2_PUBLIC_BASE")
-    or "https://pub-d26e099daad243af8e9221f16223fb95.r2.dev"
+R2_PUBLIC_BASE = os.environ.get(
+    "R2_PUBLIC_BASE", "https://pub-d26e099daad243af8e9221f16223fb95.r2.dev"
 )
 R2_VIDEO_PREFIX = "video/movements/"
 R2_VIDEO_POSTER_PREFIX = "images/posters/"
@@ -125,9 +93,9 @@ R2_AUDIO_EXERCISE_PREFIX = "audio/exercises/"
 def get_client() -> Client:
     if not SUPABASE_URL or not SUPABASE_KEY:
         st.error(
-            "Supabase credentials not configured. "
-            "Add SUPABASE_URL and SUPABASE_KEY (service-role key) to "
-            "scripts/.streamlit/secrets.toml"
+            "Supabase credentials not configured. Run this via "
+            "`bash scripts/run_admin.sh`, which exports SUPABASE_URL and "
+            "SUPABASE_SERVICE_ROLE_KEY from the admin creds vault."
         )
         st.stop()
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -136,10 +104,11 @@ def get_client() -> Client:
 def get_r2_client():
     if not R2_ACCOUNT_ID or not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
         st.error(
-            "R2 credentials not configured. Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID "
-            "and R2_SECRET_ACCESS_KEY to scripts/.streamlit/secrets.toml "
-            "(Cloudflare Dashboard → R2 → Manage API Tokens → Object Read & "
-            "Write, scoped to the 'morshed-sounds' bucket)."
+            "R2 credentials not configured. Run this via "
+            "`bash scripts/run_admin.sh`, which exports R2_ACCOUNT_ID, "
+            "R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY from the admin creds "
+            "vault (Cloudflare Dashboard → R2 → Manage API Tokens → Object "
+            "Read & Write, scoped to the 'morshed-sounds' bucket)."
         )
         st.stop()
     return boto3.client(

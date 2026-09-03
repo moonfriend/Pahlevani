@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Telegram token only — SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY come from the
+# admin creds vault via challenge_bot/run.sh, never persisted here.
+load_dotenv(Path(__file__).parent.parent / "env" / "challenge_bot.env")
 
 
 def _required_env(name: str) -> str:
@@ -10,7 +13,8 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(
             f"Missing required environment variable: {name}. "
-            "Copy challenge_bot/.env.example to challenge_bot/.env and fill it in."
+            "Run via `bash challenge_bot/run.sh`, or copy "
+            "env/challenge_bot.env.example to env/challenge_bot.env."
         )
     return value
 
@@ -19,7 +23,7 @@ def load_config() -> "Config":
     return Config(
         telegram_bot_token=_required_env("TELEGRAM_BOT_TOKEN"),
         supabase_url=_required_env("SUPABASE_URL"),
-        supabase_key=_required_env("SUPABASE_KEY"),
+        supabase_key=_required_env("SUPABASE_SERVICE_ROLE_KEY"),
     )
 
 

@@ -8,20 +8,28 @@ Requirements:
     ffprobe must be on PATH (install via: sudo apt install ffmpeg)
 
 Usage:
-    python3 scripts/calculate_exercise_durations.py
+    python3 scripts/calculate_exercise_durations.py [--env staging]
+
+Credentials: reads SUPABASE_URL/SUPABASE_ANON_KEY straight from
+env/supabase.<env>.env at the repo root (JSON, same file Flutter builds use).
+The anon key is sufficient — exercise table is public-read.
 """
 
 import json
+import os
 import subprocess
 import sys
 import requests
 
-SUPABASE_URL = "https://REDACTED-PROJECT.supabase.co"
-SUPABASE_ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-    ".REDACTED-SUPABASE-ANON-KEY-PAYLOAD"
-    ".REDACTED-SUPABASE-ANON-KEY-SIG"
+_env_name = "staging" if "--env" in sys.argv and "staging" in sys.argv else "prod"
+_env_path = os.path.join(
+    os.path.dirname(__file__), "..", "env", f"supabase.{_env_name}.env"
 )
+with open(_env_path) as _f:
+    _creds = json.load(_f)
+
+SUPABASE_URL = _creds["SUPABASE_URL"]
+SUPABASE_ANON_KEY = _creds["SUPABASE_ANON_KEY"]
 
 HEADERS = {
     "apikey": SUPABASE_ANON_KEY,

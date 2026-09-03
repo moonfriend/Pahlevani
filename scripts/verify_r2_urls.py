@@ -7,35 +7,20 @@ DB now points at Cloudflare R2 (not Supabase Storage) and actually downloads
 cutover (see supabase/migrations/0006_r2_media_urls.sql).
 
 Usage:
-    cd scripts
-    uv run python verify_r2_urls.py
+    bash scripts/run_admin.sh --script verify_r2_urls.py
 
-Credentials: same env-var / secrets.toml pattern as the other scripts
-(SUPABASE_URL, SUPABASE_KEY).
+Credentials: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY from the process
+environment only — see scripts/run_admin.sh.
 """
 
 import os
 import sys
-import tomllib
-from pathlib import Path
 
 import requests
 from supabase import create_client
 
-
-def _secret(key: str) -> str:
-    val = os.environ.get(key, "")
-    if val:
-        return val
-    secrets_path = Path(__file__).parent / ".streamlit" / "secrets.toml"
-    if secrets_path.exists():
-        with open(secrets_path, "rb") as f:
-            return tomllib.load(f).get(key, "")
-    return ""
-
-
-SUPABASE_URL = _secret("SUPABASE_URL")
-SUPABASE_KEY = _secret("SUPABASE_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
 def check(label: str, rows: list[tuple[int, str]]) -> tuple[int, int, int]:
@@ -63,7 +48,10 @@ def check(label: str, rows: list[tuple[int, str]]) -> tuple[int, int, int]:
 
 def main() -> None:
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("ERROR: SUPABASE_URL / SUPABASE_KEY missing (env or secrets.toml)")
+        print(
+            "ERROR: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing.\n"
+            "Run via: bash scripts/run_admin.sh --script verify_r2_urls.py"
+        )
         sys.exit(1)
 
     client = create_client(SUPABASE_URL, SUPABASE_KEY)

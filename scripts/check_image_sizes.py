@@ -4,18 +4,19 @@ original URL vs the 500×500/quality-80 transform URL used by the app.
 
 Run:
     cd scripts
-    uv run python check_image_sizes.py
+    uv run python check_image_sizes.py [--env staging]
 
-Credentials: reads SUPABASE_URL and SUPABASE_KEY from env or .streamlit/secrets.toml.
+Credentials: reads SUPABASE_URL/SUPABASE_ANON_KEY straight from
+env/supabase.<env>.env at the repo root (JSON, same file Flutter builds use).
 The anon key is sufficient — movement table and storage bucket are public.
 """
 
+import json
 import os
 import sys
 
 try:
     import requests
-    import tomllib
 except ImportError:
     print("Missing deps. Run: uv add requests")
     sys.exit(1)
@@ -23,26 +24,16 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Credentials
 # ---------------------------------------------------------------------------
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+_env_name = "staging" if "--env" in sys.argv and "staging" in sys.argv else "prod"
+_env_path = os.path.join(
+    os.path.dirname(__file__), "..", "env", f"supabase.{_env_name}.env"
+)
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    secrets_path = os.path.join(os.path.dirname(__file__), ".streamlit", "secrets.toml")
-    if os.path.exists(secrets_path):
-        with open(secrets_path, "rb") as f:
-            secrets = tomllib.load(f)
-        SUPABASE_URL = secrets.get("SUPABASE_URL", "")
-        SUPABASE_KEY = secrets.get("SUPABASE_KEY", "")
+with open(_env_path) as f:
+    _creds = json.load(f)
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    # Fall back to the public anon key hardcoded in lib/core/config.dart
-    SUPABASE_URL = "https://REDACTED-PROJECT.supabase.co"
-    SUPABASE_KEY = (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-        ".REDACTED-SUPABASE-ANON-KEY-PAYLOAD"
-        ".REDACTED-SUPABASE-ANON-KEY-SIG"
-    )
-    print("Using built-in anon key (read-only, public tables only)\n")
+SUPABASE_URL = _creds["SUPABASE_URL"]
+SUPABASE_KEY = _creds["SUPABASE_ANON_KEY"]
 
 
 def transform_url(url: str, width=500, height=500, quality=80) -> str:
