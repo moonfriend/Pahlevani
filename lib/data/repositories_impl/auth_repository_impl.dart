@@ -118,8 +118,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
     required String inviteCode,
   }) async {
-    final isValid = await _client
-        .rpc('is_invite_code_valid', params: {'code': inviteCode}) as bool;
+    final isValid = await _client.rpc('is_invite_code_valid',
+        params: {'input_code': inviteCode}) as bool;
     if (!isValid) throw const InvalidInviteCodeException();
 
     // 0016_invite_code_signup.sql's trigger is the actual enforced gate —

@@ -18,7 +18,6 @@ Storage:
   writes to Supabase Storage any more.
 """
 
-import hashlib
 import io
 import json
 import os
@@ -1645,9 +1644,9 @@ def tab_invite_codes():
     st.caption(
         "Trainer-issued codes gating student signup (username/password, no "
         "email involved) — supabase/migrations/0016_invite_code_signup.sql. "
-        "The plaintext code is shown only once, right here, at creation "
-        "time; only its sha256 hash is ever stored, matching what the "
-        "database itself checks against at signup."
+        "Codes are stored in plain text (the table isn't reachable through "
+        "the app's API either way) so you can look one back up any time — "
+        "see the table below."
     )
 
     if st.button("↺ Reload", key="invite_codes_reload"):
@@ -1707,14 +1706,13 @@ def tab_invite_codes():
         else:
             plaintext = secrets.token_urlsafe(9)  # short, readable, ~12 chars
 
-        code_hash = hashlib.sha256(plaintext.encode()).hexdigest()
         get_client().table("invite_codes").insert({
-            "code_hash": code_hash,
+            "code": plaintext,
             "label": label or None,
             "max_uses": int(max_uses) or None,
         }).execute()
         load_invite_codes.clear()
-        st.success("✅ Code created — copy it now, it will not be shown again:")
+        st.success("✅ Code created:")
         st.code(plaintext, language=None)
 
     st.divider()
@@ -1726,6 +1724,7 @@ def tab_invite_codes():
 
     rows = [
         {
+            "code": c["code"],
             "label": c.get("label") or "(untitled)",
             "created_at": c["created_at"],
             "status": "🔴 revoked" if c.get("revoked_at") else "🟢 active",

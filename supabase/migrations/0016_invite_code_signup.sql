@@ -18,16 +18,17 @@
 -- effect on any other flow.
 -- ═══════════════════════════════════════════════════════════════════════════
 
-create extension if not exists pgcrypto;
-
 create table if not exists public.invite_codes (
   id          bigserial primary key,
-  -- sha256 hex digest of the plaintext code — the plaintext is shown to
-  -- the trainer exactly once at creation time (scripts/admin.py) and never
-  -- stored. May be trainer-chosen (e.g. a class name) rather than randomly
-  -- generated — admin.py warns about the guessability trade-off when that
-  -- option is used, but the schema/trigger don't distinguish the two.
-  code_hash   text not null unique,
+  -- Stored in plaintext, not hashed. invite_codes has zero anon/authenticated
+  -- grants (see below), so this is only ever readable via the service-role
+  -- key admin.py uses — hashing bought little there, and cost the ability
+  -- to look a code back up later, which matters once these are reused for
+  -- discounts/course access rather than a one-time student invite. May be
+  -- trainer-chosen (e.g. a class name) rather than randomly generated —
+  -- admin.py warns about the guessability trade-off when that option is
+  -- used, but the schema/trigger don't distinguish the two.
+  code        text not null unique,
   -- Trainer's own label for the code — "Fall 2026 Class A", a specific
   -- student's name, etc. Purely for the trainer's own bookkeeping.
   label       text,
@@ -98,7 +99,7 @@ begin
 
   update public.invite_codes
   set uses_count = uses_count + 1
-  where code_hash = encode(digest(new.raw_user_meta_data->>'invite_code', 'sha256'), 'hex')
+  where code = new.raw_user_meta_data->>'invite_code'
     and revoked_at is null
     and (max_uses is null or uses_count < max_uses)
   returning id into matched_id;
@@ -124,7 +125,9 @@ create trigger on_auth_user_created_check_invite_code
 -- in, which isn't a documented/stable format. Same anon-executable,
 -- security-definer pattern as is_trainer() — never exposes the
 -- invite_codes table itself, just a yes/no answer.
-create or replace function public.is_invite_code_valid(code text)
+-- Parameter named input_code, not code — a same-named parameter would be
+-- ambiguous against the invite_codes.code column referenced below.
+create or replace function public.is_invite_code_valid(input_code text)
 returns boolean
 language sql
 stable
@@ -133,7 +136,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.invite_codes
-    where code_hash = encode(digest(code, 'sha256'), 'hex')
+    where code = input_code
       and revoked_at is null
       and (max_uses is null or uses_count < max_uses)
   );
@@ -168,7 +171,7 @@ begin
   if new.raw_user_meta_data->>'signup_method' = 'invite_code' then
     select id into used_code_id
     from public.invite_codes
-    where code_hash = encode(digest(new.raw_user_meta_data->>'invite_code', 'sha256'), 'hex')
+    where code = new.raw_user_meta_data->>'invite_code'
       and revoked_at is null
     limit 1;
   end if;
