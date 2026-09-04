@@ -975,9 +975,13 @@ class _Transport extends StatelessWidget {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
     final atEnd = state.playingIndex >= state.tracks.length - 1;
+    // Edge-to-edge (mandatory since targetSdk 35+) draws content behind the
+    // system nav/gesture bar unless explicitly inset for — without this the
+    // transport buttons render partly behind it.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
+      padding: EdgeInsets.fromLTRB(0, 10, 0, 14 + bottomInset),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
