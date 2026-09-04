@@ -46,7 +46,12 @@ android {
     defaultConfig {
         applicationId = "com.pahlevani.app"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // Pinned above Flutter 3.29's default (35) — Google Play requires
+        // targeting API 36 (Android 16) from Nov 1, 2026. Unlike compileSdk,
+        // this does change runtime behavior (Android 16's new
+        // permission/background/etc. compatibility rules apply once
+        // targetSdk >= 36) — needs real on-device testing, not just a build.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
