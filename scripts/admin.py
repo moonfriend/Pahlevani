@@ -1758,6 +1758,99 @@ def tab_invite_codes():
         st.rerun()
 
 
+def tab_users():
+    st.header("Users")
+    st.caption(
+        "Every signed-up account (Google and invite-code both). Deleting "
+        "or resetting a password here goes through the Supabase Admin API "
+        "and takes effect immediately — there is no undo."
+    )
+
+    if st.button("↺ Reload", key="users_reload"):
+        load_profiles.clear()
+        load_invite_codes.clear()
+
+    try:
+        profiles = load_profiles()
+    except Exception:
+        st.error(
+            "⚠️ `profiles` table not found. "
+            "Run `supabase/migrations/0013_profiles_and_consent.sql` in the "
+            "Supabase SQL Editor first."
+        )
+        return
+
+    if not profiles:
+        st.info("No signed-up accounts yet.")
+        return
+
+    # invite_codes may not exist on older projects (pre-0016) — a signed-up
+    # user list shouldn't depend on that migration having run.
+    try:
+        code_labels = {c["id"]: (c.get("label") or c["code"]) for c in load_invite_codes()}
+    except Exception:
+        code_labels = {}
+
+    st.subheader(f"All accounts ({len(profiles)})")
+    rows = [
+        {
+            "email": p.get("email") or "(no email)",
+            "role": "🧑‍🏫 Trainer" if p.get("is_trainer") else "Trainee",
+            "consent": "✅" if p.get("consent_accepted") else "—",
+            "signed up via": code_labels.get(
+                p.get("signed_up_via_invite_code_id"), "Google / email"
+            ) if p.get("signed_up_via_invite_code_id") else "Google / email",
+            "created_at": p.get("created_at"),
+            "id": p["id"],
+        }
+        for p in profiles
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    st.divider()
+    st.subheader("Manage a user")
+
+    options = {f"{p.get('email') or p['id']}": p for p in profiles}
+    selected_label = st.selectbox("Account", options=list(options.keys()), key="users_manage_select")
+    selected = options[selected_label]
+    user_id = selected["id"]
+    st.caption(f"ID: `{user_id}`")
+
+    st.markdown("**Set a new password**")
+    with st.form("users_set_password"):
+        new_password = st.text_input("New password", type="password")
+        submitted_pw = st.form_submit_button("Set password", type="primary")
+    if submitted_pw:
+        if not new_password or len(new_password) < 6:
+            st.error("Password must be at least 6 characters.")
+        else:
+            try:
+                get_client().auth.admin.update_user_by_id(user_id, {"password": new_password})
+                st.success(f"✅ Password updated for {selected_label}.")
+            except Exception as e:
+                st.error(f"Could not update password: {e}")
+
+    st.divider()
+    st.markdown("**Delete this account**")
+    st.warning(
+        "⚠️ Permanently deletes the auth account and profile — cannot be "
+        "undone. Any invite code they signed up with keeps its usage count "
+        "as-is (not refunded), so it can't be replayed to dodge a quota."
+    )
+    confirm = st.checkbox(
+        f"I understand this permanently deletes {selected_label}",
+        key="users_delete_confirm",
+    )
+    if st.button("🗑️ Delete account", key="users_delete_button", disabled=not confirm):
+        try:
+            get_client().auth.admin.delete_user(user_id)
+            st.success(f"✅ Deleted {selected_label}.")
+            load_profiles.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Could not delete account: {e}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1768,7 +1861,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
@@ -1779,6 +1872,7 @@ def main():
         "🚦  Release Gate",
         "🧑‍🏫  Trainer Role",
         "🎟️  Invite Codes",
+        "👤  Users",
     ])
     with t1: tab_exercises()
     with t2: tab_sessions()
@@ -1790,6 +1884,7 @@ def main():
     with t8: tab_release_gate()
     with t9: tab_grant_trainer()
     with t10: tab_invite_codes()
+    with t11: tab_users()
 
 
 if __name__ == "__main__":
