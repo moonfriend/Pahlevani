@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
-import 'package:pahlevani/presentation/pages/auth/username_login_page.dart';
+import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
 
@@ -11,12 +11,12 @@ Widget _harness(AuthCubit cubit) => BlocProvider.value(
       value: cubit,
       child: MaterialApp(
         theme: PahlevaniTheme.dark(),
-        home: const UsernameLoginPage(),
+        home: const InviteCodeSignUpPage(),
       ),
     );
 
 void main() {
-  testWidgets('starts in sign-in mode with no invite-code field',
+  testWidgets('shows username, password, and invite-code fields',
       (tester) async {
     final repo = FakeAuthRepository();
     final cubit = AuthCubit(repository: repo);
@@ -27,26 +27,11 @@ void main() {
 
     expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Password'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'Invite code'), findsNothing);
-    expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
-  });
-
-  testWidgets('toggling to sign-up mode reveals the invite-code field',
-      (tester) async {
-    final repo = FakeAuthRepository();
-    final cubit = AuthCubit(repository: repo);
-    addTearDown(cubit.close);
-    await cubit.initialize();
-
-    await tester.pumpWidget(_harness(cubit));
-    await tester.tap(find.text('Have an invite code? Create an account'));
-    await tester.pump();
-
     expect(find.widgetWithText(TextField, 'Invite code'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
   });
 
-  testWidgets('sign-up button stays disabled until all three fields are filled',
+  testWidgets('submit button stays disabled until all three fields are filled',
       (tester) async {
     final repo = FakeAuthRepository();
     final cubit = AuthCubit(repository: repo);
@@ -54,8 +39,6 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.tap(find.text('Have an invite code? Create an account'));
-    await tester.pump();
 
     await tester.enterText(
         find.widgetWithText(TextField, 'Username'), 'alice');
@@ -77,34 +60,13 @@ void main() {
     expect(button.onPressed, isNotNull);
   });
 
-  testWidgets('submitting sign-in calls signInWithUsername()', (tester) async {
+  testWidgets('submitting calls signUpWithInviteCode()', (tester) async {
     final repo = FakeAuthRepository();
     final cubit = AuthCubit(repository: repo);
     addTearDown(cubit.close);
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Password'), 'secret');
-    await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-
-    expect(repo.signInWithUsernameCallCount, 1);
-  });
-
-  testWidgets('submitting sign-up calls signUpWithInviteCode()',
-      (tester) async {
-    final repo = FakeAuthRepository();
-    final cubit = AuthCubit(repository: repo);
-    addTearDown(cubit.close);
-    await cubit.initialize();
-
-    await tester.pumpWidget(_harness(cubit));
-    await tester.tap(find.text('Have an invite code? Create an account'));
-    await tester.pump();
     await tester.enterText(
         find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
@@ -125,8 +87,6 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.tap(find.text('Have an invite code? Create an account'));
-    await tester.pump();
     await tester.enterText(
         find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(

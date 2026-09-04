@@ -5,27 +5,28 @@ import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/widgets/common/app_error_dialog.dart';
 
-/// Admin-managed student login — a trainer-issued username/password/invite
-/// code, no email involved. Reached via a link on [AuthPage]; Google stays
-/// the primary flow. See AuthRepository.signUpWithInviteCode's doc and
+/// Admin-managed student account creation — a trainer-issued invite code
+/// plus a chosen username/password, no email involved. Reached via a link
+/// on [AuthPage], which stays the primary sign-in destination (Google or
+/// an existing username/password account). See
+/// AuthRepository.signUpWithInviteCode's doc and
 /// supabase/migrations/0016_invite_code_signup.sql.
-class UsernameLoginPage extends StatefulWidget {
-  const UsernameLoginPage({super.key});
+class InviteCodeSignUpPage extends StatefulWidget {
+  const InviteCodeSignUpPage({super.key});
 
   @override
-  State<UsernameLoginPage> createState() => _UsernameLoginPageState();
+  State<InviteCodeSignUpPage> createState() => _InviteCodeSignUpPageState();
 }
 
-class _UsernameLoginPageState extends State<UsernameLoginPage> {
+class _InviteCodeSignUpPageState extends State<InviteCodeSignUpPage> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _inviteCodeCtrl = TextEditingController();
-  bool _isSignUp = false;
 
   bool get _canSubmit =>
       _usernameCtrl.text.trim().isNotEmpty &&
       _passwordCtrl.text.isNotEmpty &&
-      (!_isSignUp || _inviteCodeCtrl.text.trim().isNotEmpty);
+      _inviteCodeCtrl.text.trim().isNotEmpty;
 
   @override
   void dispose() {
@@ -37,18 +38,11 @@ class _UsernameLoginPageState extends State<UsernameLoginPage> {
 
   void _submit() {
     if (!_canSubmit) return;
-    final cubit = context.read<AuthCubit>();
-    final username = _usernameCtrl.text.trim();
-    final password = _passwordCtrl.text;
-    if (_isSignUp) {
-      cubit.signUpWithInviteCode(
-        username: username,
-        password: password,
-        inviteCode: _inviteCodeCtrl.text.trim(),
-      );
-    } else {
-      cubit.signInWithUsername(username: username, password: password);
-    }
+    context.read<AuthCubit>().signUpWithInviteCode(
+          username: _usernameCtrl.text.trim(),
+          password: _passwordCtrl.text,
+          inviteCode: _inviteCodeCtrl.text.trim(),
+        );
   }
 
   @override
@@ -57,7 +51,7 @@ class _UsernameLoginPageState extends State<UsernameLoginPage> {
 
     return Scaffold(
       backgroundColor: colors.bg,
-      appBar: AppBar(title: Text(_isSignUp ? 'Create account' : 'Sign in')),
+      appBar: AppBar(title: const Text('Create account')),
       body: BlocListener<AuthCubit, AuthState>(
         listener: (context, state) {
           if (state is AuthNeedsConsent) {
@@ -92,21 +86,18 @@ class _UsernameLoginPageState extends State<UsernameLoginPage> {
                       obscureText: true,
                       decoration: const InputDecoration(labelText: 'Password'),
                       onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _inviteCodeCtrl,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Invite code',
+                        helperText: 'Given to you by your trainer',
+                      ),
+                      onChanged: (_) => setState(() {}),
                       onSubmitted: (_) => _submit(),
                     ),
-                    if (_isSignUp) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _inviteCodeCtrl,
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Invite code',
-                          helperText: 'Given to you by your trainer',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ],
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: submitting || !_canSubmit ? null : _submit,
@@ -115,16 +106,7 @@ class _UsernameLoginPageState extends State<UsernameLoginPage> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text(_isSignUp ? 'Create account' : 'Sign in'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: submitting
-                          ? null
-                          : () => setState(() => _isSignUp = !_isSignUp),
-                      child: Text(_isSignUp
-                          ? 'Already have an account? Sign in'
-                          : "Have an invite code? Create an account"),
+                          : const Text('Create account'),
                     ),
                   ],
                 ),
