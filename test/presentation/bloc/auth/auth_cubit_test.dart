@@ -113,8 +113,7 @@ void main() {
       expect(repo.signUpWithInviteCodeCallCount, 1);
     });
 
-    test('invalid code emits a clean, specific AuthFailure message',
-        () async {
+    test('invalid code emits a clean, specific AuthFailure message', () async {
       final repo = FakeAuthRepository()..throwInvalidInviteCode = true;
       final cubit = AuthCubit(repository: repo);
       addTearDown(cubit.close);

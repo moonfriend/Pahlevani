@@ -36,7 +36,8 @@ class AuthCubit extends Cubit<AuthState> {
         if (!isClosed) _emitForUser(user);
       },
       onError: (Object e, StackTrace st) {
-        AppLogger.w('googleSignInEvents stream error', error: e, stackTrace: st);
+        AppLogger.w('googleSignInEvents stream error',
+            error: e, stackTrace: st);
         if (!isClosed) {
           emit(AuthFailure(message: e.toString(), previous: state));
         }

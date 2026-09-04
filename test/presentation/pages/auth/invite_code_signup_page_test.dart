@@ -40,8 +40,7 @@ void main() {
 
     await tester.pumpWidget(_harness(cubit));
 
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret');
     await tester.pump();
@@ -67,8 +66,7 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret');
     await tester.enterText(
@@ -87,8 +85,7 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret');
     await tester.enterText(

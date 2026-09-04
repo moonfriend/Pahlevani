@@ -91,8 +91,7 @@ void main() {
         .widget<FilledButton>(find.widgetWithText(FilledButton, 'Sign in'));
     expect(button.onPressed, isNull);
 
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret');
     await tester.pump();
@@ -110,8 +109,7 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret');
     await tester.pump();
@@ -129,10 +127,8 @@ void main() {
     await cubit.initialize();
 
     await tester.pumpWidget(_harness(cubit));
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Username'), 'alice');
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Password'), 'wrong');
+    await tester.enterText(find.widgetWithText(TextField, 'Username'), 'alice');
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'wrong');
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -140,8 +136,8 @@ void main() {
     expect(find.textContaining('Invalid username or password'), findsOneWidget);
   });
 
-  testWidgets(
-      'the invite-code link navigates to account creation', (tester) async {
+  testWidgets('the invite-code link navigates to account creation',
+      (tester) async {
     final repo = FakeAuthRepository();
     final cubit = AuthCubit(repository: repo);
     addTearDown(cubit.close);

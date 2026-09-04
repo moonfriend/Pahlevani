@@ -73,7 +73,9 @@ class FakeAuthRepository implements AuthRepository {
   }) async {
     signUpWithInviteCodeCallCount++;
     if (throwInvalidInviteCode) throw const InvalidInviteCodeException();
-    if (throwOnSignUpWithInviteCode) throw Exception('Could not create account');
+    if (throwOnSignUpWithInviteCode) {
+      throw Exception('Could not create account');
+    }
     const user = AppUser(id: 'user-1', email: null);
     _currentUser = user;
     return user;
@@ -85,7 +87,9 @@ class FakeAuthRepository implements AuthRepository {
     required String password,
   }) async {
     signInWithUsernameCallCount++;
-    if (throwOnSignInWithUsername) throw Exception('Invalid username or password');
+    if (throwOnSignInWithUsername) {
+      throw Exception('Invalid username or password');
+    }
     const user = AppUser(id: 'user-1', email: null);
     _currentUser = user;
     return user;

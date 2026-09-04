@@ -101,7 +101,8 @@ class _AuthPageState extends State<AuthPage> {
                         Expanded(child: Divider(color: colors.border)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('or', style: TextStyle(color: colors.onMuted)),
+                          child: Text('or',
+                              style: TextStyle(color: colors.onMuted)),
                         ),
                         Expanded(child: Divider(color: colors.border)),
                       ],
