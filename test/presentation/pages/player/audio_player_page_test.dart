@@ -167,6 +167,46 @@ void main() {
     expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
   });
 
+  testWidgets(
+      'transport buttons stay clear of the bottom system inset (nav bar)',
+      (tester) async {
+    // Simulates a device's gesture/nav bar reserving 48px at the bottom —
+    // edge-to-edge (mandatory since targetSdk 35+) means content draws
+    // behind system bars unless it explicitly insets for them.
+    const bottomInset = 48.0;
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = const FakeViewPadding(bottom: bottomInset);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // _pumpAndLoad sizes the surface to 800x900 logical pixels.
+    const screenHeight = 900.0;
+    final nextBtnRect =
+        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
+
+    expect(nextBtnRect.bottom, lessThanOrEqualTo(screenHeight - bottomInset));
+  });
+
+  testWidgets(
+      'track list extends behind the transport bar instead of stopping above it',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // The transport bar is a transparent overlay floating over the track
+    // list (not a separate row below it) so scrolled cards stay visible
+    // through the gaps between its buttons — the list's own box must
+    // therefore extend past the transport row's top edge, not stop above it.
+    final listRect = tester.getRect(find.byType(ListView));
+    final nextBtnRect =
+        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
+
+    expect(listRect.bottom, greaterThan(nextBtnRect.top));
+  });
+
   testWidgets('shows pause icon when playback is active', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
