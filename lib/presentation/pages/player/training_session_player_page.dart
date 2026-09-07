@@ -231,17 +231,14 @@ class _Stage extends StatelessWidget {
         track.media.type == 'photo' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty;
-    // Non-web: video only ever plays from the local cache (never streamed) —
-    // the cubit already resolves media.src to a local path when cached,
-    // leaving the remote URL otherwise, so a leading '/' is exactly "ready
-    // to play". Web has no local filesystem to cache into (DownloadRepository
-    // no-ops there), so media.src is always the remote R2 URL there, and any
-    // non-empty value is ready — the player streams it directly.
+    // The cubit is the single place that decides local-vs-remote readiness
+    // (loadTracks() / _applyResolvedVideo in audio_player_cubit.dart) — the
+    // stage just reads the result.
     final hasVideo = track != null &&
         track.media.type == 'video' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty &&
-        (kIsWeb || track.media.src!.startsWith('/'));
+        track.videoReady;
     // Not-yet-cached video (or any video, as a first-frame placeholder)
     // falls back to its poster image, same rendering path as a photo.
     final hasVideoPoster = track != null &&
@@ -250,19 +247,6 @@ class _Stage extends StatelessWidget {
         track.media.poster != null &&
         track.media.poster!.isNotEmpty;
     final hasVisual = hasPhoto || hasVideo || hasVideoPoster;
-
-    Widget buildImage(String src) {
-      // fitHeight: image always fills the stage height; on wide containers
-      // the sides are left transparent so the Persian pattern shows through
-      // instead of cropping/zooming the image to fill the full width.
-      // ExerciseImageProvider owns the local-vs-remote decision and applies
-      // the Supabase size transform for remote URLs.
-      return Image(
-          image: ExerciseImageProvider(src),
-          fit: BoxFit.fitHeight,
-          alignment: Alignment.center,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink());
-    }
 
     return GestureDetector(
       onTap: cubit.togglePlay,
@@ -288,6 +272,7 @@ class _Stage extends StatelessWidget {
               child: _ExerciseVideo(
                 key: ValueKey(track.media.src),
                 path: track.media.src!,
+                posterSrc: track.media.poster,
                 isPlaying: state.isPlaying,
                 startOffsetMs: track.videoStartOffsetMs,
                 resyncGeneration: state.videoResyncGeneration,
@@ -296,7 +281,7 @@ class _Stage extends StatelessWidget {
             )
           else if (hasPhoto || hasVideoPoster)
             Positioned.fill(
-                child: buildImage(
+                child: buildMediaImage(
                     (hasPhoto ? track.media.src : track.media.poster)!)),
           // Dark gradient at bottom so text stays legible over photos/video
           if (hasVisual)
@@ -375,6 +360,21 @@ class _Stage extends StatelessWidget {
   }
 }
 
+// fitHeight: image always fills the stage height; on wide containers the
+// sides are left transparent so the Persian pattern shows through instead
+// of cropping/zooming the image to fill the full width. ExerciseImageProvider
+// owns the local-vs-remote decision and applies the Supabase size transform
+// for remote URLs. Shared by _Stage (photo / video-poster fallback) and
+// _ExerciseVideoState (poster shown while its own controller isn't ready
+// yet) so both render the exact same poster with no visual seam between them.
+Widget buildMediaImage(String src) {
+  return Image(
+      image: ExerciseImageProvider(src),
+      fit: BoxFit.fitHeight,
+      alignment: Alignment.center,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink());
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Video/audio sync — a constant one-time offset (see
 // TrainingItemWithAudio.videoStartOffsetMs) so the video's "sarzarb"/main
@@ -429,12 +429,20 @@ class _ExerciseVideo extends StatefulWidget {
     super.key,
     required this.path,
     required this.isPlaying,
+    this.posterSrc,
     this.startOffsetMs,
     this.resyncGeneration = 0,
     this.resyncPositionMs = 0,
   });
   final String path;
   final bool isPlaying;
+
+  /// Shown (via buildMediaImage) in place of this widget's own content for
+  /// as long as its controller isn't ready yet — the same poster _Stage
+  /// would otherwise be showing one layer up, so cache-complete swap-in and
+  /// first-ever mount both hand off from poster to live video with no
+  /// blank/static frame in between.
+  final String? posterSrc;
   final int? startOffsetMs;
 
   /// Bumped by the cubit every time audio position is authoritatively reset
@@ -495,22 +503,47 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       ..initialize().then((_) async {
         if (!mounted) return;
         setState(() => _ready = true);
-        final plan = computeVideoSyncPlan(
-            widget.startOffsetMs, _controller.value.duration.inMilliseconds);
-        AppLogger.d('video sync: startOffsetMs=${widget.startOffsetMs} '
-            'videoDurationMs=${_controller.value.duration.inMilliseconds} '
-            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
-        if (plan.seekToMs != null) {
-          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
-          if (!mounted) return;
-        }
-        if (plan.delayMs != null) {
-          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+        final durationMs = _controller.value.duration.inMilliseconds;
+
+        // Two mounting scenarios, routed by whether the audio is genuinely
+        // at the very start of its loop right now:
+        //  - resyncPositionMs == 0: a true cold start (fresh track load, or
+        //    a video that was already cached before the track began) —
+        //    apply the anchor-based seek-or-delay plan exactly as before,
+        //    including the negative-offset "wait at frame 0" behavior a
+        //    live exercise (Shena Sar Navazi) actually relies on today.
+        //  - resyncPositionMs != 0: a late mount — a background download
+        //    just finished mid-playback, so the audio is already partway
+        //    through its loop. There is no "wait for playback to start"
+        //    concept here; just seek to wherever the audio already is and
+        //    play immediately, via the same math discrete resyncs use.
+        if (widget.resyncPositionMs == 0) {
+          final plan =
+              computeVideoSyncPlan(widget.startOffsetMs, durationMs);
+          AppLogger.d('video sync (cold start): startOffsetMs='
+              '${widget.startOffsetMs} videoDurationMs=$durationMs '
+              '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
+          if (plan.seekToMs != null) {
+            await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
             if (!mounted) return;
-            _syncPending = false;
-            if (widget.isPlaying) unawaited(_controller.play());
-          }));
-          return;
+          }
+          if (plan.delayMs != null) {
+            unawaited(
+                Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+              if (!mounted) return;
+              _syncPending = false;
+              if (widget.isPlaying) unawaited(_controller.play());
+            }));
+            return;
+          }
+        } else {
+          final targetMs = computeVideoResyncTargetMs(
+              widget.resyncPositionMs, widget.startOffsetMs, durationMs);
+          AppLogger.d('video sync (late mount): audioPositionMs='
+              '${widget.resyncPositionMs} startOffsetMs=${widget.startOffsetMs} '
+              'videoDurationMs=$durationMs -> seekToMs=$targetMs');
+          await _controller.seekTo(Duration(milliseconds: targetMs));
+          if (!mounted) return;
         }
         _syncPending = false;
         if (widget.isPlaying) unawaited(_controller.play());
@@ -552,7 +585,15 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   Widget build(BuildContext context) {
     if (!_ready || !_controller.value.isInitialized) {
-      return const SizedBox.shrink();
+      // Keep showing the same poster _Stage would otherwise render one
+      // layer up, instead of leaving the stage blank/static (the only
+      // thing behind it, PersianPattern, doesn't animate) — this is the
+      // window that used to read as "frozen" between a background download
+      // finishing and this controller actually becoming ready to show frames.
+      final poster = widget.posterSrc;
+      return (poster != null && poster.isNotEmpty)
+          ? buildMediaImage(poster)
+          : const SizedBox.shrink();
     }
     // Same fitHeight strategy as photos: fills the stage height, centered,
     // leaving transparent sides where the Persian pattern shows through.

@@ -19,6 +19,13 @@ class TrainingItemWithAudio extends Equatable {
   /// is unset — video then just plays decoupled from the audio, as before.
   final int? videoStartOffsetMs;
 
+  /// True once `media.src` (when `media.type == 'video'`) is actually
+  /// playable — a resolved local file path, or any remote URL on web (which
+  /// streams directly, see DownloadRepository). Explicit cubit-set flag
+  /// rather than inferring readiness from the shape of `media.src` itself,
+  /// so the local-vs-remote decision lives in exactly one place.
+  final bool videoReady;
+
   const TrainingItemWithAudio({
     required this.id,
     required this.title,
@@ -29,9 +36,10 @@ class TrainingItemWithAudio extends Equatable {
     this.defaultRepetitions,
     this.userRepetitions,
     this.videoStartOffsetMs,
+    this.videoReady = false,
   });
 
-  TrainingItemWithAudio copyWith({ExerciseMedia? media}) =>
+  TrainingItemWithAudio copyWith({ExerciseMedia? media, bool? videoReady}) =>
       TrainingItemWithAudio(
         id: id,
         title: title,
@@ -42,6 +50,7 @@ class TrainingItemWithAudio extends Equatable {
         defaultRepetitions: defaultRepetitions,
         userRepetitions: userRepetitions,
         videoStartOffsetMs: videoStartOffsetMs,
+        videoReady: videoReady ?? this.videoReady,
       );
 
   /// Get the effective number of repetitions for this track
@@ -84,5 +93,6 @@ class TrainingItemWithAudio extends Equatable {
         defaultRepetitions,
         userRepetitions,
         videoStartOffsetMs,
+        videoReady,
       ];
 }

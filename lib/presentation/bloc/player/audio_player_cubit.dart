@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -24,15 +25,19 @@ class AudioPlayerState {
   final bool isFinished;
 
   /// Bumped every time audio position is authoritatively (re)established — a
-  /// fresh source load or a mid-track seek, never a normal playback tick.
-  /// _ExerciseVideo watches this to apply exactly one discrete resync seek;
-  /// see computeVideoResyncTargetMs.
+  /// fresh source load, a mid-track seek, or a background video download
+  /// finishing for the currently-visible track — never a normal playback
+  /// tick. _ExerciseVideo watches this to apply exactly one discrete resync
+  /// seek; see computeVideoResyncTargetMs. For a genuinely fresh mount
+  /// (position 0), _ExerciseVideo instead uses the anchor-based
+  /// computeVideoSyncPlan — see its initState for the exact routing.
   final int videoResyncGeneration;
 
   /// The audio-loop-relative position (ms) at the moment
   /// [videoResyncGeneration] was last bumped — captured directly at the call
-  /// site, not read back from the async position stream, to avoid a race
-  /// with the engine's own event timing.
+  /// site (either from the position stream's last known value, or a fresh
+  /// seek target), not read back asynchronously, to avoid a race with the
+  /// engine's own event timing.
   final int videoResyncPositionMs;
 
   TrainingItemWithAudio? get currentTrack =>
@@ -223,6 +228,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
 
         var resolvedMedia = exercise.media;
+        // Explicit readiness flag — the single source of truth for "can the
+        // stage actually show a playable video right now," replacing the
+        // old convention of inferring it from whether media.src happens to
+        // start with '/'. Set here (the only place that makes the
+        // local-vs-remote decision) and carried on the track itself.
+        var videoReady = false;
         if (exercise.media.type == 'photo' && exercise.media.hasAsset) {
           final localImage =
               await _downloadRepo.getLocalImagePath(exercise.media.src!);
@@ -233,6 +244,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           // Video only ever plays from the local cache (never streamed) — if
           // it isn't cached yet, src stays the remote URL, which the player
           // stage treats as "not playable" and falls back to the poster.
+          // Web has no local filesystem to cache into (DownloadRepository
+          // no-ops there), so any non-empty remote URL is ready — the
+          // player streams it directly.
           final localVideo =
               await _downloadRepo.getLocalVideoPath(exercise.media.src!);
           final posterUrl = exercise.media.poster;
@@ -245,6 +259,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
             poster: localPoster ?? posterUrl,
             videoAnchorMs: exercise.media.videoAnchorMs,
           );
+          videoReady = kIsWeb || localVideo != null;
         }
 
         // Constant start-offset so the video's "sarzarb"/main beat lines up
@@ -266,6 +281,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           defaultRepetitions: exercise.repetitionsDefault,
           userRepetitions: repsToDo,
           videoStartOffsetMs: videoStartOffsetMs,
+          videoReady: videoReady,
         ));
       }
 
@@ -426,8 +442,26 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         poster: current.media.poster,
         videoAnchorMs: current.media.videoAnchorMs,
       ),
+      videoReady: true,
     );
-    emit(state.copyWith(tracks: updatedTracks));
+
+    // Only the currently-visible track needs a resync bump — lookahead
+    // tracks (index+1..+3) get their media patched silently here and will
+    // get a fresh, correct resync of their own the moment the user actually
+    // navigates to them (_loadSourceAtIndex always bumps the generation).
+    // For the visible track, capture the real, current audio-loop position
+    // so the freshly-mounted video seeks to where the audio actually is
+    // instead of assuming it just started at 0 — see
+    // _ExerciseVideoState.initState in training_session_player_page.dart.
+    if (index == state.playingIndex) {
+      emit(state.copyWith(
+        tracks: updatedTracks,
+        videoResyncGeneration: state.videoResyncGeneration + 1,
+        videoResyncPositionMs: state.position.inMilliseconds,
+      ));
+    } else {
+      emit(state.copyWith(tracks: updatedTracks));
+    }
   }
 
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
