@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
@@ -51,10 +52,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       notificationService: getIt<PlayerNotificationService>(),
     );
     _cubit.loadTracks();
+    // Kept on for the whole session (not just while isPlaying) so a brief
+    // pause to check form doesn't let the screen lock mid-training.
+    unawaited(WakelockPlus.enable());
   }
 
   @override
   void dispose() {
+    unawaited(WakelockPlus.disable());
     _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
   }

@@ -15,11 +15,13 @@ import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
 import '../../../fakes/fake_training_session_repository.dart';
+import '../../../fakes/fake_wakelock_plus_platform.dart';
 import '../../../fakes/test_seed_data.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -67,10 +69,18 @@ Future<void> _pumpAndLoad(WidgetTester tester) async {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
+  late FakeWakelockPlusPlatform fakeWakelock;
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await getIt.reset();
     _registerFakes(buildTestSnapshot());
+    fakeWakelock = FakeWakelockPlusPlatform();
+    // wakelock_plus caches the platform instance in this separate top-level
+    // var at first use rather than reading WakelockPlusPlatformInterface
+    // .instance each call — it's exposed @visibleForTesting for exactly this
+    // override.
+    wakelockPlusPlatformInstance = fakeWakelock;
   });
 
   tearDown(() async {
@@ -102,6 +112,25 @@ void main() {
 
     expect(find.text('PLAY ALONG'), findsOneWidget);
     expect(find.text(testSession1.title), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('enables the wakelock while the player page is active',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    expect(await fakeWakelock.enabled, isTrue);
+  });
+
+  testWidgets('disables the wakelock when leaving the player page',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(await fakeWakelock.enabled, isFalse);
   });
 
   testWidgets('shows back and edit buttons after tracks load', (tester) async {
