@@ -105,14 +105,22 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 _Stage(state: state, accent: accent, cubit: _cubit),
                 _RepCounter(state: state),
                 _ProgressBlock(state: state, cubit: _cubit),
+                // Fills the rest of the screen, extending behind the
+                // transport bar below (a transparent overlay) rather than
+                // stopping above it — see _Transport.
                 Expanded(
                     child: _TrackList(
                         key: _trackListKey,
                         state: state,
                         accent: accent,
                         cubit: _cubit)),
-                _Transport(state: state, cubit: _cubit),
               ]),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _Transport(state: state, cubit: _cubit),
+              ),
               if (state.isFinished)
                 _CompletionSheet(
                   session: widget.trainingSession,
@@ -837,9 +845,11 @@ class _TrackListState extends State<_TrackList> {
     final activeIndex = widget.state.playingIndex;
     final isPlaying = widget.state.isPlaying;
 
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return ListView.builder(
       controller: _scrollCtrl,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: EdgeInsets.fromLTRB(
+          12, 8, 12, 12 + _kTransportBarHeight + bottomInset),
       itemCount: tracks.length,
       itemBuilder: (context, i) {
         _itemKeys[i] ??= GlobalKey();
@@ -965,6 +975,13 @@ class _TrackListState extends State<_TrackList> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom transport
 // ─────────────────────────────────────────────────────────────────────────────
+// Content height of _Transport excluding the bottom system inset (10 top
+// padding + 68 center-button height + 14 bottom padding) — _TrackList adds
+// this much bottom padding so the last row can scroll fully clear of the
+// (opaque) buttons, since the transport bar now floats over the list as a
+// transparent overlay rather than sitting below it.
+const _kTransportBarHeight = 92.0;
+
 class _Transport extends StatelessWidget {
   const _Transport({required this.state, required this.cubit});
   final AudioPlayerState state;
@@ -980,16 +997,11 @@ class _Transport extends StatelessWidget {
     // transport buttons render partly behind it.
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    return Container(
+    // Transparent so track-list cards scrolling underneath stay visible —
+    // only the buttons themselves (each with its own solid background below)
+    // should read as opaque.
+    return Padding(
       padding: EdgeInsets.fromLTRB(0, 10, 0, 14 + bottomInset),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [colors.bg, colors.bg.withValues(alpha: 0)],
-          stops: const [0.6, 1.0],
-        ),
-      ),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         _TransportBtn(
             size: 52,

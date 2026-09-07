@@ -161,6 +161,23 @@ void main() {
     expect(nextBtnRect.bottom, lessThanOrEqualTo(screenHeight - bottomInset));
   });
 
+  testWidgets(
+      'track list extends behind the transport bar instead of stopping above it',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // The transport bar is a transparent overlay floating over the track
+    // list (not a separate row below it) so scrolled cards stay visible
+    // through the gaps between its buttons — the list's own box must
+    // therefore extend past the transport row's top edge, not stop above it.
+    final listRect = tester.getRect(find.byType(ListView));
+    final nextBtnRect =
+        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
+
+    expect(listRect.bottom, greaterThan(nextBtnRect.top));
+  });
+
   testWidgets('shows pause icon when playback is active', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
