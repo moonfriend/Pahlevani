@@ -726,12 +726,29 @@ def tab_batch_import():
 # Tab: Session Builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, uid}]
+_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, tracked_movement_type, uid}]
 _SB_META          = "sb_meta"         # {title, title_fa, description, difficulty}
 _SB_MODE          = "sb_mode"         # "new" | "edit"
 _SB_SID           = "sb_sid"          # session id being edited
 _SB_PENDING_OP    = "sb_pending_op"   # deferred list op applied before next render
 _SB_PENDING_RESET = "sb_pending_reset"  # deferred metadata reset applied before text_inputs
+
+# Keys must exactly match TrackedMovementType in
+# lib/domain/entities/tracking/tracked_movement_type.dart — kept in sync by
+# hand, there are only two of these today. "" / None means "not tracked".
+TRACKED_MOVEMENT_TYPE_LABELS = {
+    "": None,
+    "شنو سرنوازی — sheno_sarnavazi": "sheno_sarnavazi",
+    "میل آرام — meel_aram": "meel_aram",
+}
+_TRACKED_MOVEMENT_TYPE_KEYS_TO_LABELS = {
+    v: k for k, v in TRACKED_MOVEMENT_TYPE_LABELS.items()
+}
+
+def _tracked_type_label(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return _TRACKED_MOVEMENT_TYPE_KEYS_TO_LABELS.get(value, "")
 
 def _sb_reset():
     # Directly set widget state so the fields visibly clear on the next render.
@@ -792,7 +809,13 @@ def tab_session_builder():
                 "description": _desc, "difficulty": _diff,
             }
             st.session_state[_SB_ITEMS] = [
-                {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"]), "uid": str(i)}
+                {
+                    "exercise_id": int(r["exercise_id"]),
+                    "reps_to_do": int(r["reps_to_do"]),
+                    "tracked_movement_type": r.get("tracked_movement_type")
+                        if pd.notna(r.get("tracked_movement_type")) else None,
+                    "uid": str(i),
+                }
                 for i, (_, r) in enumerate(session_items.iterrows())
             ]
             st.session_state[_SB_SID] = sid
@@ -855,13 +878,14 @@ def tab_session_builder():
     for idx, it in enumerate(items):
         if "uid" not in it:
             it["uid"] = f"legacy_{idx}"
+        it.setdefault("tracked_movement_type", None)
 
     # Show current list
     for i, item in enumerate(items):
         ex = ex_by_id.get(item["exercise_id"])
         label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
 
-        c_name, c_reps, c_up, c_dn, c_rm = st.columns([5, 1.5, 0.5, 0.5, 0.5])
+        c_name, c_reps, c_type, c_up, c_dn, c_rm = st.columns([4, 1.5, 2.3, 0.5, 0.5, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
         new_reps = c_reps.number_input(
             "Reps", min_value=1, max_value=999,
@@ -870,6 +894,16 @@ def tab_session_builder():
             label_visibility="collapsed",
         )
         items[i]["reps_to_do"] = new_reps
+
+        type_labels = list(TRACKED_MOVEMENT_TYPE_LABELS.keys())
+        current_label = _tracked_type_label(item.get("tracked_movement_type"))
+        new_type_label = c_type.selectbox(
+            "Tracked movement", type_labels,
+            index=type_labels.index(current_label) if current_label in type_labels else 0,
+            key=f"tracktype_{_kns}_{item['uid']}",
+            label_visibility="collapsed",
+        )
+        items[i]["tracked_movement_type"] = TRACKED_MOVEMENT_TYPE_LABELS[new_type_label]
 
         if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
             st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i - 1}
@@ -913,7 +947,7 @@ def tab_session_builder():
         if mov_exercises.empty:
             st.warning("No recordings for this movement.")
         else:
-            c_rec, c_rep, c_add = st.columns([5, 1.5, 1])
+            c_rec, c_rep, c_type, c_add = st.columns([4, 1.5, 2.3, 1])
             rec_opts = {
                 recording_label(r): int(r["id"])
                 for _, r in mov_exercises.iterrows()
@@ -931,8 +965,17 @@ def tab_session_builder():
                 value=chosen_def, key=f"sb_add_reps_{chosen_id}",
                 label_visibility="collapsed",
             )
+            add_type_label = c_type.selectbox(
+                "Tracked movement", list(TRACKED_MOVEMENT_TYPE_LABELS.keys()),
+                key=f"sb_add_tracktype_{chosen_id}", label_visibility="collapsed",
+            )
             if c_add.button("＋ Add", key="sb_add_btn"):
-                st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps, "uid": uuid.uuid4().hex[:8]})
+                st.session_state[_SB_ITEMS].append({
+                    "exercise_id": chosen_id,
+                    "reps_to_do": add_reps,
+                    "tracked_movement_type": TRACKED_MOVEMENT_TYPE_LABELS[add_type_label],
+                    "uid": uuid.uuid4().hex[:8],
+                })
                 st.rerun()
 
     # ── Duration estimate ─────────────────────────────────────────────────────
@@ -986,6 +1029,7 @@ def tab_session_builder():
                     "exercise_id":         item["exercise_id"],
                     "position":            pos,
                     "reps_to_do":          item["reps_to_do"],
+                    "tracked_movement_type": item.get("tracked_movement_type") or None,
                 }
                 for pos, item in enumerate(items)
             ]
