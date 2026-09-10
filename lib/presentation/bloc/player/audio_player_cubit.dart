@@ -185,6 +185,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       ? _itemDetails[index].exercise
       : null;
 
+  /// The full item list for the loaded session (item + exercise), for
+  /// consumers that need more than a single track — e.g. detecting tracked
+  /// movement types for the post-session history prompt.
+  List<ItemDetail> get itemDetails => List.unmodifiable(_itemDetails);
+
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();

@@ -1,6 +1,8 @@
 import 'package:hive/hive.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 
 part 'hive_models.g.dart';
 
@@ -252,11 +254,17 @@ class HiveTrainingSessionItem extends HiveObject {
   @HiveField(3)
   final int repsToDo;
 
+  // Nullable so the adapter safely reads null for boxes written before this
+  // field existed (trainer-set movement tracking — see migration 0017).
+  @HiveField(4)
+  final String? trackedMovementType;
+
   HiveTrainingSessionItem({
     required this.trainingSessionId,
     required this.itemId,
     required this.position,
     required this.repsToDo,
+    this.trackedMovementType,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) =>
@@ -265,6 +273,7 @@ class HiveTrainingSessionItem extends HiveObject {
         itemId: json['exercise_id'] as int,
         position: json['position'] as int,
         repsToDo: json['reps_to_do'] as int,
+        trackedMovementType: json['tracked_movement_type'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -272,5 +281,61 @@ class HiveTrainingSessionItem extends HiveObject {
         'exercise_id': itemId,
         'position': position,
         'reps_to_do': repsToDo,
+        if (trackedMovementType != null)
+          'tracked_movement_type': trackedMovementType,
       };
+}
+
+/// One completed play-through of a training session, recorded locally right
+/// after the player's completion screen appears. `movementCounts` only holds
+/// entries for [TrackedMovementType]s actually present in that session.
+@HiveType(typeId: 3)
+class HiveSessionCompletionRecord extends HiveObject {
+  @HiveField(0)
+  final String id;
+
+  @HiveField(1)
+  final int sessionId;
+
+  // Snapshot at completion time — the session itself may be edited or
+  // deleted later, but the history entry should still read sensibly.
+  @HiveField(2)
+  final String sessionTitle;
+
+  @HiveField(3)
+  final int completedAtMillis;
+
+  // Keyed by TrackedMovementType.key.
+  @HiveField(4)
+  final Map<String, int> movementCounts;
+
+  HiveSessionCompletionRecord({
+    required this.id,
+    required this.sessionId,
+    required this.sessionTitle,
+    required this.completedAtMillis,
+    required this.movementCounts,
+  });
+
+  factory HiveSessionCompletionRecord.fromDomain(SessionCompletionRecord r) =>
+      HiveSessionCompletionRecord(
+        id: r.id,
+        sessionId: r.sessionId,
+        sessionTitle: r.sessionTitle,
+        completedAtMillis: r.completedAt.millisecondsSinceEpoch,
+        movementCounts:
+            r.movementCounts.map((type, count) => MapEntry(type.key, count)),
+      );
+
+  SessionCompletionRecord toDomain() => SessionCompletionRecord(
+        id: id,
+        sessionId: sessionId,
+        sessionTitle: sessionTitle,
+        completedAt: DateTime.fromMillisecondsSinceEpoch(completedAtMillis),
+        movementCounts: {
+          for (final entry in movementCounts.entries)
+            if (TrackedMovementType.fromKey(entry.key) != null)
+              TrackedMovementType.fromKey(entry.key)!: entry.value,
+        },
+      );
 }

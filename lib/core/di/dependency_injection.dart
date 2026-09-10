@@ -4,11 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 
+import '../../data/datasources/tracking/training_history_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_datasource.dart';
 import '../../data/datasources/training_session/training_session_remote_datasource.dart';
 import '../../data/repositories_impl/auth_repository_impl.dart';
 import '../../data/repositories_impl/download_repository_impl.dart';
+import '../../data/repositories_impl/tracking/training_history_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
 import '../../data/repositories_impl/version_gate_repository_impl.dart';
 import '../../data/services/audio_players_service_impl.dart';
@@ -19,12 +21,14 @@ import '../../data/services/no_op_notification_service.dart';
 import '../../data/services/pahlevani_audio_handler.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/download_repository.dart';
+import '../../domain/repositories/tracking/training_history_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/repositories/version_gate_repository.dart';
 import '../../domain/services/audio_player_service.dart';
 import '../../domain/services/connectivity_service.dart';
 import '../../domain/services/player_notification_service.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
+import '../../presentation/bloc/tracking/training_history_cubit.dart';
 
 final getIt = GetIt.instance;
 
@@ -39,6 +43,7 @@ class DependencyInjection {
     if (_initialized) return;
 
     await TrainingSessionLocalDatabase.init();
+    await TrainingHistoryLocalDatabase.init();
 
     getIt.registerLazySingleton<Dio>(() => Dio());
 
@@ -61,6 +66,19 @@ class DependencyInjection {
     getIt.registerLazySingleton<DownloadRepository>(
       () => DownloadRepositoryImpl(
         localDataSource: getIt<TrainingSessionLocalDataSource>(),
+      ),
+    );
+
+    getIt.registerLazySingleton<TrainingHistoryLocalDatabase>(
+        () => TrainingHistoryLocalDatabase());
+    getIt.registerLazySingleton<TrainingHistoryRepository>(
+      () => TrainingHistoryRepositoryImpl(
+        localDatabase: getIt<TrainingHistoryLocalDatabase>(),
+      ),
+    );
+    getIt.registerLazySingleton<TrainingHistoryCubit>(
+      () => TrainingHistoryCubit(
+        historyRepository: getIt<TrainingHistoryRepository>(),
       ),
     );
 

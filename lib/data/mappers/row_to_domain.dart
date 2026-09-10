@@ -7,6 +7,7 @@ import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 
 /// Maps an exercise row, joined with its movement row when available.
 /// Falls back to any fields still present on the exercise row itself
@@ -57,4 +58,5 @@ TrainingItem mapItem(TrainingItemRow r) => TrainingItem(
       exerciseId: r.exerciseId,
       position: r.position,
       prescription: RepsPresc(r.repsToDo),
+      trackedMovementType: TrackedMovementType.fromKey(r.trackedMovementType),
     );

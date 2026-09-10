@@ -8,6 +8,7 @@ import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
@@ -20,6 +21,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
+import '../../../fakes/fake_training_history_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
 import '../../../fakes/fake_wakelock_plus_platform.dart';
 import '../../../fakes/test_seed_data.dart';
@@ -33,6 +35,8 @@ void _registerFakes(DomainSnapshot snapshot) {
       FakeTrainingSessionRepository(snapshot));
   getIt.registerSingleton<PlayerNotificationService>(
       FakePlayerNotificationService());
+  getIt.registerSingleton<TrainingHistoryRepository>(
+      FakeTrainingHistoryRepository());
 }
 
 Widget _buildPage(DomainSnapshot snapshot) {
@@ -462,6 +466,8 @@ void main() {
         FakeTrainingSessionRepository(buildTestSnapshot()));
     getIt.registerSingleton<PlayerNotificationService>(
         FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -493,6 +499,8 @@ void main() {
         FakeTrainingSessionRepository(buildTestSnapshot()));
     getIt.registerSingleton<PlayerNotificationService>(
         FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);

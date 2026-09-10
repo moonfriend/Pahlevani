@@ -14,6 +14,7 @@ import 'package:pahlevani/domain/entities/training_session/session_assignment.da
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 
@@ -112,6 +113,8 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                     exerciseId: i.itemId,
                     position: i.position,
                     prescription: RepsPresc(i.repsToDo),
+                    trackedMovementType:
+                        TrackedMovementType.fromKey(i.trackedMovementType),
                   ))
               .toList()
             ..sort((a, b) => a.position.compareTo(b.position));
@@ -143,6 +146,8 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 exerciseId: i.itemId,
                 position: i.position,
                 prescription: RepsPresc(i.repsToDo),
+                trackedMovementType:
+                    TrackedMovementType.fromKey(i.trackedMovementType),
               ))
           .toList(),
     );
@@ -291,6 +296,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         'exercise_id': detail.item.exerciseId,
         'position': position,
         'reps_to_do': reps,
+        'tracked_movement_type': detail.item.trackedMovementType?.key,
       };
     }).toList();
     await remoteDataSource.replaceTrainingSessionItems(owned.id, itemRows);
@@ -308,6 +314,8 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 exerciseId: r['exercise_id'] as int,
                 position: r['position'] as int,
                 prescription: RepsPresc(r['reps_to_do'] as int),
+                trackedMovementType: TrackedMovementType.fromKey(
+                    r['tracked_movement_type'] as String?),
               ))
           .toList();
     }
@@ -366,6 +374,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         itemId: detail.item.exerciseId,
         position: position,
         repsToDo: reps,
+        trackedMovementType: detail.item.trackedMovementType?.key,
       );
     }).toList();
     await itemBox.addAll(hiveItems);

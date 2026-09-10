@@ -6,6 +6,7 @@ import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/row_to_domain.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 
 void main() {
   // ---------- mapExercise ----------
@@ -237,12 +238,14 @@ void main() {
       int exerciseId = 10,
       int position = 0,
       int repsToDo = 3,
+      String? trackedMovementType,
     }) =>
         TrainingItemRow(
           trainingSessionId: sessionId,
           exerciseId: exerciseId,
           position: position,
           repsToDo: repsToDo,
+          trackedMovementType: trackedMovementType,
         );
 
     test('composes id as sessionId * 10000 + position', () {
@@ -279,6 +282,16 @@ void main() {
       final it = mapItem(item(sessionId: 2, position: 0));
       expect(it.id, 20000);
       expect(it.id, isNot(it.sessionId));
+    });
+
+    test('maps a known tracked_movement_type key to its enum value', () {
+      final it = mapItem(item(trackedMovementType: 'sheno_sarnavazi'));
+      expect(it.trackedMovementType, TrackedMovementType.shenoSarnavazi);
+    });
+
+    test('trackedMovementType is null when the row has none', () {
+      final it = mapItem(item());
+      expect(it.trackedMovementType, isNull);
     });
   });
 }
