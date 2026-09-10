@@ -86,7 +86,7 @@ class _EditTrainingSessionPageState extends State<EditTrainingSessionPage> {
           exerciseId: d.item.exerciseId,
           position: pos,
           prescription: RepsPresc(reps),
-          trackedMovementType: d.item.trackedMovementType,
+          isTracked: d.item.isTracked,
         ),
         exercise: d.exercise,
       );

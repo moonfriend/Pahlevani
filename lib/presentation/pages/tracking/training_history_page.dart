@@ -3,13 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 import 'package:pahlevani/domain/usecases/tracking/training_history_aggregations.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 
 const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 const _weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -104,9 +113,8 @@ class _CalendarTabState extends State<_CalendarTab> {
     // DateTime.weekday: Monday=1 .. Sunday=7 — grid starts on Monday.
     final leadingBlanks = DateTime(_month.year, _month.month, 1).weekday - 1;
 
-    final List<SessionCompletionRecord> selectedEntries = _selectedDay != null
-        ? byDay[_selectedDay!] ?? const []
-        : const [];
+    final List<SessionCompletionRecord> selectedEntries =
+        _selectedDay != null ? byDay[_selectedDay!] ?? const [] : const [];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -153,15 +161,16 @@ class _CalendarTabState extends State<_CalendarTab> {
             final date = DateTime(_month.year, _month.month, day);
             final hasEntries = byDay.containsKey(date);
             final isSelected = _selectedDay == date;
-            final isToday = date == DateTime(
+            final isToday = date ==
+                DateTime(
                   DateTime.now().year,
                   DateTime.now().month,
                   DateTime.now().day,
                 );
 
             return GestureDetector(
-              onTap: () => setState(
-                  () => _selectedDay = isSelected ? null : date),
+              onTap: () =>
+                  setState(() => _selectedDay = isSelected ? null : date),
               child: Container(
                 margin: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
@@ -179,8 +188,7 @@ class _CalendarTabState extends State<_CalendarTab> {
                         style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
-                            color:
-                                isSelected ? cs.onPrimary : cs.onSurface)),
+                            color: isSelected ? cs.onPrimary : cs.onSurface)),
                     if (hasEntries)
                       Container(
                         margin: const EdgeInsets.only(top: 2),
@@ -226,7 +234,7 @@ String _formatTime(DateTime dt) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Progress tab — total + monthly bar chart per tracked movement type.
+// Progress tab — total + monthly bar chart per tracked movement.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProgressTab extends StatelessWidget {
   const _ProgressTab({required this.completions});
@@ -234,41 +242,35 @@ class _ProgressTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totals = totalMovementCounts(completions);
-    final monthly = monthlyMovementCounts(completions);
+    final colors = Theme.of(context).extension<PahlevaniColors>()!;
+    final stats = computeMovementStats(completions);
 
-    // Loops over every TrackedMovementType so newly added movements show up
-    // here automatically — including ones with zero recorded history yet.
+    if (stats.isEmpty) {
+      return Center(
+        child: Text('No tracked movements yet',
+            style: TextStyle(color: colors.onMuted)),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        for (final type in TrackedMovementType.values)
-          _MovementSection(
-            type: type,
-            total: totals[type] ?? 0,
-            byMonth: monthly[type] ?? const {},
-          ),
+        for (final stat in stats) _MovementSection(stat: stat),
       ],
     );
   }
 }
 
 class _MovementSection extends StatelessWidget {
-  const _MovementSection({
-    required this.type,
-    required this.total,
-    required this.byMonth,
-  });
-  final TrackedMovementType type;
-  final int total;
-  final Map<DateTime, int> byMonth;
+  const _MovementSection({required this.stat});
+  final MovementStat stat;
 
   /// Last 6 calendar months, oldest first, zero-filled.
   List<MapEntry<DateTime, int>> _lastSixMonths() {
     final now = DateTime.now();
     return List.generate(6, (i) {
       final month = DateTime(now.year, now.month - (5 - i));
-      return MapEntry(month, byMonth[month] ?? 0);
+      return MapEntry(month, stat.byMonth[month] ?? 0);
     });
   }
 
@@ -277,7 +279,8 @@ class _MovementSection extends StatelessWidget {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
     final months = _lastSixMonths();
-    final maxY = months.map((e) => e.value).fold<int>(1, (a, b) => a > b ? a : b);
+    final maxY =
+        months.map((e) => e.value).fold<int>(1, (a, b) => a > b ? a : b);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -289,12 +292,12 @@ class _MovementSection extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text(type.displayName,
-              textDirection: TextDirection.rtl,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 15)),
-          const Spacer(),
-          Text('$total total',
+          Expanded(
+            child: Text(stat.displayName,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ),
+          Text('${stat.total} total',
               style: TextStyle(
                   fontWeight: FontWeight.w700, color: colors.onMuted)),
         ]),
@@ -307,12 +310,12 @@ class _MovementSection extends StatelessWidget {
               gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
               titlesData: FlTitlesData(
-                leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false)),
+                leftTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
@@ -326,8 +329,8 @@ class _MovementSection extends StatelessWidget {
                         child: Text(
                             _monthNames[months[i].key.month - 1]
                                 .substring(0, 3),
-                            style: TextStyle(
-                                fontSize: 10, color: colors.onFaint)),
+                            style:
+                                TextStyle(fontSize: 10, color: colors.onFaint)),
                       );
                     },
                   ),

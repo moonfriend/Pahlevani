@@ -3,14 +3,14 @@ class TrainingItemRow {
   final int exerciseId; // FK → exercise.id
   final int position; // order within session
   final int repsToDo; // integer NOT NULL DEFAULT 1
-  final String? trackedMovementType; // nullable text, see migration 0017
+  final bool isTracked; // boolean NOT NULL DEFAULT false, see migration 0017
 
   TrainingItemRow({
     required this.trainingSessionId,
     required this.exerciseId,
     required this.position,
     required this.repsToDo,
-    this.trackedMovementType,
+    this.isTracked = false,
   });
 
   factory TrainingItemRow.fromJson(Map<String, dynamic> json) =>
@@ -19,6 +19,6 @@ class TrainingItemRow {
         exerciseId: (json['exercise_id'] as num).toInt(),
         position: (json['position'] as num).toInt(),
         repsToDo: (json['reps_to_do'] as num?)?.toInt() ?? 1,
-        trackedMovementType: json['tracked_movement_type'] as String?,
+        isTracked: json['is_tracked'] as bool? ?? false,
       );
 }

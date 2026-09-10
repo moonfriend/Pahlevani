@@ -1,10 +1,10 @@
 import 'package:equatable/equatable.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 
 /// One completed play-through of a training session — created right after
 /// the player shows its completion screen. [movementCounts] only holds
-/// entries for [TrackedMovementType]s actually present in that session;
-/// most sessions will have an empty map.
+/// entries for movements actually flagged (`TrainingItem.isTracked`) in
+/// that session; most sessions will have an empty list.
 class SessionCompletionRecord extends Equatable {
   final String id;
   final int sessionId;
@@ -13,7 +13,7 @@ class SessionCompletionRecord extends Equatable {
   /// itself may later be edited or deleted.
   final String sessionTitle;
   final DateTime completedAt;
-  final Map<TrackedMovementType, int> movementCounts;
+  final List<TrackedMovementCount> movementCounts;
 
   const SessionCompletionRecord({
     required this.id,

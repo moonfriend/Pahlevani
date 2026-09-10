@@ -168,7 +168,7 @@ class HiveTrainingSessionItemAdapter
       itemId: fields[1] as int,
       position: fields[2] as int,
       repsToDo: fields[3] as int,
-      trackedMovementType: fields[4] as String?,
+      isTracked: fields[4] == null ? false : fields[4] as bool,
     );
   }
 
@@ -185,7 +185,7 @@ class HiveTrainingSessionItemAdapter
       ..writeByte(3)
       ..write(obj.repsToDo)
       ..writeByte(4)
-      ..write(obj.trackedMovementType);
+      ..write(obj.isTracked);
   }
 
   @override
@@ -216,13 +216,14 @@ class HiveSessionCompletionRecordAdapter
       sessionTitle: fields[2] as String,
       completedAtMillis: fields[3] as int,
       movementCounts: (fields[4] as Map).cast<String, int>(),
+      movementNames: (fields[5] as Map).cast<String, String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveSessionCompletionRecord obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -232,7 +233,9 @@ class HiveSessionCompletionRecordAdapter
       ..writeByte(3)
       ..write(obj.completedAtMillis)
       ..writeByte(4)
-      ..write(obj.movementCounts);
+      ..write(obj.movementCounts)
+      ..writeByte(5)
+      ..write(obj.movementNames);
   }
 
   @override

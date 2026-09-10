@@ -15,7 +15,7 @@ import 'package:pahlevani/domain/entities/training_session/session_details.dart'
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -76,7 +76,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// still records the prefilled defaults rather than dropping them.
   Future<void> _handleSessionFinished(BuildContext context) async {
     final defaults = detectTrackedMovements(_cubit.itemDetails);
-    Map<TrackedMovementType, int> counts = defaults;
+    List<TrackedMovementCount> counts = defaults;
     if (defaults.isNotEmpty && mounted) {
       final edited =
           await showMovementCountDialog(context, defaultCounts: defaults);

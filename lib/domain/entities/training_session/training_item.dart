@@ -1,5 +1,4 @@
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
 
 class TrainingItem {
   final int id; // composed: sessionId * 10000 + position
@@ -9,9 +8,9 @@ class TrainingItem {
   final Prescription prescription;
 
   /// Set by the trainer when designing the session (admin.py's Session
-  /// Builder) — null means this item isn't counted toward any movement
-  /// total. Never authored inside the Flutter app.
-  final TrackedMovementType? trackedMovementType;
+  /// Builder) — a plain "count this item's reps toward movement history"
+  /// toggle. Never authored inside the Flutter app.
+  final bool isTracked;
 
   const TrainingItem({
     required this.id,
@@ -19,6 +18,6 @@ class TrainingItem {
     required this.exerciseId,
     required this.position,
     required this.prescription,
-    this.trackedMovementType,
+    this.isTracked = false,
   });
 }

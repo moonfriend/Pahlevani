@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_type.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import '../../../fakes/fake_training_history_repository.dart';
 
@@ -14,8 +15,8 @@ class _ThrowingRepository extends FakeTrainingHistoryRepository {
 void main() {
   group('TrainingHistoryCubit', () {
     test('starts in loading state', () {
-      final cubit =
-          TrainingHistoryCubit(historyRepository: FakeTrainingHistoryRepository());
+      final cubit = TrainingHistoryCubit(
+          historyRepository: FakeTrainingHistoryRepository());
       expect(cubit.state, isA<TrainingHistoryLoading>());
       cubit.close();
     });
@@ -27,7 +28,12 @@ void main() {
         sessionId: 1,
         sessionTitle: 'Beginner Warm-up',
         completedAt: DateTime(2026, 9, 10),
-        movementCounts: const {TrackedMovementType.shenoSarnavazi: 6},
+        movementCounts: [
+          TrackedMovementCount(
+              key: MovementKey.fromValue('m:10'),
+              displayName: 'Sheno Sarnavazi',
+              count: 6),
+        ],
       );
       await repo.recordCompletion(record);
 
@@ -41,7 +47,8 @@ void main() {
     });
 
     test('load() emits an error state when the repository throws', () async {
-      final cubit = TrainingHistoryCubit(historyRepository: _ThrowingRepository());
+      final cubit =
+          TrainingHistoryCubit(historyRepository: _ThrowingRepository());
       await cubit.load();
       expect(cubit.state, isA<TrainingHistoryError>());
       await cubit.close();
