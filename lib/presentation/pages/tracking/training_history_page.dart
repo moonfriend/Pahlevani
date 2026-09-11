@@ -126,19 +126,25 @@ class _CalendarTabState extends State<_CalendarTab> {
       onSelectDay: (day) =>
           setState(() => _selectedDay = _selectedDay == day ? null : day),
     );
-    final dayPanel =
-        _DayActivityPanel(selectedDay: _selectedDay, entries: selectedEntries);
+    final activityChildren = _dayActivityChildren(context,
+        selectedDay: _selectedDay, entries: selectedEntries);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isLandscape = constraints.maxWidth >= constraints.maxHeight;
         if (isLandscape) {
-          // Report on the left, calendar pinned to a fixed-width column on
-          // the right.
+          // Report on the left (its own scroll region), calendar pinned to
+          // a fixed-width column on the right — side by side, so each
+          // keeps its own scrolling makes sense here.
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: dayPanel),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  children: activityChildren,
+                ),
+              ),
               SizedBox(
                 width: _kCalendarMaxWidth,
                 child: Padding(
@@ -149,20 +155,20 @@ class _CalendarTabState extends State<_CalendarTab> {
             ],
           );
         }
-        // Calendar on top (full width up to the cap, centered), report below.
-        return Column(
+        // Stacked on a single scroll region — the calendar scrolls away
+        // with the rest of the page instead of staying pinned, so a long
+        // day's list is always reachable on a short screen.
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: _kCalendarMaxWidth),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: calendar,
-                ),
+                child: calendar,
               ),
             ),
-            const Divider(height: 1),
-            Expanded(child: dayPanel),
+            const Divider(height: 33),
+            ...activityChildren,
           ],
         );
       },
@@ -288,44 +294,39 @@ class _MonthCalendar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The selected day's sessions — its own scrollable region, independent of
-// the calendar's size.
+// The selected day's sessions, as loose widgets rather than a self-contained
+// scrollable — the caller decides whether these flow inline into a shared
+// scroll region (stacked layout) or sit in their own ListView (side-by-side
+// layout), so the same content works either way.
 // ─────────────────────────────────────────────────────────────────────────────
-class _DayActivityPanel extends StatelessWidget {
-  const _DayActivityPanel({required this.selectedDay, required this.entries});
+List<Widget> _dayActivityChildren(
+  BuildContext context, {
+  required DateTime? selectedDay,
+  required List<SessionCompletionRecord> entries,
+}) {
+  final colors = Theme.of(context).extension<PahlevaniColors>()!;
+  final day = selectedDay;
 
-  final DateTime? selectedDay;
-  final List<SessionCompletionRecord> entries;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final day = selectedDay;
-
-    if (day == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('Tap a day to see what you trained',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onMuted)),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      children: [
-        Text('${day.day} ${_monthNames[day.month - 1]} ${day.year}',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-        const SizedBox(height: 12),
-        if (entries.isEmpty)
-          Text('No sessions this day', style: TextStyle(color: colors.onMuted))
-        else
-          for (final entry in entries) _DayEntryCard(entry: entry),
-      ],
-    );
+  if (day == null) {
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Text('Tap a day to see what you trained',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.onMuted)),
+      ),
+    ];
   }
+
+  return [
+    Text('${day.day} ${_monthNames[day.month - 1]} ${day.year}',
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+    const SizedBox(height: 12),
+    if (entries.isEmpty)
+      Text('No sessions this day', style: TextStyle(color: colors.onMuted))
+    else
+      for (final entry in entries) _DayEntryCard(entry: entry),
+  ];
 }
 
 /// One completed session on the selected day — title/time plus a wrapping
