@@ -46,6 +46,7 @@ void main() {
       String? mediaSrc,
       String? mediaPoster,
       int? videoAnchorMs,
+      int? typeId,
     }) =>
         MovementRow(
           id: id,
@@ -57,6 +58,7 @@ void main() {
           mediaSrc: mediaSrc,
           mediaPoster: mediaPoster,
           videoAnchorMs: videoAnchorMs,
+          typeId: typeId,
         );
 
     test('uses movement name when movement is present', () {
@@ -158,6 +160,20 @@ void main() {
         movement: baseMovement(id: 55),
       );
       expect(ex.movementId, 55);
+    });
+
+    test('movementTypeId comes from movement.type_id when movement present',
+        () {
+      final ex = mapExercise(
+        baseRow(),
+        movement: baseMovement(typeId: 4),
+      );
+      expect(ex.movementTypeId, 4);
+    });
+
+    test('movementTypeId is null when there is no movement (uncurated)', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.movementTypeId, isNull);
     });
 
     test('description and videoUrl come from movement_info when present', () {
