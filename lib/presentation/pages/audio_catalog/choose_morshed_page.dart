@@ -31,8 +31,7 @@ class _ChooseMorshedPageState extends State<ChooseMorshedPage> {
           return switch (state) {
             AudioCatalogLoading() =>
               const Center(child: CircularProgressIndicator()),
-            AudioCatalogError(:final message) =>
-              Center(child: Text(message)),
+            AudioCatalogError(:final message) => Center(child: Text(message)),
             AudioCatalogLoaded(:final musicians, :final selectedMusicianId) =>
               musicians.isEmpty
                   ? Center(
@@ -81,14 +80,15 @@ class _MusicianTile extends StatelessWidget {
             ? null
             : Text(
                 musician.name.isNotEmpty ? musician.name[0].toUpperCase() : '?',
-                style: TextStyle(color: colors.onMuted, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: colors.onMuted, fontWeight: FontWeight.w700),
               ),
       ),
       title: Text(musician.name),
-      trailing: selected
-          ? Icon(Icons.check_circle_rounded, color: cs.primary)
-          : null,
-      onTap: () => context.read<AudioCatalogCubit>().selectMusician(musician.id),
+      trailing:
+          selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
+      onTap: () =>
+          context.read<AudioCatalogCubit>().selectMusician(musician.id),
     );
   }
 }

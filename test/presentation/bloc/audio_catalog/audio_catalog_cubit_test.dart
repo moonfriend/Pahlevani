@@ -21,7 +21,8 @@ void main() {
 
       final state = cubit.state;
       expect(state, isA<AudioCatalogLoaded>());
-      expect((state as AudioCatalogLoaded).musicians.single.name, 'Ali Eshaghi');
+      expect(
+          (state as AudioCatalogLoaded).musicians.single.name, 'Ali Eshaghi');
       expect(state.selectedMusicianId, 1);
       await cubit.close();
     });

@@ -23,7 +23,9 @@ void main() {
       final result = resolveAudioTrack(
         movementTypeId: null,
         chosenMusicianId: 5,
-        availableTracks: [_track(id: 1, movementTypeId: _sarnavazi, musicianId: 5)],
+        availableTracks: [
+          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5)
+        ],
       );
       expect(result, isNull);
     });
@@ -54,7 +56,8 @@ void main() {
     test(
         'falls back to any track for the type when the chosen musician has none',
         () {
-      final onlyOption = _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
+      final onlyOption =
+          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
         chosenMusicianId: 999, // no track from this musician exists
@@ -68,7 +71,8 @@ void main() {
 
     test('falls back to any track for the type when no musician is chosen yet',
         () {
-      final onlyOption = _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
+      final onlyOption =
+          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
         chosenMusicianId: null,

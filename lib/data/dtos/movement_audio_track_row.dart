@@ -23,8 +23,7 @@ class MovementAudioTrackRow {
         movementTypeId: (m['movement_type_id'] as num).toInt(),
         musicianId: (m['musician_id'] as num).toInt(),
         audioUrl: m['audio_url'] as String? ?? '',
-        repetitionsDefault:
-            (m['repetitions_default'] as num?)?.toInt() ?? 1,
+        repetitionsDefault: (m['repetitions_default'] as num?)?.toInt() ?? 1,
         durationSeconds: (m['duration_seconds'] as num?)?.toInt(),
         audioAnchorMs: (m['audio_anchor_ms'] as num?)?.toInt(),
       );
