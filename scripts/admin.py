@@ -86,6 +86,7 @@ R2_VIDEO_PREFIX = "video/movements/"
 R2_VIDEO_POSTER_PREFIX = "images/posters/"
 R2_IMAGE_MOVEMENT_PREFIX = "images/movements/"
 R2_AUDIO_EXERCISE_PREFIX = "audio/exercises/"
+R2_AUDIO_TRACK_PREFIX = "audio/movement_tracks/"
 
 # ── DB / Storage client ───────────────────────────────────────────────────────
 
@@ -188,6 +189,49 @@ def load_movement_info() -> dict[int, dict]:
         # movement_info table may not exist yet (pre-0005) — treat as no content.
         return {}
 
+@st.cache_data(ttl=60)
+def load_musicians() -> pd.DataFrame:
+    """The 'Morshed' roster — empty if migration 0022 not applied yet."""
+    try:
+        rows = get_client().table("musician").select("*").order("id").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_movement_types() -> pd.DataFrame:
+    """The rhythm/category lookup a recording binds to — empty if migration
+    0022 not applied yet, or if nothing has been curated."""
+    try:
+        rows = get_client().table("movement_type").select("*").order("id").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_movement_audio_tracks() -> pd.DataFrame:
+    """One musician's recording of one movement type, with the type/musician
+    names joined in for display."""
+    try:
+        rows = (
+            get_client().table("movement_audio_track")
+            .select("*, movement_type(key, display_name), musician(name)")
+            .order("id").execute().data
+        )
+    except Exception:
+        return pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if "movement_type" in df.columns:
+        df["type_key"]  = df["movement_type"].apply(lambda t: t.get("key")          if isinstance(t, dict) else None)
+        df["type_name"] = df["movement_type"].apply(lambda t: t.get("display_name") if isinstance(t, dict) else None)
+        df = df.drop(columns=["movement_type"])
+    if "musician" in df.columns:
+        df["musician_name"] = df["musician"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
+        df = df.drop(columns=["musician"])
+    return df
+
 
 def bust_cache():
     load_exercises.clear()
@@ -195,6 +239,9 @@ def bust_cache():
     load_items.clear()
     load_movements.clear()
     load_release_gate.clear()
+    load_musicians.clear()
+    load_movement_types.clear()
+    load_movement_audio_tracks.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -1259,6 +1306,258 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Movement Types & Musicians
+#
+# Reference data for the musician-selectable-audio feature (Stage A:
+# supabase/migrations/0022_musician_audio_tracks.sql). movement_type/musician
+# start empty after that migration — this tab is the ONLY place they get
+# populated. Deciding what real movements share a rhythm is a genuine
+# content-curation call for a maintainer; nothing here guesses at it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_movement_types():
+    st.header("Movement Types & Musicians")
+    st.caption(
+        "Reference data for musician-selectable audio: the rhythm/category a "
+        "movement belongs to, and the roster of musicians ('Morshed') an "
+        "athlete can choose between. See the Recordings tab to attach audio."
+    )
+
+    if st.button("↺ Reload", key="rel_types"):
+        bust_cache()
+
+    # ── Musicians ──────────────────────────────────────────────────────────
+    st.subheader("Musicians")
+    musicians = load_musicians()
+    if not musicians.empty:
+        show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
+        cfg = {
+            "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "name":      st.column_config.TextColumn("Name ✏️", width=200),
+            "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
+        }
+        edited = st.data_editor(
+            musicians[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="musician_ed",
+        )
+        if st.button("💾 Save musicians", key="sv_musicians"):
+            patches = _changed_rows(musicians, edited, ["name", "photo_url"])
+            if patches:
+                save_rows("musician", patches)
+                st.success(f"Updated {len(patches)} musician(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No musicians yet — run migration 0022 (it backfills existing "
+                    "exercise.author values) or add one below.")
+
+    with st.form("add_musician_form", clear_on_submit=True):
+        st.markdown("**Add a musician**")
+        new_name = st.text_input("Name")
+        new_photo = st.text_input("Photo URL (optional)")
+        if st.form_submit_button("＋ Add musician") and new_name.strip():
+            get_client().table("musician").insert({
+                "name": new_name.strip(),
+                "photo_url": new_photo.strip() or None,
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    # ── Movement types ─────────────────────────────────────────────────────
+    st.subheader("Movement types")
+    types_df = load_movement_types()
+    if not types_df.empty:
+        show = [c for c in ["id", "key", "display_name", "display_name_fa"] if c in types_df.columns]
+        cfg = {
+            "id":              st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "key":             st.column_config.TextColumn("Key ✏️", width=140,
+                                    help="Stable identifier, e.g. 'sarnavazi' — never shown to athletes."),
+            "display_name":    st.column_config.TextColumn("Display name ✏️", width=180),
+            "display_name_fa": st.column_config.TextColumn("Farsi name ✏️", width=180),
+        }
+        edited = st.data_editor(
+            types_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="movtype_ed",
+        )
+        if st.button("💾 Save movement types", key="sv_movtypes"):
+            patches = _changed_rows(types_df, edited, ["key", "display_name", "display_name_fa"])
+            if patches:
+                save_rows("movement_type", patches)
+                st.success(f"Updated {len(patches)} type(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No movement types yet — add the first one below.")
+
+    with st.form("add_movement_type_form", clear_on_submit=True):
+        st.markdown("**Add a movement type**")
+        new_key = st.text_input("Key (e.g. 'sarnavazi')")
+        new_disp = st.text_input("Display name")
+        new_disp_fa = st.text_input("Farsi display name (optional)")
+        if st.form_submit_button("＋ Add type") and new_key.strip() and new_disp.strip():
+            get_client().table("movement_type").insert({
+                "key": new_key.strip(),
+                "display_name": new_disp.strip(),
+                "display_name_fa": new_disp_fa.strip() or None,
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    # ── Assign movements to a type ────────────────────────────────────────
+    st.subheader("Assign movements to a type")
+    st.caption(
+        "The actual content-curation step — deciding which real movements "
+        "share a rhythm. Nothing is pre-filled; assign at whatever pace "
+        "makes sense, the app falls back gracefully for anything left unset."
+    )
+    movements = load_movements()
+    if movements.empty:
+        st.caption("No movements loaded.")
+    elif types_df.empty:
+        st.info("Add at least one movement type above first.")
+    else:
+        type_opts = {"(none)": None}
+        for _, r in types_df.iterrows():
+            type_opts[f"{r['display_name']} ({r['key']})"] = int(r["id"])
+        id_to_label = {v: k for k, v in type_opts.items()}
+
+        show_cols = [c for c in ["id", "name", "title_fa", "type_id"] if c in movements.columns]
+        display_df = movements[show_cols].copy()
+        if "type_id" not in display_df.columns:
+            st.warning("movement.type_id not found — has migration 0022 been applied?")
+        else:
+            display_df["type_label"] = display_df["type_id"].apply(
+                lambda t: id_to_label.get(int(t) if pd.notna(t) else None, "(none)")
+            )
+            cfg = {
+                "id":         st.column_config.NumberColumn("ID", disabled=True, width=55),
+                "name":       st.column_config.TextColumn("Movement", disabled=True, width=200),
+                "title_fa":   st.column_config.TextColumn("Farsi", disabled=True, width=140),
+                "type_label": st.column_config.SelectboxColumn(
+                    "Type ✏️", options=list(type_opts.keys()), width=220),
+            }
+            edit_cols = ["id", "name"] + (["title_fa"] if "title_fa" in display_df.columns else []) + ["type_label"]
+            edited = st.data_editor(
+                display_df[edit_cols].copy(), column_config=cfg,
+                use_container_width=True, hide_index=True,
+                num_rows="fixed", key="movtype_assign_ed",
+            )
+            if st.button("💾 Save assignments", key="sv_movtype_assign"):
+                patches = []
+                for _, erow in edited.iterrows():
+                    mov_id = int(erow["id"])
+                    orig = display_df[display_df["id"] == mov_id].iloc[0].get("type_id")
+                    orig_type_id = int(orig) if pd.notna(orig) else None
+                    new_type_id = type_opts[erow["type_label"]]
+                    if new_type_id != orig_type_id:
+                        patches.append({"id": mov_id, "type_id": new_type_id})
+                if patches:
+                    save_rows("movement", patches)
+                    st.success(f"Updated {len(patches)} movement(s).")
+                    bust_cache()
+                else:
+                    st.info("No changes.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Recordings
+#
+# A recording is one musician's take on one movement type — this is what the
+# app resolves at play time based on the athlete's chosen Morshed, instead of
+# a trainer hardcoding a specific recording into a session item.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_audio_tracks():
+    st.header("Recordings")
+    st.caption(
+        "One musician's recording of one movement type. Needs at least one "
+        "movement type and one musician (previous tab) before you can add one."
+    )
+
+    if st.button("↺ Reload", key="rel_tracks"):
+        bust_cache()
+
+    tracks = load_movement_audio_tracks()
+    if not tracks.empty:
+        show = [c for c in ["id", "type_name", "musician_name", "audio_url",
+                             "repetitions_default", "duration_seconds", "audio_anchor_ms"]
+                if c in tracks.columns]
+        cfg = {
+            "id":                  st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "type_name":           st.column_config.TextColumn("Type", disabled=True, width=140),
+            "musician_name":       st.column_config.TextColumn("Musician", disabled=True, width=140),
+            "audio_url":           st.column_config.LinkColumn("Audio URL", disabled=True, width=200),
+            "repetitions_default": st.column_config.NumberColumn("Def. reps ✏️", min_value=1, max_value=999, width=90),
+            "duration_seconds":    st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
+            "audio_anchor_ms":     st.column_config.NumberColumn("Anchor (ms) ✏️", width=110),
+        }
+        edited = st.data_editor(
+            tracks[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="track_ed",
+        )
+        if st.button("💾 Save recordings", key="sv_tracks"):
+            patches = _changed_rows(tracks, edited, ["repetitions_default", "audio_anchor_ms"])
+            if patches:
+                save_rows("movement_audio_track", patches)
+                st.success(f"Updated {len(patches)} recording(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No recordings yet — add the first one below.")
+
+    st.divider()
+    st.subheader("Add a recording")
+
+    types_df = load_movement_types()
+    musicians = load_musicians()
+    if types_df.empty or musicians.empty:
+        st.info("Add at least one movement type and one musician first (Movement Types tab).")
+        return
+
+    type_opts = {f"{r['display_name']} ({r['key']})": int(r["id"]) for _, r in types_df.iterrows()}
+    musician_opts = {r["name"]: int(r["id"]) for _, r in musicians.iterrows()}
+
+    c1, c2 = st.columns(2)
+    chosen_type_label = c1.selectbox("Movement type", list(type_opts.keys()), key="track_add_type")
+    chosen_musician_label = c2.selectbox("Musician", list(musician_opts.keys()), key="track_add_musician")
+    reps = st.number_input("Default reps", min_value=1, max_value=999, value=1, key="track_add_reps")
+    uploaded = st.file_uploader("Audio file (mp3)", type=["mp3"], key="track_add_uploader")
+
+    if uploaded and st.button("＋ Add recording", key="track_add_btn"):
+        data = uploaded.getvalue()
+        dur = duration_from_bytes(data)
+        type_id = type_opts[chosen_type_label]
+        musician_id = musician_opts[chosen_musician_label]
+        slug = slugify(f"{chosen_type_label}-{chosen_musician_label}")
+        r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{musician_id}-{slug}.mp3"
+        try:
+            url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
+            get_client().table("movement_audio_track").insert({
+                "movement_type_id": type_id,
+                "musician_id": musician_id,
+                "audio_url": url,
+                "repetitions_default": int(reps),
+                "duration_seconds": dur,
+            }).execute()
+        except Exception as e:
+            st.error(f"Failed to add recording: {e}")
+        else:
+            st.success("✅ Recording added.")
+            bust_cache()
+            st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Tab: Video Upload
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1855,7 +2154,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
@@ -1863,6 +2162,8 @@ def main():
         "🔍  Inspector",
         "📸  Movement Media",
         "🎬  Video Upload",
+        "🎙️  Movement Types",
+        "🎵  Recordings",
         "🚦  Release Gate",
         "🧑‍🏫  Trainer Role",
         "🎟️  Invite Codes",
@@ -1875,10 +2176,12 @@ def main():
     with t5: tab_inspector()
     with t6: tab_movement_media()
     with t7: tab_video_upload()
-    with t8: tab_release_gate()
-    with t9: tab_grant_trainer()
-    with t10: tab_invite_codes()
-    with t11: tab_users()
+    with t8: tab_movement_types()
+    with t9: tab_audio_tracks()
+    with t10: tab_release_gate()
+    with t11: tab_grant_trainer()
+    with t12: tab_invite_codes()
+    with t13: tab_users()
 
 
 if __name__ == "__main__":
