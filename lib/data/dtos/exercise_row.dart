@@ -5,8 +5,7 @@ class ExerciseRow {
   final String? titleFa; // present before migration; null after
   final String? gloss; // present before migration; null after
   final String? author;
-  final String? type; // present before migration; null after
-  final String? url;
+  final String? audioUrl;
   final int repetitions;
   final int? durationSeconds;
   final String? mediaType; // present before migration; null after
@@ -24,8 +23,7 @@ class ExerciseRow {
     this.titleFa,
     this.gloss,
     this.author,
-    this.type,
-    this.url,
+    this.audioUrl,
     required this.repetitions,
     this.durationSeconds,
     this.mediaType,
@@ -41,8 +39,7 @@ class ExerciseRow {
         titleFa: m['title_fa'] as String?,
         gloss: m['gloss'] as String?,
         author: m['author'] as String?,
-        type: m['type'] as String?,
-        url: m['url'] as String?,
+        audioUrl: m['audio_url'] as String?,
         repetitions: (m['repetitions'] as num?)?.toInt() ?? 0,
         durationSeconds: (m['duration_seconds'] as num?)?.toInt(),
         mediaType: m['media_type'] as String?,

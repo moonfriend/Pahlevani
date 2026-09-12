@@ -8,16 +8,14 @@ void main() {
         'id': 123, // int
         'name': 'Push Ups',
         'author': 'Coach A',
-        'type': 'bodyweight',
-        'url': 'https://example.com/pushups',
+        'audio_url': 'https://example.com/pushups',
         'repetitions': 10,
       });
 
       expect(row.id, 123);
       expect(row.name, 'Push Ups');
       expect(row.author, 'Coach A');
-      expect(row.type, 'bodyweight');
-      expect(row.url, 'https://example.com/pushups');
+      expect(row.audioUrl, 'https://example.com/pushups');
       expect(row.repetitions, 10);
     });
 
@@ -64,14 +62,12 @@ void main() {
         'id': 1,
         'name': null,
         'author': null,
-        'type': null,
-        'url': null,
+        'audio_url': null,
         'repetitions': 3,
       });
       expect(row.name, isNull);
       expect(row.author, isNull);
-      expect(row.type, isNull);
-      expect(row.url, isNull);
+      expect(row.audioUrl, isNull);
     });
 
     test('throws if id is missing or not numeric', () {

@@ -430,17 +430,16 @@ def tab_exercises():
         st.warning("No exercises found.")
         return
 
-    SHOW = ["id", "name", "author", "type", "repetitions", "duration_seconds", "url", "title_fa"]
+    SHOW = ["id", "name", "author", "repetitions", "duration_seconds", "audio_url", "title_fa"]
     show = [c for c in SHOW if c in df.columns]
 
     cfg = {
         "id":               st.column_config.NumberColumn("ID",           disabled=True, width=55),
         "name":             st.column_config.TextColumn("Name",           disabled=True, width=190),
         "author":           st.column_config.TextColumn("Author",         disabled=True, width=130),
-        "type":             st.column_config.TextColumn("Type",           disabled=True, width=100),
         "repetitions":      st.column_config.NumberColumn("Def. reps",    disabled=True, width=75),
         "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=90),
-        "url":              st.column_config.LinkColumn("Audio URL",      disabled=True, width=200),
+        "audio_url":        st.column_config.LinkColumn("Audio URL",      disabled=True, width=200),
         "title_fa":         st.column_config.TextColumn("Farsi title ✏️", width=190),
     }
 
@@ -500,8 +499,8 @@ def tab_exercises():
         chosen_ex = st.selectbox("Exercise", list(ex_opts.keys()), key="anchor_ex_sel")
         ex_id = ex_opts[chosen_ex]
         ex_row = df[df["id"] == ex_id].iloc[0]
-        if ex_row.get("url"):
-            st.audio(ex_row["url"])
+        if ex_row.get("audio_url"):
+            st.audio(ex_row["audio_url"])
         current_ms = ex_row.get("audio_anchor_ms")
         current_s = float(current_ms) / 1000 if pd.notna(current_ms) else 0.0
         audio_col1, audio_col2 = st.columns([2, 1])
@@ -511,7 +510,7 @@ def tab_exercises():
         )
         audio_col2.markdown(f"**{format_mmss(anchor_s)}**")
         if st.button("🔊 Preview snippet", key="audio_anchor_preview_btn"):
-            snippet = extract_audio_snippet_at(ex_row["url"], anchor_s)
+            snippet = extract_audio_snippet_at(ex_row["audio_url"], anchor_s)
             if snippet:
                 st.audio(snippet, format="audio/mp3")
                 st.caption(
@@ -707,7 +706,7 @@ def tab_batch_import():
                 slug = slugify(row["movement_name"] or f"exercise-{exercise['id']}")
                 r2_key = f"{R2_AUDIO_EXERCISE_PREFIX}{exercise['id']}-{slug}.mp3"
                 url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
-                db.table("exercise").update({"url": url}).eq("id", exercise["id"]).execute()
+                db.table("exercise").update({"audio_url": url}).eq("id", exercise["id"]).execute()
 
             except Exception as e:
                 errors.append(f"{fname}: {e}")

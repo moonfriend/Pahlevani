@@ -16,7 +16,7 @@ void main() {
       int? movementId,
       String? name,
       String? author,
-      String? url,
+      String? audioUrl,
       int repetitions = 3,
       String? mediaType,
       String? mediaSrc,
@@ -28,7 +28,7 @@ void main() {
           movementId: movementId,
           name: name,
           author: author,
-          url: url,
+          audioUrl: audioUrl,
           repetitions: repetitions,
           mediaType: mediaType,
           mediaSrc: mediaSrc,
@@ -82,7 +82,7 @@ void main() {
         baseRow(
             id: 42,
             author: 'Morshed Ali',
-            url: 'https://audio.mp3',
+            audioUrl: 'https://audio.mp3',
             repetitions: 5),
       );
       expect(ex.id, 42);
