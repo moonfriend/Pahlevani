@@ -180,6 +180,12 @@ class HiveExercise extends HiveObject {
   @HiveField(17)
   final int? videoAnchorMs;
 
+  // Nullable so the adapter safely reads null for boxes written before this
+  // field existed (musician-audio-catalog feature — see migration
+  // 0022_musician_audio_tracks.sql).
+  @HiveField(18)
+  final int? movementTypeId;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -199,6 +205,7 @@ class HiveExercise extends HiveObject {
     this.videoUrl,
     this.audioAnchorMs,
     this.videoAnchorMs,
+    this.movementTypeId,
   });
 
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
@@ -219,6 +226,7 @@ class HiveExercise extends HiveObject {
         videoUrl: e.videoUrl,
         audioAnchorMs: e.audioAnchorMs,
         videoAnchorMs: e.media.videoAnchorMs,
+        movementTypeId: e.movementTypeId,
       );
 
   Exercise toDomain() => Exercise(
@@ -235,6 +243,7 @@ class HiveExercise extends HiveObject {
         description: description,
         videoUrl: videoUrl,
         audioAnchorMs: audioAnchorMs,
+        movementTypeId: movementTypeId,
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,
