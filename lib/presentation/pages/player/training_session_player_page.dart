@@ -16,6 +16,7 @@ import 'package:pahlevani/domain/entities/training_session/session_duration.dart
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -54,6 +55,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       audioPlayerService: getIt<AudioPlayerService>(),
       downloadRepository: getIt<DownloadRepository>(),
       sessionRepository: getIt<TrainingSessionRepository>(),
+      audioCatalogRepository: getIt<AudioCatalogRepository>(),
       notificationService: getIt<PlayerNotificationService>(),
     );
     _cubit.loadTracks();

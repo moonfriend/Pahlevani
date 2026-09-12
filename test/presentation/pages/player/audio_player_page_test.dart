@@ -7,6 +7,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -18,6 +19,7 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
@@ -37,6 +39,7 @@ void _registerFakes(DomainSnapshot snapshot) {
       FakePlayerNotificationService());
   getIt.registerSingleton<TrainingHistoryRepository>(
       FakeTrainingHistoryRepository());
+  getIt.registerSingleton<AudioCatalogRepository>(FakeAudioCatalogRepository());
 }
 
 Widget _buildPage(DomainSnapshot snapshot) {
@@ -468,6 +471,8 @@ void main() {
         FakePlayerNotificationService());
     getIt.registerSingleton<TrainingHistoryRepository>(
         FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -501,6 +506,8 @@ void main() {
         FakePlayerNotificationService());
     getIt.registerSingleton<TrainingHistoryRepository>(
         FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
