@@ -201,9 +201,11 @@ def load_musicians() -> pd.DataFrame:
 @st.cache_data(ttl=60)
 def load_movement_types() -> pd.DataFrame:
     """The rhythm/category lookup a recording binds to — empty if migration
-    0022 not applied yet, or if nothing has been curated."""
+    0022 not applied yet, or if nothing has been curated. Ordered by `key`,
+    not `id`: keys carry a zero-padded track number (migration 0025) so this
+    sorts in the same order as Sirvan's master recording list."""
     try:
-        rows = get_client().table("movement_type").select("*").order("id").execute().data
+        rows = get_client().table("movement_type").select("*").order("key").execute().data
         return pd.DataFrame(rows) if rows else pd.DataFrame()
     except Exception:
         return pd.DataFrame()
@@ -407,6 +409,17 @@ def guess_movement_name(filename: str) -> str:
     stem = re.sub(r"^[\d\s_\-]+", "", stem)   # strip leading numbers
     stem = stem.replace("_", " ").strip()
     return stem or filename
+
+def guess_movement_type_id(filename: str, types_df: pd.DataFrame) -> int | None:
+    """Matches a filename's leading track number (e.g. '04 Shena...') against
+    a movement_type key with the same numeric prefix (e.g. '04_shena...'),
+    per Sirvan's numbered master recording list (migration 0025)."""
+    m = re.match(r"^\s*(\d+)", Path(filename).stem)
+    if not m or types_df.empty or "key" not in types_df.columns:
+        return None
+    prefix = f"{int(m.group(1)):02d}_"
+    match = types_df[types_df["key"].str.startswith(prefix)]
+    return int(match.iloc[0]["id"]) if not match.empty else None
 
 def find_or_create_movement(name: str, known: dict[str, int]) -> tuple[int, bool]:
     """Case-insensitive-exact match against `known` (name.lower() -> id); inserts
@@ -1316,56 +1329,17 @@ def tab_movement_media():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_movement_types():
-    st.header("Movement Types & Musicians")
+    st.header("Movement Types")
     st.caption(
-        "Reference data for musician-selectable audio: the rhythm/category a "
-        "movement belongs to, and the roster of musicians ('Morshed') an "
-        "athlete can choose between. See the Recordings tab to attach audio."
+        "The rhythm/category catalog a movement belongs to — pre-curated "
+        "from Sirvan's numbered master recording list (migration 0025), "
+        "numbered to match. Correct Farsi names or add missing types below, "
+        "then assign movements to them. See the Recordings tab for "
+        "musicians and audio."
     )
 
     if st.button("↺ Reload", key="rel_types"):
         bust_cache()
-
-    # ── Musicians ──────────────────────────────────────────────────────────
-    st.subheader("Musicians")
-    musicians = load_musicians()
-    if not musicians.empty:
-        show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
-        cfg = {
-            "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
-            "name":      st.column_config.TextColumn("Name ✏️", width=200),
-            "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
-        }
-        edited = st.data_editor(
-            musicians[show].copy(), column_config=cfg,
-            use_container_width=True, hide_index=True,
-            num_rows="fixed", key="musician_ed",
-        )
-        if st.button("💾 Save musicians", key="sv_musicians"):
-            patches = _changed_rows(musicians, edited, ["name", "photo_url"])
-            if patches:
-                save_rows("musician", patches)
-                st.success(f"Updated {len(patches)} musician(s).")
-                bust_cache()
-            else:
-                st.info("No changes.")
-    else:
-        st.caption("No musicians yet — run migration 0022 (it backfills existing "
-                    "exercise.author values) or add one below.")
-
-    with st.form("add_musician_form", clear_on_submit=True):
-        st.markdown("**Add a musician**")
-        new_name = st.text_input("Name")
-        new_photo = st.text_input("Photo URL (optional)")
-        if st.form_submit_button("＋ Add musician") and new_name.strip():
-            get_client().table("musician").insert({
-                "name": new_name.strip(),
-                "photo_url": new_photo.strip() or None,
-            }).execute()
-            bust_cache()
-            st.rerun()
-
-    st.divider()
 
     # ── Movement types ─────────────────────────────────────────────────────
     st.subheader("Movement types")
@@ -1374,8 +1348,9 @@ def tab_movement_types():
         show = [c for c in ["id", "key", "display_name", "display_name_fa"] if c in types_df.columns]
         cfg = {
             "id":              st.column_config.NumberColumn("ID", disabled=True, width=55),
-            "key":             st.column_config.TextColumn("Key ✏️", width=140,
-                                    help="Stable identifier, e.g. 'sarnavazi' — never shown to athletes."),
+            "key":             st.column_config.TextColumn("Key ✏️", width=200,
+                                    help="Stable identifier, numbered to match Sirvan's master "
+                                         "recording list — never shown to athletes."),
             "display_name":    st.column_config.TextColumn("Display name ✏️", width=180),
             "display_name_fa": st.column_config.TextColumn("Farsi name ✏️", width=180),
         }
@@ -1478,21 +1453,71 @@ def tab_movement_types():
 def tab_audio_tracks():
     st.header("Recordings")
     st.caption(
-        "One musician's recording of one movement type. Needs at least one "
-        "movement type and one musician (previous tab) before you can add one."
+        "The audio library: musicians, and every recording matched to a "
+        "movement type, with a quick way to preview and correct them. "
+        "Batch-upload new files at the bottom."
     )
 
     if st.button("↺ Reload", key="rel_tracks"):
         bust_cache()
 
+    # ── Musicians ──────────────────────────────────────────────────────────
+    st.subheader("Musicians")
+    musicians = load_musicians()
+    if not musicians.empty:
+        show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
+        cfg = {
+            "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "name":      st.column_config.TextColumn("Name ✏️", width=200),
+            "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
+        }
+        edited = st.data_editor(
+            musicians[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="musician_ed",
+        )
+        if st.button("💾 Save musicians", key="sv_musicians"):
+            patches = _changed_rows(musicians, edited, ["name", "photo_url"])
+            if patches:
+                save_rows("musician", patches)
+                st.success(f"Updated {len(patches)} musician(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No musicians yet — run migration 0022 (it backfills existing "
+                    "exercise.author values) or add one below.")
+
+    with st.form("add_musician_form", clear_on_submit=True):
+        st.markdown("**Add a musician**")
+        new_name = st.text_input("Name")
+        new_photo = st.text_input("Photo URL (optional)")
+        if st.form_submit_button("＋ Add musician") and new_name.strip():
+            get_client().table("musician").insert({
+                "name": new_name.strip(),
+                "photo_url": new_photo.strip() or None,
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    # ── Recordings ─────────────────────────────────────────────────────────
+    st.subheader("Recordings")
+    types_df = load_movement_types()
     tracks = load_movement_audio_tracks()
+
+    if not types_df.empty:
+        covered = tracks["type_key"].nunique() if (not tracks.empty and "type_key" in tracks.columns) else 0
+        st.caption(f"Movement types with at least one recording: **{covered} / {len(types_df)}**")
+
     if not tracks.empty:
         show = [c for c in ["id", "type_name", "musician_name", "audio_url",
                              "repetitions_default", "duration_seconds", "audio_anchor_ms"]
                 if c in tracks.columns]
         cfg = {
             "id":                  st.column_config.NumberColumn("ID", disabled=True, width=55),
-            "type_name":           st.column_config.TextColumn("Type", disabled=True, width=140),
+            "type_name":           st.column_config.TextColumn("Type", disabled=True, width=180),
             "musician_name":       st.column_config.TextColumn("Musician", disabled=True, width=140),
             "audio_url":           st.column_config.LinkColumn("Audio URL", disabled=True, width=200),
             "repetitions_default": st.column_config.NumberColumn("Def. reps ✏️", min_value=1, max_value=999, width=90),
@@ -1512,49 +1537,122 @@ def tab_audio_tracks():
                 bust_cache()
             else:
                 st.info("No changes.")
+
+        st.markdown("**Preview**")
+        track_labels = {
+            f"{r['type_name']}  —  {r['musician_name']}": r["audio_url"]
+            for _, r in tracks.iterrows()
+        }
+        chosen = st.selectbox(
+            "Pick a recording to listen to", list(track_labels.keys()), key="track_preview_sel"
+        )
+        if chosen:
+            st.audio(track_labels[chosen])
     else:
-        st.caption("No recordings yet — add the first one below.")
+        st.caption("No recordings yet — batch-upload some below.")
 
     st.divider()
-    st.subheader("Add a recording")
 
-    types_df = load_movement_types()
-    musicians = load_musicians()
-    if types_df.empty or musicians.empty:
-        st.info("Add at least one movement type and one musician first (Movement Types tab).")
+    # ── Batch upload ───────────────────────────────────────────────────────
+    st.subheader("Batch upload recordings")
+    st.caption(
+        "Drop one or more mp3s. The movement type is guessed from each "
+        "file's leading track number (e.g. '04 Shena...' → type 04, per "
+        "Sirvan's master list) — correct any wrong guesses before inserting."
+    )
+
+    musician_opts = {r["name"]: int(r["id"]) for _, r in musicians.iterrows()} if not musicians.empty else {}
+    if types_df.empty or not musician_opts:
+        st.info("Add at least one movement type and one musician first (above).")
         return
 
-    type_opts = {f"{r['display_name']} ({r['key']})": int(r["id"]) for _, r in types_df.iterrows()}
-    musician_opts = {r["name"]: int(r["id"]) for _, r in musicians.iterrows()}
-
     c1, c2 = st.columns(2)
-    chosen_type_label = c1.selectbox("Movement type", list(type_opts.keys()), key="track_add_type")
-    chosen_musician_label = c2.selectbox("Musician", list(musician_opts.keys()), key="track_add_musician")
-    reps = st.number_input("Default reps", min_value=1, max_value=999, value=1, key="track_add_reps")
-    uploaded = st.file_uploader("Audio file (mp3)", type=["mp3"], key="track_add_uploader")
+    with c1:
+        batch_musician_label = st.selectbox(
+            "Musician (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
+        )
+    with c2:
+        batch_reps = st.number_input(
+            "Default reps (batch)", min_value=1, max_value=999, value=1, key="track_batch_reps"
+        )
 
-    if uploaded and st.button("＋ Add recording", key="track_add_btn"):
-        data = uploaded.getvalue()
-        dur = duration_from_bytes(data)
-        type_id = type_opts[chosen_type_label]
-        musician_id = musician_opts[chosen_musician_label]
-        slug = slugify(f"{chosen_type_label}-{chosen_musician_label}")
-        r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{musician_id}-{slug}.mp3"
-        try:
-            url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
-            get_client().table("movement_audio_track").insert({
-                "movement_type_id": type_id,
-                "musician_id": musician_id,
-                "audio_url": url,
-                "repetitions_default": int(reps),
-                "duration_seconds": dur,
-            }).execute()
-        except Exception as e:
-            st.error(f"Failed to add recording: {e}")
+    uploads = st.file_uploader(
+        "Drop MP3 files here", type=["mp3"], accept_multiple_files=True, key="track_batch_uploader",
+    )
+    if not uploads:
+        st.caption("Upload files above to continue.")
+        return
+
+    file_map: dict[str, bytes] = {f.name: f.getvalue() for f in uploads}
+    type_label_by_id = {int(r["id"]): f"{r['display_name']} ({r['key']})" for _, r in types_df.iterrows()}
+    type_id_by_label = {v: k for k, v in type_label_by_id.items()}
+    NO_TYPE = "(none — pick one)"
+
+    if "track_batch_preview" not in st.session_state or set(
+        st.session_state.track_batch_preview["filename"]
+    ) != set(file_map.keys()):
+        rows = []
+        for fname, data in file_map.items():
+            guessed_id = guess_movement_type_id(fname, types_df)
+            rows.append({
+                "filename": fname,
+                "type_label": type_label_by_id.get(guessed_id, NO_TYPE),
+                "duration_seconds": duration_from_bytes(data),
+            })
+        st.session_state.track_batch_preview = pd.DataFrame(rows)
+
+    preview_df = st.session_state.track_batch_preview.copy()
+    cfg = {
+        "filename":         st.column_config.TextColumn("File", disabled=True, width=220),
+        "type_label":       st.column_config.SelectboxColumn(
+            "Movement type ✏️", options=[NO_TYPE] + list(type_id_by_label.keys()), width=240),
+        "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
+    }
+    edited = st.data_editor(
+        preview_df, column_config=cfg, use_container_width=True, hide_index=True,
+        num_rows="fixed", key="track_batch_ed",
+    )
+
+    if (edited["type_label"] == NO_TYPE).any():
+        st.warning("⚠️ Some rows have no movement type picked — fix them before inserting.")
+
+    if st.button("🚀 Upload to R2 + insert recordings", type="primary", key="track_batch_import_btn"):
+        musician_id = musician_opts[batch_musician_label]
+        progress = st.progress(0)
+        status = st.empty()
+        errors = []
+        for i, (_, row) in enumerate(edited.iterrows()):
+            fname = row["filename"]
+            status.text(f"Importing {fname}…")
+            if row["type_label"] == NO_TYPE:
+                errors.append(f"{fname}: no movement type selected")
+                progress.progress((i + 1) / len(edited))
+                continue
+            type_id = type_id_by_label[row["type_label"]]
+            data = file_map.get(fname, b"")
+            try:
+                slug = slugify(row["type_label"])
+                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{musician_id}-{slug}.mp3"
+                url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
+                get_client().table("movement_audio_track").insert({
+                    "movement_type_id": type_id,
+                    "musician_id": musician_id,
+                    "audio_url": url,
+                    "repetitions_default": int(batch_reps),
+                    "duration_seconds": int(row["duration_seconds"]) if pd.notna(row["duration_seconds"]) else None,
+                }).execute()
+            except Exception as e:
+                errors.append(f"{fname}: {e}")
+            progress.progress((i + 1) / len(edited))
+
+        status.empty()
+        if errors:
+            st.error("Some files failed:\n" + "\n".join(errors))
         else:
-            st.success("✅ Recording added.")
-            bust_cache()
-            st.rerun()
+            st.success(f"✅ Imported {len(edited)} recording(s).")
+        bust_cache()
+        del st.session_state["track_batch_preview"]
+        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2150,6 +2248,19 @@ def tab_users():
 
 def main():
     st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
+    # Default tab strip is a single scrollable row — wrap onto multiple rows
+    # instead once the window is too narrow to show every tab at once.
+    st.markdown(
+        """
+        <style>
+        div[data-baseweb="tab-list"] {
+            flex-wrap: wrap;
+            row-gap: 4px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title("🏛️  Pahlevani Admin")
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
