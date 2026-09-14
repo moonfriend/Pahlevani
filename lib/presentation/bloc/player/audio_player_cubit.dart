@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -271,6 +272,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final exercise = resolvedTrack == null
             ? rawExercise
             : _withResolvedAudio(rawExercise, resolvedTrack);
+        AppLogger.d(
+          'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
+          'movementTypeId=${rawExercise.movementTypeId} '
+          'chosenMusicianId=$selectedMusicianId '
+          'resolvedTrack=${resolvedTrack == null ? 'null (legacy fallback)' : '(musicianId=${resolvedTrack.musicianId}, url=${resolvedTrack.audioUrl})'} '
+          'finalAudioUrl=${exercise.audioFileUrl}',
+        );
 
         final repsToDo = item.prescription is RepsPresc
             ? (item.prescription as RepsPresc).count
