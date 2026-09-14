@@ -1601,15 +1601,9 @@ def tab_audio_tracks():
         st.info("Add at least one movement type and one Morshed first (above).")
         return
 
-    c1, c2 = st.columns(2)
-    with c1:
-        batch_musician_label = st.selectbox(
-            "Morshed (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
-        )
-    with c2:
-        batch_reps = st.number_input(
-            "Default reps (batch)", min_value=1, max_value=999, value=1, key="track_batch_reps"
-        )
+    batch_musician_label = st.selectbox(
+        "Morshed (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
+    )
 
     uploads = st.file_uploader(
         "Drop MP3 files here", type=["mp3"], accept_multiple_files=True, key="track_batch_uploader",
@@ -1629,10 +1623,17 @@ def tab_audio_tracks():
         rows = []
         for fname, data in file_map.items():
             guessed_id = guess_movement_type_id(fname, types_df)
+            duration = duration_from_bytes(data)
+            # Each recording is its own number of reps (e.g. Sirvan's
+            # Sarnavazi = 50 push-ups) — there's no way to know the real
+            # count from the file alone, so default to one rep per minute
+            # of audio as a starting point, not a flat 1 for every file.
+            default_reps = max(1, round(duration / 60)) if duration else 1
             rows.append({
                 "filename": fname,
                 "type_label": type_label_by_id.get(guessed_id, NO_TYPE),
-                "duration_seconds": duration_from_bytes(data),
+                "reps": default_reps,
+                "duration_seconds": duration,
             })
         st.session_state.track_batch_preview = pd.DataFrame(rows)
 
@@ -1641,6 +1642,10 @@ def tab_audio_tracks():
         "filename":         st.column_config.TextColumn("File", disabled=True, width=220),
         "type_label":       st.column_config.SelectboxColumn(
             "Movement type ✏️", options=[NO_TYPE] + list(type_id_by_label.keys()), width=240),
+        "reps":             st.column_config.NumberColumn(
+            "Reps ✏️", min_value=1, max_value=999, width=90,
+            help="How many reps this specific recording represents — defaults "
+                 "to one rep per minute of audio; correct it to the real count."),
         "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
     }
     edited = st.data_editor(
@@ -1692,7 +1697,7 @@ def tab_audio_tracks():
                     "movement_type_id": type_id,
                     "musician_id": musician_id,
                     "audio_url": url,
-                    "repetitions_default": int(batch_reps),
+                    "repetitions_default": int(row["reps"]),
                     "duration_seconds": int(row["duration_seconds"]) if pd.notna(row["duration_seconds"]) else None,
                 }).execute()
             except Exception as e:
