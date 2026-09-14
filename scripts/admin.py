@@ -1544,9 +1544,11 @@ def tab_audio_tracks():
             else:
                 st.info("No changes.")
 
-        # Selection isn't supported on an editable data_editor in this
-        # Streamlit version, so preview uses a second, read-only table over
-        # the same rows — click one to load it into the player below.
+        # TODO(preview UX, deferred by user 2026-09): a duplicate read-only
+        # table just for click-to-preview feels wrong — find a better
+        # solution than a second table (same issue at the batch-upload
+        # preview below). Root cause: st.data_editor has no on_select in the
+        # installed Streamlit version (1.58), only st.dataframe does.
         st.markdown("**Preview**")
         preview_cols = [c for c in ["type_name", "musician_name"] if c in tracks.columns]
         event = st.dataframe(
@@ -1915,6 +1917,16 @@ def tab_video_upload():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Release Gate
+#
+# TODO(content-integrity, deferred by user 2026-09, revisit at the end of the
+# musician-audio-catalog work): now that a session's audio depends on
+# multiple joined entities (exercise -> movement -> movement_type ->
+# movement_audio_track -> chosen musician), we need a way to guarantee a
+# training session can never silently ship with missing/broken audio for
+# some musician choice — e.g. a validator here (or a new tab) that checks,
+# for every session item x every musician, that resolveAudioTrack's
+# equivalent either resolves a real track or the exercise's own legacy
+# audioFileUrl is set, and flags anything that resolves to nothing.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_release_gate():
