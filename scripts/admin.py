@@ -1471,11 +1471,16 @@ def tab_audio_tracks():
     st.subheader("Morsheds")
     musicians = load_musicians()
     if not musicians.empty:
-        show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
+        show = [c for c in ["id", "name", "photo_url", "is_video_reference"] if c in musicians.columns]
         cfg = {
-            "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
-            "name":      st.column_config.TextColumn("Name ✏️", width=200),
-            "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
+            "id":                 st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "name":               st.column_config.TextColumn("Name ✏️", width=200),
+            "photo_url":          st.column_config.LinkColumn("Photo URL ✏️", width=220),
+            "is_video_reference": st.column_config.CheckboxColumn(
+                "Video reference ✏️", width=130,
+                help="Exercise videos are timed to this Morshed's rhythm — "
+                     "should normally be exactly one Morshed. Athletes see a "
+                     "sync warning when choosing anyone else."),
         }
         edited = st.data_editor(
             musicians[show].copy(), column_config=cfg,
@@ -1483,7 +1488,7 @@ def tab_audio_tracks():
             num_rows="fixed", key="musician_ed",
         )
         if st.button("💾 Save Morsheds", key="sv_musicians"):
-            patches = _changed_rows(musicians, edited, ["name", "photo_url"])
+            patches = _changed_rows(musicians, edited, ["name", "photo_url", "is_video_reference"])
             if patches:
                 save_rows("musician", patches)
                 st.success(f"Updated {len(patches)} Morshed(s).")

@@ -3,8 +3,12 @@ import 'package:pahlevani/data/dtos/musician_row.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/musician.dart';
 
-Musician mapMusician(MusicianRow r) =>
-    Musician(id: r.id, name: r.name, photoUrl: r.photoUrl);
+Musician mapMusician(MusicianRow r) => Musician(
+      id: r.id,
+      name: r.name,
+      photoUrl: r.photoUrl,
+      isVideoReference: r.isVideoReference,
+    );
 
 MovementAudioTrack mapMovementAudioTrack(MovementAudioTrackRow r) =>
     MovementAudioTrack(

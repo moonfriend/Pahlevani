@@ -7,11 +7,21 @@ void main() {
   group('mapMusician', () {
     test('maps every field straight through', () {
       final row = MusicianRow(
-          id: 1, name: 'Sirvan Norouzi', photoUrl: 'https://x/y.jpg');
+        id: 1,
+        name: 'Sirvan Norouzi',
+        photoUrl: 'https://x/y.jpg',
+        isVideoReference: true,
+      );
       final musician = mapMusician(row);
       expect(musician.id, 1);
       expect(musician.name, 'Sirvan Norouzi');
       expect(musician.photoUrl, 'https://x/y.jpg');
+      expect(musician.isVideoReference, isTrue);
+    });
+
+    test('isVideoReference defaults to false', () {
+      final row = MusicianRow(id: 2, name: 'Ali Eshaghi');
+      expect(mapMusician(row).isVideoReference, isFalse);
     });
   });
 

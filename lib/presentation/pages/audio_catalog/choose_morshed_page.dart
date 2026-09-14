@@ -87,8 +87,31 @@ class _MusicianTile extends StatelessWidget {
       title: Text(musician.name),
       trailing:
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
-      onTap: () =>
-          context.read<AudioCatalogCubit>().selectMusician(musician.id),
+      onTap: () {
+        context.read<AudioCatalogCubit>().selectMusician(musician.id);
+        if (!musician.isVideoReference)
+          _showVideoSyncWarning(context, musician);
+      },
+    );
+  }
+
+  void _showVideoSyncWarning(BuildContext context, Musician musician) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Video sync heads-up'),
+        content: Text(
+          'Exercise videos are timed to Sirvan Norouzi\'s rhythm. With '
+          '${musician.name} selected, video and audio may drift out of '
+          'sync during playback.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
     );
   }
 }

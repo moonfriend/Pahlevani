@@ -8,16 +8,23 @@ void main() {
         'id': 1,
         'name': 'Sirvan Norouzi',
         'photo_url': 'https://example.com/sirvan.jpg',
+        'is_video_reference': true,
       });
       expect(row.id, 1);
       expect(row.name, 'Sirvan Norouzi');
       expect(row.photoUrl, 'https://example.com/sirvan.jpg');
+      expect(row.isVideoReference, isTrue);
     });
 
     test('defaults name when null, allows null photo_url', () {
       final row = MusicianRow.fromJson({'id': 2, 'name': null});
       expect(row.name, 'Musician 2');
       expect(row.photoUrl, isNull);
+    });
+
+    test('isVideoReference defaults to false when absent', () {
+      final row = MusicianRow.fromJson({'id': 4, 'name': 'Ali Eshaghi'});
+      expect(row.isVideoReference, isFalse);
     });
 
     test('casts a double id', () {

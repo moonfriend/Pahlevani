@@ -7,8 +7,18 @@ class Musician extends Equatable {
   final String name;
   final String? photoUrl;
 
-  const Musician({required this.id, required this.name, this.photoUrl});
+  /// True for the one performer exercise-demonstration videos are timed
+  /// against (their "sarzarb"/beat anchors) — currently Sirvan Norouzi.
+  /// Choosing any other Morshed can leave video and audio out of sync.
+  final bool isVideoReference;
+
+  const Musician({
+    required this.id,
+    required this.name,
+    this.photoUrl,
+    this.isVideoReference = false,
+  });
 
   @override
-  List<Object?> get props => [id, name, photoUrl];
+  List<Object?> get props => [id, name, photoUrl, isVideoReference];
 }
