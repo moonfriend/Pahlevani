@@ -1341,7 +1341,7 @@ def tab_movement_types():
         "from Sirvan's numbered master recording list (migration 0025), "
         "numbered to match. Correct Farsi names or add missing types below, "
         "then assign movements to them. See the Recordings tab for "
-        "musicians and audio."
+        "morsheds and audio."
     )
 
     if st.button("↺ Reload", key="rel_types"):
@@ -1459,7 +1459,7 @@ def tab_movement_types():
 def tab_audio_tracks():
     st.header("Recordings")
     st.caption(
-        "Musicians, and every recording matched to a movement type. Click a "
+        "Morsheds, and every recording matched to a movement type. Click a "
         "row below to load it into the player. Batch-upload new files at "
         "the bottom."
     )
@@ -1467,8 +1467,8 @@ def tab_audio_tracks():
     if st.button("↺ Reload", key="rel_tracks"):
         bust_cache()
 
-    # ── Musicians ──────────────────────────────────────────────────────────
-    st.subheader("Musicians")
+    # ── Morsheds (musician table) ────────────────────────────────────────
+    st.subheader("Morsheds")
     musicians = load_musicians()
     if not musicians.empty:
         show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
@@ -1482,23 +1482,23 @@ def tab_audio_tracks():
             use_container_width=True, hide_index=True,
             num_rows="fixed", key="musician_ed",
         )
-        if st.button("💾 Save musicians", key="sv_musicians"):
+        if st.button("💾 Save Morsheds", key="sv_musicians"):
             patches = _changed_rows(musicians, edited, ["name", "photo_url"])
             if patches:
                 save_rows("musician", patches)
-                st.success(f"Updated {len(patches)} musician(s).")
+                st.success(f"Updated {len(patches)} Morshed(s).")
                 bust_cache()
             else:
                 st.info("No changes.")
     else:
-        st.caption("No musicians yet — run migration 0022 (it backfills existing "
+        st.caption("No Morsheds yet — run migration 0022 (it backfills existing "
                     "exercise.author values) or add one below.")
 
     with st.form("add_musician_form", clear_on_submit=True):
-        st.markdown("**Add a musician**")
+        st.markdown("**Add a Morshed**")
         new_name = st.text_input("Name")
         new_photo = st.text_input("Photo URL (optional)")
-        if st.form_submit_button("＋ Add musician") and new_name.strip():
+        if st.form_submit_button("＋ Add Morshed") and new_name.strip():
             get_client().table("musician").insert({
                 "name": new_name.strip(),
                 "photo_url": new_photo.strip() or None,
@@ -1524,25 +1524,41 @@ def tab_audio_tracks():
         cfg = {
             "id":                  st.column_config.NumberColumn("ID", disabled=True, width=55),
             "type_name":           st.column_config.TextColumn("Type", disabled=True, width=180),
-            "musician_name":       st.column_config.TextColumn("Musician", disabled=True, width=140),
+            "musician_name":       st.column_config.TextColumn("Morshed", disabled=True, width=140),
             "audio_url":           st.column_config.LinkColumn("Audio URL", disabled=True, width=200),
             "repetitions_default": st.column_config.NumberColumn("Def. reps ✏️", min_value=1, max_value=999, width=90),
             "duration_seconds":    st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
             "audio_anchor_ms":     st.column_config.NumberColumn("Anchor (ms) ✏️", width=110),
         }
+        st.caption("Select a row's checkbox and press Delete (or the toolbar "
+                    "trash icon) to remove a recording — e.g. to clear a "
+                    "wrong one before re-curating it via batch upload below.")
         edited = st.data_editor(
             tracks[show].copy(), column_config=cfg,
             use_container_width=True, hide_index=True,
-            num_rows="fixed", key="track_ed",
+            num_rows="delete", key="track_ed",
         )
-        if st.button("💾 Save recordings", key="sv_tracks"):
-            patches = _changed_rows(tracks, edited, ["repetitions_default", "audio_anchor_ms"])
-            if patches:
-                save_rows("movement_audio_track", patches)
-                st.success(f"Updated {len(patches)} recording(s).")
+        deleted_ids = set(tracks["id"]) - set(edited["id"])
+
+        col_save, col_del = st.columns([1, 1])
+        with col_save:
+            if st.button("💾 Save recordings", key="sv_tracks"):
+                patches = _changed_rows(tracks, edited, ["repetitions_default", "audio_anchor_ms"])
+                if patches:
+                    save_rows("movement_audio_track", patches)
+                    st.success(f"Updated {len(patches)} recording(s).")
+                    bust_cache()
+                else:
+                    st.info("No changes.")
+        with col_del:
+            if deleted_ids and st.button(
+                f"🗑️ Delete {len(deleted_ids)} selected recording(s)", key="del_tracks"
+            ):
+                for tid in deleted_ids:
+                    get_client().table("movement_audio_track").delete().eq("id", int(tid)).execute()
+                st.success(f"Deleted {len(deleted_ids)} recording(s).")
                 bust_cache()
-            else:
-                st.info("No changes.")
+                st.rerun()
 
         # TODO(preview UX, deferred by user 2026-09): a duplicate read-only
         # table just for click-to-preview feels wrong — find a better
@@ -1555,7 +1571,7 @@ def tab_audio_tracks():
             tracks[preview_cols],
             column_config={
                 "type_name":     st.column_config.TextColumn("Type", width=180),
-                "musician_name": st.column_config.TextColumn("Musician", width=140),
+                "musician_name": st.column_config.TextColumn("Morshed", width=140),
             },
             use_container_width=True, hide_index=True,
             on_select="rerun", selection_mode="single-row", key="track_preview_select",
@@ -1582,13 +1598,13 @@ def tab_audio_tracks():
 
     musician_opts = {r["name"]: int(r["id"]) for _, r in musicians.iterrows()} if not musicians.empty else {}
     if types_df.empty or not musician_opts:
-        st.info("Add at least one movement type and one musician first (above).")
+        st.info("Add at least one movement type and one Morshed first (above).")
         return
 
     c1, c2 = st.columns(2)
     with c1:
         batch_musician_label = st.selectbox(
-            "Musician (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
+            "Morshed (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
         )
     with c2:
         batch_reps = st.number_input(
