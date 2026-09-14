@@ -476,6 +476,12 @@ def save_rows(table: str, patches: list[dict]) -> int:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Exercises
+#
+# TODO(next redesign pass, deferred by user 2026-09): this tab has drifted —
+# most of what it now shows/edits (audio_url, author, anchor) conceptually
+# belongs on the Recordings page instead. Once Recordings/Movement Types are
+# settled, redesign this as a "Movements" tab (rename it too) focused on the
+# physical-movement side only (name, title_fa, gloss, media), not audio.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_exercises():
@@ -1537,19 +1543,137 @@ def tab_audio_tracks():
                 bust_cache()
             else:
                 st.info("No changes.")
-
-        st.markdown("**Preview**")
-        track_labels = {
-            f"{r['type_name']}  —  {r['musician_name']}": r["audio_url"]
-            for _, r in tracks.iterrows()
-        }
-        chosen = st.selectbox(
-            "Pick a recording to listen to", list(track_labels.keys()), key="track_preview_sel"
-        )
-        if chosen:
-            st.audio(track_labels[chosen])
     else:
-        st.caption("No recordings yet — batch-upload some below.")
+        st.caption("No curated recordings yet — batch-upload some below, or "
+                    "migrate a legacy one from the audio library below.")
+
+    st.divider()
+
+    # ── Audio library ──────────────────────────────────────────────────────
+    # Every audio file we actually have — curated (movement_audio_track) AND
+    # legacy exercise.audio_url rows never migrated into the new schema, so
+    # nothing is invisible just because it hasn't been curated yet. Click a
+    # row to load it into the player below, instead of a separate dropdown.
+    st.subheader("Audio library")
+    st.caption(
+        "Every audio file we have, curated or not. Click a row to preview "
+        "it below; a legacy file can be added to the recordings library "
+        "in one click, reusing its existing URL — no re-upload needed."
+    )
+
+    movements = load_movements()
+    exercises = load_exercises()
+
+    musician_id_by_name = (
+        {str(r["name"]).strip().lower(): int(r["id"]) for _, r in musicians.iterrows()}
+        if not musicians.empty else {}
+    )
+    type_id_by_movement_id = (
+        {int(r["id"]): (int(r["type_id"]) if pd.notna(r.get("type_id")) else None)
+         for _, r in movements.iterrows()}
+        if not movements.empty else {}
+    )
+    type_name_by_id = (
+        {int(r["id"]): r["display_name"] for _, r in types_df.iterrows()}
+        if not types_df.empty else {}
+    )
+    covered_pairs = (
+        set(zip(tracks["movement_type_id"].dropna().astype(int),
+                tracks["musician_id"].dropna().astype(int)))
+        if not tracks.empty and "movement_type_id" in tracks.columns else set()
+    )
+
+    library_rows: list[dict] = []
+    legacy_meta: list[dict | None] = []  # parallel to library_rows
+
+    for _, r in tracks.iterrows():
+        library_rows.append({
+            "source": "Curated",
+            "type_name": r.get("type_name") or "(unassigned)",
+            "musician_name": r.get("musician_name") or "—",
+            "audio_url": r["audio_url"],
+            "reps": r.get("repetitions_default"),
+            "duration_seconds": r.get("duration_seconds"),
+        })
+        legacy_meta.append(None)
+
+    if not exercises.empty and "audio_url" in exercises.columns:
+        for _, ex in exercises.iterrows():
+            url = ex.get("audio_url")
+            if not url or pd.isna(url):
+                continue
+            mov_id = int(ex["movement_id"]) if pd.notna(ex.get("movement_id")) else None
+            type_id = type_id_by_movement_id.get(mov_id)
+            musician_id = musician_id_by_name.get(str(ex.get("author") or "").strip().lower())
+            if type_id is not None and musician_id is not None and (type_id, musician_id) in covered_pairs:
+                continue  # already represented by a Curated row above
+            library_rows.append({
+                "source": "Legacy (not migrated)",
+                "type_name": type_name_by_id.get(type_id, "(unassigned)"),
+                "musician_name": ex.get("author") or "—",
+                "audio_url": url,
+                "reps": ex.get("repetitions"),
+                "duration_seconds": ex.get("duration_seconds"),
+            })
+            legacy_meta.append({
+                "type_id": type_id,
+                "musician_id": musician_id,
+                "musician_label": ex.get("author") or "—",
+                "audio_url": url,
+                "reps": ex.get("repetitions"),
+                "duration_seconds": ex.get("duration_seconds"),
+                "audio_anchor_ms": ex.get("audio_anchor_ms"),
+            })
+
+    if not library_rows:
+        st.caption("No audio files found.")
+    else:
+        library_df = pd.DataFrame(library_rows)
+        event = st.dataframe(
+            library_df,
+            column_config={
+                "source":           st.column_config.TextColumn("Source", width=150),
+                "type_name":        st.column_config.TextColumn("Type", width=200),
+                "musician_name":    st.column_config.TextColumn("Musician", width=140),
+                "audio_url":        st.column_config.LinkColumn("Audio URL", width=200),
+                "reps":             st.column_config.NumberColumn("Reps", width=70),
+                "duration_seconds": st.column_config.NumberColumn("Duration (s)", width=100),
+            },
+            use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row", key="audio_lib_select",
+        )
+        selected = event.selection.rows if event and event.selection else []
+        if not selected:
+            st.caption("Select a row above to preview it here.")
+        else:
+            idx = selected[0]
+            sel = library_df.iloc[idx]
+            st.audio(sel["audio_url"])
+            cand = legacy_meta[idx]
+            if cand is not None:
+                if cand["type_id"] is None:
+                    st.info("This movement has no type assigned yet — set one "
+                            "in the Movement Types tab first.")
+                elif cand["musician_id"] is None:
+                    st.info(f"No musician named '{cand['musician_label']}' found "
+                             "— add them above first.")
+                elif st.button("➕ Add to Recordings library (reuses this URL)",
+                                key=f"migrate_{idx}"):
+                    try:
+                        get_client().table("movement_audio_track").insert({
+                            "movement_type_id": cand["type_id"],
+                            "musician_id": cand["musician_id"],
+                            "audio_url": cand["audio_url"],
+                            "repetitions_default": int(cand["reps"]) if pd.notna(cand["reps"]) else 1,
+                            "duration_seconds": int(cand["duration_seconds"]) if pd.notna(cand["duration_seconds"]) else None,
+                            "audio_anchor_ms": int(cand["audio_anchor_ms"]) if pd.notna(cand["audio_anchor_ms"]) else None,
+                        }).execute()
+                    except Exception as e:
+                        st.error(f"Failed to add: {e}")
+                    else:
+                        st.success("✅ Added to the Recordings library.")
+                        bust_cache()
+                        st.rerun()
 
     st.divider()
 
