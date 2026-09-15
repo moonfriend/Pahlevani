@@ -1939,15 +1939,10 @@ def tab_video_upload():
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Release Gate
 #
-# TODO(content-integrity, deferred by user 2026-09, revisit at the end of the
-# Morshed-audio-catalog work): now that a session's audio depends on
-# multiple joined entities (exercise -> movement -> movement_type ->
-# movement_audio_track -> chosen Morshed), we need a way to guarantee a
-# training session can never silently ship with missing/broken audio for
-# some Morshed choice — e.g. a validator here (or a new tab) that checks,
-# for every session item x every Morshed, that resolveAudioTrack's
-# equivalent either resolves a real track or the exercise's own legacy
-# audioFileUrl is set, and flags anything that resolves to nothing.
+# Content-integrity check for the audio catalog lives as a standalone script,
+# not here — see scripts/check_session_audio_coverage.py. Run it (or wire it
+# into CI/this tab later) before a release to confirm no session item would
+# resolve to missing audio for any Morshed choice.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_release_gate():
