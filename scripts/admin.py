@@ -86,6 +86,7 @@ R2_VIDEO_PREFIX = "video/movements/"
 R2_VIDEO_POSTER_PREFIX = "images/posters/"
 R2_IMAGE_MOVEMENT_PREFIX = "images/movements/"
 R2_AUDIO_EXERCISE_PREFIX = "audio/exercises/"
+R2_AUDIO_TRACK_PREFIX = "audio/movement_tracks/"
 
 # ── DB / Storage client ───────────────────────────────────────────────────────
 
@@ -188,6 +189,51 @@ def load_movement_info() -> dict[int, dict]:
         # movement_info table may not exist yet (pre-0005) — treat as no content.
         return {}
 
+@st.cache_data(ttl=60)
+def load_morsheds() -> pd.DataFrame:
+    """The 'Morshed' roster — empty if migration 0022 not applied yet."""
+    try:
+        rows = get_client().table("morshed").select("*").order("id").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_movement_types() -> pd.DataFrame:
+    """The rhythm/category lookup a recording binds to — empty if migration
+    0022 not applied yet, or if nothing has been curated. Ordered by `key`,
+    not `id`: keys carry a zero-padded track number (migration 0025) so this
+    sorts in the same order as Sirvan's master recording list."""
+    try:
+        rows = get_client().table("movement_type").select("*").order("key").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_movement_audio_tracks() -> pd.DataFrame:
+    """One Morshed's recording of one movement type, with the type/Morshed
+    names joined in for display."""
+    try:
+        rows = (
+            get_client().table("movement_audio_track")
+            .select("*, movement_type(key, display_name), morshed(name)")
+            .order("id").execute().data
+        )
+    except Exception:
+        return pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if "movement_type" in df.columns:
+        df["type_key"]  = df["movement_type"].apply(lambda t: t.get("key")          if isinstance(t, dict) else None)
+        df["type_name"] = df["movement_type"].apply(lambda t: t.get("display_name") if isinstance(t, dict) else None)
+        df = df.drop(columns=["movement_type"])
+    if "morshed" in df.columns:
+        df["morshed_name"] = df["morshed"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
+        df = df.drop(columns=["morshed"])
+    return df
+
 
 def bust_cache():
     load_exercises.clear()
@@ -195,6 +241,9 @@ def bust_cache():
     load_items.clear()
     load_movements.clear()
     load_release_gate.clear()
+    load_morsheds.clear()
+    load_movement_types.clear()
+    load_movement_audio_tracks.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -361,6 +410,17 @@ def guess_movement_name(filename: str) -> str:
     stem = stem.replace("_", " ").strip()
     return stem or filename
 
+def guess_movement_type_id(filename: str, types_df: pd.DataFrame) -> int | None:
+    """Matches a filename's leading track number (e.g. '04 Shena...') against
+    a movement_type key with the same numeric prefix (e.g. '04_shena...'),
+    per Sirvan's numbered master recording list (migration 0025)."""
+    m = re.match(r"^\s*(\d+)", Path(filename).stem)
+    if not m or types_df.empty or "key" not in types_df.columns:
+        return None
+    prefix = f"{int(m.group(1)):02d}_"
+    match = types_df[types_df["key"].str.startswith(prefix)]
+    return int(match.iloc[0]["id"]) if not match.empty else None
+
 def find_or_create_movement(name: str, known: dict[str, int]) -> tuple[int, bool]:
     """Case-insensitive-exact match against `known` (name.lower() -> id); inserts
     a new bare `movement` row (name only) if there's no match. `known` is
@@ -416,6 +476,12 @@ def save_rows(table: str, patches: list[dict]) -> int:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Exercises
+#
+# TODO(next redesign pass, deferred by user 2026-09): this tab has drifted —
+# most of what it now shows/edits (audio_url, author, anchor) conceptually
+# belongs on the Recordings page instead. Once Recordings/Movement Types are
+# settled, redesign this as a "Movements" tab (rename it too) focused on the
+# physical-movement side only (name, title_fa, gloss, media), not audio.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_exercises():
@@ -430,17 +496,16 @@ def tab_exercises():
         st.warning("No exercises found.")
         return
 
-    SHOW = ["id", "name", "author", "type", "repetitions", "duration_seconds", "url", "title_fa"]
+    SHOW = ["id", "name", "author", "repetitions", "duration_seconds", "audio_url", "title_fa"]
     show = [c for c in SHOW if c in df.columns]
 
     cfg = {
         "id":               st.column_config.NumberColumn("ID",           disabled=True, width=55),
         "name":             st.column_config.TextColumn("Name",           disabled=True, width=190),
         "author":           st.column_config.TextColumn("Author",         disabled=True, width=130),
-        "type":             st.column_config.TextColumn("Type",           disabled=True, width=100),
         "repetitions":      st.column_config.NumberColumn("Def. reps",    disabled=True, width=75),
         "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=90),
-        "url":              st.column_config.LinkColumn("Audio URL",      disabled=True, width=200),
+        "audio_url":        st.column_config.LinkColumn("Audio URL",      disabled=True, width=200),
         "title_fa":         st.column_config.TextColumn("Farsi title ✏️", width=190),
     }
 
@@ -500,8 +565,8 @@ def tab_exercises():
         chosen_ex = st.selectbox("Exercise", list(ex_opts.keys()), key="anchor_ex_sel")
         ex_id = ex_opts[chosen_ex]
         ex_row = df[df["id"] == ex_id].iloc[0]
-        if ex_row.get("url"):
-            st.audio(ex_row["url"])
+        if ex_row.get("audio_url"):
+            st.audio(ex_row["audio_url"])
         current_ms = ex_row.get("audio_anchor_ms")
         current_s = float(current_ms) / 1000 if pd.notna(current_ms) else 0.0
         audio_col1, audio_col2 = st.columns([2, 1])
@@ -511,7 +576,7 @@ def tab_exercises():
         )
         audio_col2.markdown(f"**{format_mmss(anchor_s)}**")
         if st.button("🔊 Preview snippet", key="audio_anchor_preview_btn"):
-            snippet = extract_audio_snippet_at(ex_row["url"], anchor_s)
+            snippet = extract_audio_snippet_at(ex_row["audio_url"], anchor_s)
             if snippet:
                 st.audio(snippet, format="audio/mp3")
                 st.caption(
@@ -707,7 +772,7 @@ def tab_batch_import():
                 slug = slugify(row["movement_name"] or f"exercise-{exercise['id']}")
                 r2_key = f"{R2_AUDIO_EXERCISE_PREFIX}{exercise['id']}-{slug}.mp3"
                 url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
-                db.table("exercise").update({"url": url}).eq("id", exercise["id"]).execute()
+                db.table("exercise").update({"audio_url": url}).eq("id", exercise["id"]).execute()
 
             except Exception as e:
                 errors.append(f"{fname}: {e}")
@@ -726,12 +791,17 @@ def tab_batch_import():
 # Tab: Session Builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, uid}]
+_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, is_tracked, uid}]
 _SB_META          = "sb_meta"         # {title, title_fa, description, difficulty}
 _SB_MODE          = "sb_mode"         # "new" | "edit"
 _SB_SID           = "sb_sid"          # session id being edited
 _SB_PENDING_OP    = "sb_pending_op"   # deferred list op applied before next render
 _SB_PENDING_RESET = "sb_pending_reset"  # deferred metadata reset applied before text_inputs
+
+def _as_bool(value) -> bool:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    return bool(value)
 
 def _sb_reset():
     # Directly set widget state so the fields visibly clear on the next render.
@@ -792,7 +862,12 @@ def tab_session_builder():
                 "description": _desc, "difficulty": _diff,
             }
             st.session_state[_SB_ITEMS] = [
-                {"exercise_id": int(r["exercise_id"]), "reps_to_do": int(r["reps_to_do"]), "uid": str(i)}
+                {
+                    "exercise_id": int(r["exercise_id"]),
+                    "reps_to_do": int(r["reps_to_do"]),
+                    "is_tracked": _as_bool(r.get("is_tracked")),
+                    "uid": str(i),
+                }
                 for i, (_, r) in enumerate(session_items.iterrows())
             ]
             st.session_state[_SB_SID] = sid
@@ -855,13 +930,14 @@ def tab_session_builder():
     for idx, it in enumerate(items):
         if "uid" not in it:
             it["uid"] = f"legacy_{idx}"
+        it.setdefault("is_tracked", False)
 
     # Show current list
     for i, item in enumerate(items):
         ex = ex_by_id.get(item["exercise_id"])
         label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
 
-        c_name, c_reps, c_up, c_dn, c_rm = st.columns([5, 1.5, 0.5, 0.5, 0.5])
+        c_name, c_reps, c_track, c_up, c_dn, c_rm = st.columns([4, 1.5, 1.6, 0.5, 0.5, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
         new_reps = c_reps.number_input(
             "Reps", min_value=1, max_value=999,
@@ -870,6 +946,12 @@ def tab_session_builder():
             label_visibility="collapsed",
         )
         items[i]["reps_to_do"] = new_reps
+
+        items[i]["is_tracked"] = c_track.checkbox(
+            "Track in history",
+            value=_as_bool(item.get("is_tracked")),
+            key=f"tracked_{_kns}_{item['uid']}",
+        )
 
         if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
             st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i - 1}
@@ -913,7 +995,7 @@ def tab_session_builder():
         if mov_exercises.empty:
             st.warning("No recordings for this movement.")
         else:
-            c_rec, c_rep, c_add = st.columns([5, 1.5, 1])
+            c_rec, c_rep, c_track, c_add = st.columns([4, 1.5, 1.6, 1])
             rec_opts = {
                 recording_label(r): int(r["id"])
                 for _, r in mov_exercises.iterrows()
@@ -931,8 +1013,16 @@ def tab_session_builder():
                 value=chosen_def, key=f"sb_add_reps_{chosen_id}",
                 label_visibility="collapsed",
             )
+            add_tracked = c_track.checkbox(
+                "Track in history", key=f"sb_add_tracked_{chosen_id}",
+            )
             if c_add.button("＋ Add", key="sb_add_btn"):
-                st.session_state[_SB_ITEMS].append({"exercise_id": chosen_id, "reps_to_do": add_reps, "uid": uuid.uuid4().hex[:8]})
+                st.session_state[_SB_ITEMS].append({
+                    "exercise_id": chosen_id,
+                    "reps_to_do": add_reps,
+                    "is_tracked": add_tracked,
+                    "uid": uuid.uuid4().hex[:8],
+                })
                 st.rerun()
 
     # ── Duration estimate ─────────────────────────────────────────────────────
@@ -986,6 +1076,7 @@ def tab_session_builder():
                     "exercise_id":         item["exercise_id"],
                     "position":            pos,
                     "reps_to_do":          item["reps_to_do"],
+                    "is_tracked":          _as_bool(item.get("is_tracked")),
                 }
                 for pos, item in enumerate(items)
             ]
@@ -1234,6 +1325,396 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Movement Types
+#
+# Reference data for the Morshed-selectable-audio feature (Stage A:
+# supabase/migrations/0022_musician_audio_tracks.sql). movement_type/morshed
+# start empty after that migration — this tab is the ONLY place they get
+# populated. Deciding what real movements share a rhythm is a genuine
+# content-curation call for a maintainer; nothing here guesses at it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_movement_types():
+    st.header("Movement Types")
+    st.caption(
+        "The rhythm/category catalog a movement belongs to — pre-curated "
+        "from Sirvan's numbered master recording list (migration 0025), "
+        "numbered to match. Correct Farsi names or add missing types below, "
+        "then assign movements to them. See the Recordings tab for "
+        "morsheds and audio."
+    )
+
+    if st.button("↺ Reload", key="rel_types"):
+        bust_cache()
+
+    # ── Movement types ─────────────────────────────────────────────────────
+    st.subheader("Movement types")
+    types_df = load_movement_types()
+    if not types_df.empty:
+        show = [c for c in ["id", "key", "display_name", "display_name_fa"] if c in types_df.columns]
+        cfg = {
+            "id":              st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "key":             st.column_config.TextColumn("Key ✏️", width=200,
+                                    help="Stable identifier, numbered to match Sirvan's master "
+                                         "recording list — never shown to athletes."),
+            "display_name":    st.column_config.TextColumn("Display name ✏️", width=180),
+            "display_name_fa": st.column_config.TextColumn("Farsi name ✏️", width=180),
+        }
+        edited = st.data_editor(
+            types_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="movtype_ed",
+        )
+        if st.button("💾 Save movement types", key="sv_movtypes"):
+            patches = _changed_rows(types_df, edited, ["key", "display_name", "display_name_fa"])
+            if patches:
+                save_rows("movement_type", patches)
+                st.success(f"Updated {len(patches)} type(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No movement types yet — add the first one below.")
+
+    with st.form("add_movement_type_form", clear_on_submit=True):
+        st.markdown("**Add a movement type**")
+        new_key = st.text_input("Key (e.g. 'sarnavazi')")
+        new_disp = st.text_input("Display name")
+        new_disp_fa = st.text_input("Farsi display name (optional)")
+        if st.form_submit_button("＋ Add type") and new_key.strip() and new_disp.strip():
+            get_client().table("movement_type").insert({
+                "key": new_key.strip(),
+                "display_name": new_disp.strip(),
+                "display_name_fa": new_disp_fa.strip() or None,
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    # ── Assign movements to a type ────────────────────────────────────────
+    st.subheader("Assign movements to a type")
+    st.caption(
+        "The actual content-curation step — deciding which real movements "
+        "share a rhythm. Nothing is pre-filled; assign at whatever pace "
+        "makes sense, the app falls back gracefully for anything left unset."
+    )
+    movements = load_movements()
+    if movements.empty:
+        st.caption("No movements loaded.")
+    elif types_df.empty:
+        st.info("Add at least one movement type above first.")
+    else:
+        type_opts = {"(none)": None}
+        for _, r in types_df.iterrows():
+            type_opts[f"{r['display_name']} ({r['key']})"] = int(r["id"])
+        id_to_label = {v: k for k, v in type_opts.items()}
+
+        show_cols = [c for c in ["id", "name", "title_fa", "type_id"] if c in movements.columns]
+        display_df = movements[show_cols].copy()
+        if "type_id" not in display_df.columns:
+            st.warning("movement.type_id not found — has migration 0022 been applied?")
+        else:
+            display_df["type_label"] = display_df["type_id"].apply(
+                lambda t: id_to_label.get(int(t) if pd.notna(t) else None, "(none)")
+            )
+            cfg = {
+                "id":         st.column_config.NumberColumn("ID", disabled=True, width=55),
+                "name":       st.column_config.TextColumn("Movement", disabled=True, width=200),
+                "title_fa":   st.column_config.TextColumn("Farsi", disabled=True, width=140),
+                "type_label": st.column_config.SelectboxColumn(
+                    "Type ✏️", options=list(type_opts.keys()), width=220),
+            }
+            edit_cols = ["id", "name"] + (["title_fa"] if "title_fa" in display_df.columns else []) + ["type_label"]
+            edited = st.data_editor(
+                display_df[edit_cols].copy(), column_config=cfg,
+                use_container_width=True, hide_index=True,
+                num_rows="fixed", key="movtype_assign_ed",
+            )
+            if st.button("💾 Save assignments", key="sv_movtype_assign"):
+                patches = []
+                for _, erow in edited.iterrows():
+                    mov_id = int(erow["id"])
+                    orig = display_df[display_df["id"] == mov_id].iloc[0].get("type_id")
+                    orig_type_id = int(orig) if pd.notna(orig) else None
+                    new_type_id = type_opts[erow["type_label"]]
+                    if new_type_id != orig_type_id:
+                        patches.append({"id": mov_id, "type_id": new_type_id})
+                if patches:
+                    save_rows("movement", patches)
+                    st.success(f"Updated {len(patches)} movement(s).")
+                    bust_cache()
+                else:
+                    st.info("No changes.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Recordings
+#
+# A recording is one Morshed's take on one movement type — this is what the
+# app resolves at play time based on the athlete's chosen Morshed, instead of
+# a trainer hardcoding a specific recording into a session item.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_audio_tracks():
+    st.header("Recordings")
+    st.caption(
+        "Morsheds, and every recording matched to a movement type. Click a "
+        "row below to load it into the player. Batch-upload new files at "
+        "the bottom."
+    )
+
+    if st.button("↺ Reload", key="rel_tracks"):
+        bust_cache()
+
+    # ── Morsheds ─────────────────────────────────────────────────────────
+    st.subheader("Morsheds")
+    morsheds = load_morsheds()
+    if not morsheds.empty:
+        show = [c for c in ["id", "name", "photo_url"] if c in morsheds.columns]
+        cfg = {
+            "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "name":      st.column_config.TextColumn("Name ✏️", width=200),
+            "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
+        }
+        edited = st.data_editor(
+            morsheds[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="morshed_ed",
+        )
+        if st.button("💾 Save Morsheds", key="sv_morsheds"):
+            patches = _changed_rows(morsheds, edited, ["name", "photo_url"])
+            if patches:
+                save_rows("morshed", patches)
+                st.success(f"Updated {len(patches)} Morshed(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No Morsheds yet — run migration 0022 (it backfills existing "
+                    "exercise.author values) or add one below.")
+
+    with st.form("add_morshed_form", clear_on_submit=True):
+        st.markdown("**Add a Morshed**")
+        new_name = st.text_input("Name")
+        new_photo = st.text_input("Photo URL (optional)")
+        if st.form_submit_button("＋ Add Morshed") and new_name.strip():
+            get_client().table("morshed").insert({
+                "name": new_name.strip(),
+                "photo_url": new_photo.strip() or None,
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    # ── Recordings ─────────────────────────────────────────────────────────
+    st.subheader("Recordings")
+    types_df = load_movement_types()
+    tracks = load_movement_audio_tracks()
+
+    if not types_df.empty:
+        covered = tracks["type_key"].nunique() if (not tracks.empty and "type_key" in tracks.columns) else 0
+        st.caption(f"Movement types with at least one recording: **{covered} / {len(types_df)}**")
+
+    if not tracks.empty:
+        show = [c for c in ["id", "type_name", "morshed_name", "audio_url",
+                             "repetitions_default", "duration_seconds", "audio_anchor_ms"]
+                if c in tracks.columns]
+        cfg = {
+            "id":                  st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "type_name":           st.column_config.TextColumn("Type", disabled=True, width=180),
+            "morshed_name":        st.column_config.TextColumn("Morshed", disabled=True, width=140),
+            "audio_url":           st.column_config.LinkColumn("Audio URL", disabled=True, width=200),
+            "repetitions_default": st.column_config.NumberColumn("Def. reps ✏️", min_value=1, max_value=999, width=90),
+            "duration_seconds":    st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
+            "audio_anchor_ms":     st.column_config.NumberColumn("Anchor (ms) ✏️", width=110),
+        }
+        st.caption("Select a row's checkbox and press Delete (or the toolbar "
+                    "trash icon) to remove a recording — e.g. to clear a "
+                    "wrong one before re-curating it via batch upload below.")
+        edited = st.data_editor(
+            tracks[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="delete", key="track_ed",
+        )
+        deleted_ids = set(tracks["id"]) - set(edited["id"])
+
+        col_save, col_del = st.columns([1, 1])
+        with col_save:
+            if st.button("💾 Save recordings", key="sv_tracks"):
+                patches = _changed_rows(tracks, edited, ["repetitions_default", "audio_anchor_ms"])
+                if patches:
+                    save_rows("movement_audio_track", patches)
+                    st.success(f"Updated {len(patches)} recording(s).")
+                    bust_cache()
+                else:
+                    st.info("No changes.")
+        with col_del:
+            if deleted_ids and st.button(
+                f"🗑️ Delete {len(deleted_ids)} selected recording(s)", key="del_tracks"
+            ):
+                for tid in deleted_ids:
+                    get_client().table("movement_audio_track").delete().eq("id", int(tid)).execute()
+                st.success(f"Deleted {len(deleted_ids)} recording(s).")
+                bust_cache()
+                st.rerun()
+
+        # TODO(preview UX, deferred by user 2026-09): a duplicate read-only
+        # table just for click-to-preview feels wrong — find a better
+        # solution than a second table (same issue at the batch-upload
+        # preview below). Root cause: st.data_editor has no on_select in the
+        # installed Streamlit version (1.58), only st.dataframe does.
+        st.markdown("**Preview**")
+        preview_cols = [c for c in ["type_name", "morshed_name"] if c in tracks.columns]
+        event = st.dataframe(
+            tracks[preview_cols],
+            column_config={
+                "type_name":    st.column_config.TextColumn("Type", width=180),
+                "morshed_name": st.column_config.TextColumn("Morshed", width=140),
+            },
+            use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row", key="track_preview_select",
+        )
+        selected = event.selection.rows if event and event.selection else []
+        if selected:
+            st.audio(tracks.iloc[selected[0]]["audio_url"])
+        else:
+            st.caption("Select a row above to preview it here.")
+    else:
+        st.caption("No recordings yet — batch-upload some below.")
+
+    st.divider()
+
+    # ── Batch upload ───────────────────────────────────────────────────────
+    st.subheader("Batch upload recordings")
+    st.caption(
+        "Drop one or more mp3s. The movement type is guessed from each "
+        "file's own leading track number (e.g. '04 Shena...' → type 04) — "
+        "this only works when the uploaded file is named to match Sirvan's "
+        "master list; older/renamed files can guess wrong, so always check "
+        "the guess (preview below) before inserting."
+    )
+
+    morshed_opts = {r["name"]: int(r["id"]) for _, r in morsheds.iterrows()} if not morsheds.empty else {}
+    if types_df.empty or not morshed_opts:
+        st.info("Add at least one movement type and one Morshed first (above).")
+        return
+
+    batch_morshed_label = st.selectbox(
+        "Morshed (for whole batch)", list(morshed_opts.keys()), key="track_batch_morshed"
+    )
+
+    uploads = st.file_uploader(
+        "Drop MP3 files here", type=["mp3"], accept_multiple_files=True, key="track_batch_uploader",
+    )
+    if not uploads:
+        st.caption("Upload files above to continue.")
+        return
+
+    file_map: dict[str, bytes] = {f.name: f.getvalue() for f in uploads}
+    type_label_by_id = {int(r["id"]): f"{r['display_name']} ({r['key']})" for _, r in types_df.iterrows()}
+    type_id_by_label = {v: k for k, v in type_label_by_id.items()}
+    NO_TYPE = "(none — pick one)"
+
+    if "track_batch_preview" not in st.session_state or set(
+        st.session_state.track_batch_preview["filename"]
+    ) != set(file_map.keys()):
+        rows = []
+        for fname, data in file_map.items():
+            guessed_id = guess_movement_type_id(fname, types_df)
+            duration = duration_from_bytes(data)
+            # Each recording is its own number of reps (e.g. Sirvan's
+            # Sarnavazi = 50 push-ups) — there's no way to know the real
+            # count from the file alone, so default to one rep per minute
+            # of audio as a starting point, not a flat 1 for every file.
+            default_reps = max(1, round(duration / 60)) if duration else 1
+            rows.append({
+                "filename": fname,
+                "type_label": type_label_by_id.get(guessed_id, NO_TYPE),
+                "reps": default_reps,
+                "duration_seconds": duration,
+            })
+        st.session_state.track_batch_preview = pd.DataFrame(rows)
+
+    preview_df = st.session_state.track_batch_preview.copy()
+    cfg = {
+        "filename":         st.column_config.TextColumn("File", disabled=True, width=220),
+        "type_label":       st.column_config.SelectboxColumn(
+            "Movement type ✏️", options=[NO_TYPE] + list(type_id_by_label.keys()), width=240),
+        "reps":             st.column_config.NumberColumn(
+            "Reps ✏️", min_value=1, max_value=999, width=90,
+            help="How many reps this specific recording represents — defaults "
+                 "to one rep per minute of audio; correct it to the real count."),
+        "duration_seconds": st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
+    }
+    edited = st.data_editor(
+        preview_df, column_config=cfg, use_container_width=True, hide_index=True,
+        num_rows="fixed", key="track_batch_ed",
+    )
+
+    if (edited["type_label"] == NO_TYPE).any():
+        st.warning("⚠️ Some rows have no movement type picked — fix them before inserting.")
+
+    # Same reason as the Recordings table above: data_editor can't select,
+    # so a second read-only table drives the preview player.
+    st.markdown("**Preview**")
+    batch_event = st.dataframe(
+        edited[["filename", "type_label"]],
+        column_config={
+            "filename":   st.column_config.TextColumn("File", width=220),
+            "type_label": st.column_config.TextColumn("Movement type", width=240),
+        },
+        use_container_width=True, hide_index=True,
+        on_select="rerun", selection_mode="single-row", key="track_batch_preview_select",
+    )
+    batch_selected = batch_event.selection.rows if batch_event and batch_event.selection else []
+    if batch_selected:
+        fname = edited.iloc[batch_selected[0]]["filename"]
+        st.audio(file_map[fname])
+    else:
+        st.caption("Select a row above to preview it here.")
+
+    if st.button("🚀 Upload to R2 + insert recordings", type="primary", key="track_batch_import_btn"):
+        morshed_id = morshed_opts[batch_morshed_label]
+        progress = st.progress(0)
+        status = st.empty()
+        errors = []
+        for i, (_, row) in enumerate(edited.iterrows()):
+            fname = row["filename"]
+            status.text(f"Importing {fname}…")
+            if row["type_label"] == NO_TYPE:
+                errors.append(f"{fname}: no movement type selected")
+                progress.progress((i + 1) / len(edited))
+                continue
+            type_id = type_id_by_label[row["type_label"]]
+            data = file_map.get(fname, b"")
+            try:
+                slug = slugify(row["type_label"])
+                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{morshed_id}-{slug}.mp3"
+                url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
+                get_client().table("movement_audio_track").insert({
+                    "movement_type_id": type_id,
+                    "morshed_id": morshed_id,
+                    "audio_url": url,
+                    "repetitions_default": int(row["reps"]),
+                    "duration_seconds": int(row["duration_seconds"]) if pd.notna(row["duration_seconds"]) else None,
+                }).execute()
+            except Exception as e:
+                errors.append(f"{fname}: {e}")
+            progress.progress((i + 1) / len(edited))
+
+        status.empty()
+        if errors:
+            st.error("Some files failed:\n" + "\n".join(errors))
+        else:
+            st.success(f"✅ Imported {len(edited)} recording(s).")
+        bust_cache()
+        del st.session_state["track_batch_preview"]
+        st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Tab: Video Upload
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1457,6 +1938,11 @@ def tab_video_upload():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Release Gate
+#
+# Content-integrity check for the audio catalog lives as a standalone script,
+# not here — see scripts/check_session_audio_coverage.py. Run it (or wire it
+# into CI/this tab later) before a release to confirm no session item would
+# resolve to missing audio for any Morshed choice.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def tab_release_gate():
@@ -1826,11 +2312,24 @@ def tab_users():
 
 def main():
     st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
+    # Default tab strip is a single scrollable row — wrap onto multiple rows
+    # instead once the window is too narrow to show every tab at once.
+    st.markdown(
+        """
+        <style>
+        div[data-baseweb="tab-list"] {
+            flex-wrap: wrap;
+            row-gap: 4px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title("🏛️  Pahlevani Admin")
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs([
         "⚙️  Exercises",
         "📋  Sessions",
         "📥  Batch Import",
@@ -1838,6 +2337,8 @@ def main():
         "🔍  Inspector",
         "📸  Movement Media",
         "🎬  Video Upload",
+        "🎙️  Movement Types",
+        "🎵  Recordings",
         "🚦  Release Gate",
         "🧑‍🏫  Trainer Role",
         "🎟️  Invite Codes",
@@ -1850,10 +2351,12 @@ def main():
     with t5: tab_inspector()
     with t6: tab_movement_media()
     with t7: tab_video_upload()
-    with t8: tab_release_gate()
-    with t9: tab_grant_trainer()
-    with t10: tab_invite_codes()
-    with t11: tab_users()
+    with t8: tab_movement_types()
+    with t9: tab_audio_tracks()
+    with t10: tab_release_gate()
+    with t11: tab_grant_trainer()
+    with t12: tab_invite_codes()
+    with t13: tab_users()
 
 
 if __name__ == "__main__":

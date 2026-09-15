@@ -1,15 +1,43 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+
+/// Substitutes a resolved recording's audio-shaped fields onto [base] —
+/// everything else (name, media, description...) stays the exercise's own.
+/// Kept here rather than as an Exercise.copyWith so the training_session
+/// domain entity doesn't need to know about the audio_catalog module; only
+/// this presentation-layer cubit depends on both.
+Exercise _withResolvedAudio(Exercise base, MovementAudioTrack track) =>
+    Exercise(
+      id: base.id,
+      movementId: base.movementId,
+      name: base.name,
+      titleFa: base.titleFa,
+      gloss: base.gloss,
+      author: base.author,
+      type: base.type,
+      audioFileUrl: track.audioUrl,
+      repetitionsDefault: track.repetitionsDefault,
+      durationSeconds: track.durationSeconds,
+      media: base.media,
+      description: base.description,
+      videoUrl: base.videoUrl,
+      audioAnchorMs: track.audioAnchorMs,
+      movementTypeId: base.movementTypeId,
+    );
 
 /// State for the audio player.
 class AudioPlayerState {
@@ -111,6 +139,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final AudioPlayerService _audioService;
   final DownloadRepository _downloadRepo;
   final TrainingSessionRepository _sessionRepo;
+  final AudioCatalogRepository _audioCatalogRepo;
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
 
@@ -136,11 +165,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     required AudioPlayerService audioPlayerService,
     required DownloadRepository downloadRepository,
     required TrainingSessionRepository sessionRepository,
+    required AudioCatalogRepository audioCatalogRepository,
     required PlayerNotificationService notificationService,
   })  : _trainingSession = trainingSession,
         _audioService = audioPlayerService,
         _downloadRepo = downloadRepository,
         _sessionRepo = sessionRepository,
+        _audioCatalogRepo = audioCatalogRepository,
         _notification = notificationService,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
@@ -185,6 +216,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       ? _itemDetails[index].exercise
       : null;
 
+  /// The full item list for the loaded session (item + exercise), for
+  /// consumers that need more than a single track — e.g. detecting tracked
+  /// movement types for the post-session history prompt.
+  List<ItemDetail> get itemDetails => List.unmodifiable(_itemDetails);
+
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
@@ -213,9 +249,35 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final sessionId = _trainingSession.id;
       final items = snap.itemsBySessionId[sessionId] ?? [];
 
+      // Resolved once per load — an athlete's chosen Morshed takes effect
+      // the next time they open a session, not live mid-playback (there's
+      // no requirement for the latter, and it would complicate the already
+      // subtle position/duration state below for no real benefit).
+      final audioTracks = await _audioCatalogRepo.getMovementAudioTracks();
+      final selectedMorshedId = await _audioCatalogRepo.getSelectedMorshedId();
+
       for (final item in items) {
-        final exercise = snap.exercisesById[item.exerciseId];
-        if (exercise == null) continue;
+        final rawExercise = snap.exercisesById[item.exerciseId];
+        if (rawExercise == null) continue;
+
+        // Falls back to the exercise's own (legacy) audio fields whenever
+        // the movement hasn't been curated with a type yet, or nothing has
+        // been recorded for it — see resolveAudioTrack's doc comment.
+        final resolvedTrack = resolveAudioTrack(
+          movementTypeId: rawExercise.movementTypeId,
+          chosenMorshedId: selectedMorshedId,
+          availableTracks: audioTracks,
+        );
+        final exercise = resolvedTrack == null
+            ? rawExercise
+            : _withResolvedAudio(rawExercise, resolvedTrack);
+        AppLogger.d(
+          'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
+          'movementTypeId=${rawExercise.movementTypeId} '
+          'chosenMorshedId=$selectedMorshedId '
+          'resolvedTrack=${resolvedTrack == null ? 'null (legacy fallback)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
+          'finalAudioUrl=${exercise.audioFileUrl}',
+        );
 
         final repsToDo = item.prescription is RepsPresc
             ? (item.prescription as RepsPresc).count

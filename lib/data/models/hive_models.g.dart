@@ -96,13 +96,14 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       videoUrl: fields[15] as String?,
       audioAnchorMs: fields[16] as int?,
       videoAnchorMs: fields[17] as int?,
+      movementTypeId: fields[18] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(18)
+      ..writeByte(19)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -138,7 +139,9 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(16)
       ..write(obj.audioAnchorMs)
       ..writeByte(17)
-      ..write(obj.videoAnchorMs);
+      ..write(obj.videoAnchorMs)
+      ..writeByte(18)
+      ..write(obj.movementTypeId);
   }
 
   @override
@@ -168,13 +171,14 @@ class HiveTrainingSessionItemAdapter
       itemId: fields[1] as int,
       position: fields[2] as int,
       repsToDo: fields[3] as int,
+      isTracked: fields[4] == null ? false : fields[4] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSessionItem obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.trainingSessionId)
       ..writeByte(1)
@@ -182,7 +186,9 @@ class HiveTrainingSessionItemAdapter
       ..writeByte(2)
       ..write(obj.position)
       ..writeByte(3)
-      ..write(obj.repsToDo);
+      ..write(obj.repsToDo)
+      ..writeByte(4)
+      ..write(obj.isTracked);
   }
 
   @override
@@ -192,6 +198,56 @@ class HiveTrainingSessionItemAdapter
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is HiveTrainingSessionItemAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class HiveSessionCompletionRecordAdapter
+    extends TypeAdapter<HiveSessionCompletionRecord> {
+  @override
+  final int typeId = 3;
+
+  @override
+  HiveSessionCompletionRecord read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return HiveSessionCompletionRecord(
+      id: fields[0] as String,
+      sessionId: fields[1] as int,
+      sessionTitle: fields[2] as String,
+      completedAtMillis: fields[3] as int,
+      movementCounts: (fields[4] as Map).cast<String, int>(),
+      movementNames: (fields[5] as Map).cast<String, String>(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, HiveSessionCompletionRecord obj) {
+    writer
+      ..writeByte(6)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.sessionId)
+      ..writeByte(2)
+      ..write(obj.sessionTitle)
+      ..writeByte(3)
+      ..write(obj.completedAtMillis)
+      ..writeByte(4)
+      ..write(obj.movementCounts)
+      ..writeByte(5)
+      ..write(obj.movementNames);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HiveSessionCompletionRecordAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

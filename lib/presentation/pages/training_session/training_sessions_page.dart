@@ -14,7 +14,11 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
+import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
+import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_page.dart';
 import 'package:pahlevani/presentation/pages/trainer/assign_session_page.dart';
+import 'package:pahlevani/presentation/pages/tracking/training_history_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/difficulty_pips.dart';
@@ -69,6 +73,34 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     await context
         .read<TrainingSessionCubit>()
         .fetchTrainingSessions(forceRefresh: true);
+  }
+
+  void _openHistory(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: getIt<TrainingHistoryCubit>(),
+          child: const TrainingHistoryPage(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openMorshedPicker(BuildContext context) async {
+    final cubit = context.read<TrainingSessionCubit>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: getIt<AudioCatalogCubit>(),
+          child: const ChooseMorshedPage(),
+        ),
+      ),
+    );
+    // Session-list duration estimates depend on the chosen Morshed — refresh
+    // now rather than waiting for the next cold start.
+    unawaited(cubit.refreshAudioSelection());
   }
 
   Future<void> _openPlayer(TrainingSession session) async {
@@ -264,6 +296,8 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                 _Header(
                   refreshing: isLoading,
                   onRefresh: _refresh,
+                  onHistoryTap: () => _openHistory(context),
+                  onMorshedTap: () => _openMorshedPicker(context),
                 ),
                 if (isLoading && sessions.isEmpty)
                   const Expanded(
@@ -300,10 +334,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
 // Header
 // ─────────────────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.refreshing, required this.onRefresh});
+  const _Header({
+    required this.refreshing,
+    required this.onRefresh,
+    required this.onHistoryTap,
+    required this.onMorshedTap,
+  });
 
   final bool refreshing;
   final VoidCallback onRefresh;
+  final VoidCallback onHistoryTap;
+  final VoidCallback onMorshedTap;
 
   @override
   Widget build(BuildContext context) {
@@ -356,6 +397,8 @@ class _Header extends StatelessWidget {
                   onToggleTheme: () =>
                       settingsContext.read<SettingsCubit>().toggleTheme(),
                   onAccountTap: () => _handleAccountTap(authContext, authState),
+                  onHistoryTap: onHistoryTap,
+                  onMorshedTap: onMorshedTap,
                 ),
               ),
             ),
@@ -430,7 +473,7 @@ void _showAccountSheet(BuildContext context, AppUser user) {
   );
 }
 
-enum _MenuAction { refresh, toggleTheme, account }
+enum _MenuAction { refresh, toggleTheme, account, history, morshed }
 
 /// Consolidated "..." menu — refresh, theme toggle, and account/login all
 /// live here instead of as separate always-visible icon buttons, so the
@@ -442,6 +485,8 @@ class _OverflowMenu extends StatelessWidget {
     required this.onRefresh,
     required this.onToggleTheme,
     required this.onAccountTap,
+    required this.onHistoryTap,
+    required this.onMorshedTap,
   });
 
   final ThemeMode themeMode;
@@ -449,6 +494,8 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onRefresh;
   final VoidCallback onToggleTheme;
   final VoidCallback onAccountTap;
+  final VoidCallback onHistoryTap;
+  final VoidCallback onMorshedTap;
 
   @override
   Widget build(BuildContext context) {
@@ -474,9 +521,29 @@ class _OverflowMenu extends StatelessWidget {
             onToggleTheme();
           case _MenuAction.account:
             onAccountTap();
+          case _MenuAction.history:
+            onHistoryTap();
+          case _MenuAction.morshed:
+            onMorshedTap();
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _MenuAction.history,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.calendar_month_rounded),
+            title: Text('Training history'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _MenuAction.morshed,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.mic_rounded),
+            title: Text('Choose your Morshed'),
+          ),
+        ),
         const PopupMenuItem(
           value: _MenuAction.refresh,
           child: ListTile(

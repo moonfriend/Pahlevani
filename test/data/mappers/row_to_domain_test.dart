@@ -16,7 +16,7 @@ void main() {
       int? movementId,
       String? name,
       String? author,
-      String? url,
+      String? audioUrl,
       int repetitions = 3,
       String? mediaType,
       String? mediaSrc,
@@ -28,7 +28,7 @@ void main() {
           movementId: movementId,
           name: name,
           author: author,
-          url: url,
+          audioUrl: audioUrl,
           repetitions: repetitions,
           mediaType: mediaType,
           mediaSrc: mediaSrc,
@@ -46,6 +46,7 @@ void main() {
       String? mediaSrc,
       String? mediaPoster,
       int? videoAnchorMs,
+      int? typeId,
     }) =>
         MovementRow(
           id: id,
@@ -57,6 +58,7 @@ void main() {
           mediaSrc: mediaSrc,
           mediaPoster: mediaPoster,
           videoAnchorMs: videoAnchorMs,
+          typeId: typeId,
         );
 
     test('uses movement name when movement is present', () {
@@ -82,7 +84,7 @@ void main() {
         baseRow(
             id: 42,
             author: 'Morshed Ali',
-            url: 'https://audio.mp3',
+            audioUrl: 'https://audio.mp3',
             repetitions: 5),
       );
       expect(ex.id, 42);
@@ -158,6 +160,20 @@ void main() {
         movement: baseMovement(id: 55),
       );
       expect(ex.movementId, 55);
+    });
+
+    test('movementTypeId comes from movement.type_id when movement present',
+        () {
+      final ex = mapExercise(
+        baseRow(),
+        movement: baseMovement(typeId: 4),
+      );
+      expect(ex.movementTypeId, 4);
+    });
+
+    test('movementTypeId is null when there is no movement (uncurated)', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.movementTypeId, isNull);
     });
 
     test('description and videoUrl come from movement_info when present', () {
@@ -237,12 +253,14 @@ void main() {
       int exerciseId = 10,
       int position = 0,
       int repsToDo = 3,
+      bool isTracked = false,
     }) =>
         TrainingItemRow(
           trainingSessionId: sessionId,
           exerciseId: exerciseId,
           position: position,
           repsToDo: repsToDo,
+          isTracked: isTracked,
         );
 
     test('composes id as sessionId * 10000 + position', () {
@@ -279,6 +297,16 @@ void main() {
       final it = mapItem(item(sessionId: 2, position: 0));
       expect(it.id, 20000);
       expect(it.id, isNot(it.sessionId));
+    });
+
+    test('maps isTracked from the row', () {
+      final it = mapItem(item(isTracked: true));
+      expect(it.isTracked, isTrue);
+    });
+
+    test('isTracked defaults to false when the row has none', () {
+      final it = mapItem(item());
+      expect(it.isTracked, isFalse);
     });
   });
 }

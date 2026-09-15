@@ -13,6 +13,11 @@ class MovementRow {
   /// no anchor set.
   final int? videoAnchorMs;
 
+  /// FK into movement_type — null until a maintainer curates it via
+  /// admin.py (see migration 0022_musician_audio_tracks.sql). Distinct from
+  /// the legacy, unused [type] free-text field above.
+  final int? typeId;
+
   MovementRow({
     required this.id,
     required this.name,
@@ -23,6 +28,7 @@ class MovementRow {
     this.mediaSrc,
     this.mediaPoster,
     this.videoAnchorMs,
+    this.typeId,
   });
 
   factory MovementRow.fromJson(Map<String, Object?> m) => MovementRow(
@@ -35,5 +41,6 @@ class MovementRow {
         mediaSrc: m['media_src'] as String?,
         mediaPoster: m['media_poster'] as String?,
         videoAnchorMs: (m['video_anchor_ms'] as num?)?.toInt(),
+        typeId: (m['type_id'] as num?)?.toInt(),
       );
 }

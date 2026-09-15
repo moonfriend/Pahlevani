@@ -26,7 +26,12 @@ class TrainingSessionLocalDatabase {
   // which throws instead of defaulting. Confirmed via a real crash:
   // "type 'String' is not a subtype of type 'bool?'" reading fields[7] as
   // isPublic. The version bump forces exactly the wipe this needs.
-  static const int _cacheVersion = 3;
+  //
+  // 4: HiveTrainingSessionItem field 4 changed shape — briefly a nullable
+  // String (trackedMovementType), now a non-nullable bool (isTracked). A
+  // box written under the brief String-typed version would otherwise throw
+  // the same class of crash as above.
+  static const int _cacheVersion = 4;
   static const String _cacheVersionKey = 'cache_version';
 
   /// Initialize Hive and register adapters.

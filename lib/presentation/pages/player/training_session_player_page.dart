@@ -14,16 +14,22 @@ import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
+import 'package:pahlevani/presentation/widgets/tracking/movement_count_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -49,6 +55,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       audioPlayerService: getIt<AudioPlayerService>(),
       downloadRepository: getIt<DownloadRepository>(),
       sessionRepository: getIt<TrainingSessionRepository>(),
+      audioCatalogRepository: getIt<AudioCatalogRepository>(),
       notificationService: getIt<PlayerNotificationService>(),
     );
     _cubit.loadTracks();
@@ -64,6 +71,30 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     super.dispose();
   }
 
+  /// Records this play-through in local history — always, so the calendar
+  /// view reflects every completed session. If the session contains any
+  /// trainer-flagged movement types, first asks the user to confirm/adjust
+  /// the counts (prefilled with the programmed totals); a dismissed dialog
+  /// still records the prefilled defaults rather than dropping them.
+  Future<void> _handleSessionFinished(BuildContext context) async {
+    final defaults = detectTrackedMovements(_cubit.itemDetails);
+    List<TrackedMovementCount> counts = defaults;
+    if (defaults.isNotEmpty && mounted) {
+      final edited =
+          await showMovementCountDialog(context, defaultCounts: defaults);
+      counts = edited ?? defaults;
+    }
+    await getIt<TrainingHistoryRepository>().recordCompletion(
+      SessionCompletionRecord(
+        id: '${widget.trainingSession.id}-${DateTime.now().millisecondsSinceEpoch}',
+        sessionId: widget.trainingSession.id,
+        sessionTitle: widget.trainingSession.title,
+        completedAt: DateTime.now(),
+        movementCounts: counts,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
@@ -76,8 +107,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
           listenWhen: (prev, cur) =>
               prev.playingIndex != cur.playingIndex ||
-              (prev.tracks.isEmpty && cur.tracks.isNotEmpty),
+              (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
+              (!prev.isFinished && cur.isFinished),
           listener: (context, state) {
+            if (state.isFinished) {
+              unawaited(_handleSessionFinished(context));
+            }
             _trackListKey.currentState?.scrollToActive(state.playingIndex);
             // Precache each image URL at most once per player session.
             // Previously this looped all tracks on every index change, causing
@@ -518,8 +553,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
         //    concept here; just seek to wherever the audio already is and
         //    play immediately, via the same math discrete resyncs use.
         if (widget.resyncPositionMs == 0) {
-          final plan =
-              computeVideoSyncPlan(widget.startOffsetMs, durationMs);
+          final plan = computeVideoSyncPlan(widget.startOffsetMs, durationMs);
           AppLogger.d('video sync (cold start): startOffsetMs='
               '${widget.startOffsetMs} videoDurationMs=$durationMs '
               '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
@@ -528,8 +562,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
             if (!mounted) return;
           }
           if (plan.delayMs != null) {
-            unawaited(
-                Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+            unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
               if (!mounted) return;
               _syncPending = false;
               if (widget.isPlaying) unawaited(_controller.play());

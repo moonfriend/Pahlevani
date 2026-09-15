@@ -1,6 +1,9 @@
 import 'package:hive/hive.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
+import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 
 part 'hive_models.g.dart';
 
@@ -177,6 +180,12 @@ class HiveExercise extends HiveObject {
   @HiveField(17)
   final int? videoAnchorMs;
 
+  // Nullable so the adapter safely reads null for boxes written before this
+  // field existed (musician-audio-catalog feature — see migration
+  // 0022_musician_audio_tracks.sql).
+  @HiveField(18)
+  final int? movementTypeId;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -196,6 +205,7 @@ class HiveExercise extends HiveObject {
     this.videoUrl,
     this.audioAnchorMs,
     this.videoAnchorMs,
+    this.movementTypeId,
   });
 
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
@@ -216,6 +226,7 @@ class HiveExercise extends HiveObject {
         videoUrl: e.videoUrl,
         audioAnchorMs: e.audioAnchorMs,
         videoAnchorMs: e.media.videoAnchorMs,
+        movementTypeId: e.movementTypeId,
       );
 
   Exercise toDomain() => Exercise(
@@ -232,6 +243,7 @@ class HiveExercise extends HiveObject {
         description: description,
         videoUrl: videoUrl,
         audioAnchorMs: audioAnchorMs,
+        movementTypeId: movementTypeId,
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,
@@ -252,11 +264,19 @@ class HiveTrainingSessionItem extends HiveObject {
   @HiveField(3)
   final int repsToDo;
 
+  // Trainer-set "count this item's reps toward movement history" toggle —
+  // see migration 0017. Defaults false so boxes written before this field
+  // existed read correctly (Hive fills a bool field's absence with its
+  // default, not null).
+  @HiveField(4, defaultValue: false)
+  final bool isTracked;
+
   HiveTrainingSessionItem({
     required this.trainingSessionId,
     required this.itemId,
     required this.position,
     required this.repsToDo,
+    this.isTracked = false,
   });
 
   factory HiveTrainingSessionItem.fromJson(Map<String, dynamic> json) =>
@@ -265,6 +285,7 @@ class HiveTrainingSessionItem extends HiveObject {
         itemId: json['exercise_id'] as int,
         position: json['position'] as int,
         repsToDo: json['reps_to_do'] as int,
+        isTracked: json['is_tracked'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -272,5 +293,75 @@ class HiveTrainingSessionItem extends HiveObject {
         'exercise_id': itemId,
         'position': position,
         'reps_to_do': repsToDo,
+        'is_tracked': isTracked,
       };
+}
+
+/// One completed play-through of a training session, recorded locally right
+/// after the player's completion screen appears. `movementCounts`/
+/// `movementNames` only hold entries for movements actually tracked in
+/// that session, keyed by [MovementKey.value].
+@HiveType(typeId: 3)
+class HiveSessionCompletionRecord extends HiveObject {
+  @HiveField(0)
+  final String id;
+
+  @HiveField(1)
+  final int sessionId;
+
+  // Snapshot at completion time — the session itself may be edited or
+  // deleted later, but the history entry should still read sensibly.
+  @HiveField(2)
+  final String sessionTitle;
+
+  @HiveField(3)
+  final int completedAtMillis;
+
+  @HiveField(4)
+  final Map<String, int> movementCounts;
+
+  // Snapshot of each movement's display name at record time — a parallel
+  // map (rather than a nested object) so this stays a plain Hive-friendly
+  // Map<String, primitive> like every other field here.
+  @HiveField(5)
+  final Map<String, String> movementNames;
+
+  HiveSessionCompletionRecord({
+    required this.id,
+    required this.sessionId,
+    required this.sessionTitle,
+    required this.completedAtMillis,
+    required this.movementCounts,
+    required this.movementNames,
+  });
+
+  factory HiveSessionCompletionRecord.fromDomain(SessionCompletionRecord r) =>
+      HiveSessionCompletionRecord(
+        id: r.id,
+        sessionId: r.sessionId,
+        sessionTitle: r.sessionTitle,
+        completedAtMillis: r.completedAt.millisecondsSinceEpoch,
+        movementCounts: {
+          for (final entry in r.movementCounts) entry.key.value: entry.count,
+        },
+        movementNames: {
+          for (final entry in r.movementCounts)
+            entry.key.value: entry.displayName,
+        },
+      );
+
+  SessionCompletionRecord toDomain() => SessionCompletionRecord(
+        id: id,
+        sessionId: sessionId,
+        sessionTitle: sessionTitle,
+        completedAt: DateTime.fromMillisecondsSinceEpoch(completedAtMillis),
+        movementCounts: [
+          for (final entry in movementCounts.entries)
+            TrackedMovementCount(
+              key: MovementKey.fromValue(entry.key),
+              displayName: movementNames[entry.key] ?? entry.key,
+              count: entry.value,
+            ),
+        ],
+      );
 }

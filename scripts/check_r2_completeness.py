@@ -47,7 +47,7 @@ HOW TO GET R2 CREDENTIALS
 WHAT IT CHECKS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    exercise.url         → audio files  (R2 bucket folder: "Sirvan/")
+    exercise.audio_url   → audio files  (R2 bucket folder: "Sirvan/")
     movement.media_src   → image files  (R2 bucket folder: "movement_images/")
 
 R2 files were uploaded manually into flat folders, not mirroring the Supabase
@@ -140,18 +140,18 @@ def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
     audio: dict[str, str] = {}
     images: dict[str, str] = {}
 
-    # Audio: exercise.url
+    # Audio: exercise.audio_url
     page, page_size = 0, 1000
     while True:
         rows = (
             client.table("exercise")
-            .select("id, url")
-            .not_.is_("url", "null")
+            .select("id, audio_url")
+            .not_.is_("audio_url", "null")
             .range(page * page_size, (page + 1) * page_size - 1)
             .execute()
         ).data
         for row in rows:
-            url = (row.get("url") or "").strip()
+            url = (row.get("audio_url") or "").strip()
             name = _filename_from_url(url)
             if name:
                 audio[name] = url
@@ -248,7 +248,7 @@ def main() -> None:
           f"{len(r2_images)} under '{R2_IMAGE_PREFIX}'.")
 
     total_missing = 0
-    total_missing += report("AUDIO (exercise.url)", audio, r2_audio)
+    total_missing += report("AUDIO (exercise.audio_url)", audio, r2_audio)
     total_missing += report("IMAGES (movement.media_src)", images, r2_images)
 
     print(f"\n{'═' * 60}")

@@ -22,6 +22,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
@@ -31,6 +32,7 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
+import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
@@ -139,6 +141,7 @@ void _registerFakes(DomainSnapshot snapshot,
       FakeTrainingSessionRepository(snapshot));
   getIt.registerSingleton<PlayerNotificationService>(
       FakePlayerNotificationService());
+  getIt.registerSingleton<AudioCatalogRepository>(FakeAudioCatalogRepository());
 }
 
 Widget _buildPage(DomainSnapshot snapshot) {
@@ -146,6 +149,7 @@ Widget _buildPage(DomainSnapshot snapshot) {
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
       downloadRepository: _VideoReadyDownloadRepo(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),

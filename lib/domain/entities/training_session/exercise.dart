@@ -39,6 +39,13 @@ class Exercise {
   /// for video/audio sync. Null = no anchor set.
   final int? audioAnchorMs;
 
+  /// The movement's rhythm/category (movement.type_id) — null until a
+  /// maintainer curates it via admin.py. Used to resolve a
+  /// MovementAudioTrack for the athlete's chosen Morshed; the legacy
+  /// [audioFileUrl] above stays the fallback for as long as that resolution
+  /// comes up empty (uncurated movement, or no recordings yet).
+  final int? movementTypeId;
+
   const Exercise({
     required this.id,
     this.movementId,
@@ -54,5 +61,6 @@ class Exercise {
     this.description,
     this.videoUrl,
     this.audioAnchorMs,
+    this.movementTypeId,
   });
 }

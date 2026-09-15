@@ -112,6 +112,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                     exerciseId: i.itemId,
                     position: i.position,
                     prescription: RepsPresc(i.repsToDo),
+                    isTracked: i.isTracked,
                   ))
               .toList()
             ..sort((a, b) => a.position.compareTo(b.position));
@@ -143,6 +144,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 exerciseId: i.itemId,
                 position: i.position,
                 prescription: RepsPresc(i.repsToDo),
+                isTracked: i.isTracked,
               ))
           .toList(),
     );
@@ -291,6 +293,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         'exercise_id': detail.item.exerciseId,
         'position': position,
         'reps_to_do': reps,
+        'is_tracked': detail.item.isTracked,
       };
     }).toList();
     await remoteDataSource.replaceTrainingSessionItems(owned.id, itemRows);
@@ -308,6 +311,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
                 exerciseId: r['exercise_id'] as int,
                 position: r['position'] as int,
                 prescription: RepsPresc(r['reps_to_do'] as int),
+                isTracked: r['is_tracked'] as bool? ?? false,
               ))
           .toList();
     }
@@ -366,6 +370,7 @@ class TrainingSessionRepositoryImpl implements TrainingSessionRepository {
         itemId: detail.item.exerciseId,
         position: position,
         repsToDo: reps,
+        isTracked: detail.item.isTracked,
       );
     }).toList();
     await itemBox.addAll(hiveItems);

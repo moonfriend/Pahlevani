@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -26,6 +27,7 @@ import 'package:pahlevani/main.dart' show PahlevaniApp;
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 
+import '../test/fakes/fake_audio_catalog_repository.dart';
 import '../test/fakes/fake_audio_player_service.dart';
 import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
@@ -60,10 +62,13 @@ void main() {
       return lastFakeAudioService!;
     });
     // Factory: each pumpWidget gets a fresh cubit (old one closes on widget dispose).
+    getIt.registerLazySingleton<AudioCatalogRepository>(
+        () => FakeAudioCatalogRepository());
     getIt.registerFactory<TrainingSessionCubit>(
       () => TrainingSessionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         downloadRepository: getIt<DownloadRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
       ),
     );
     getIt.registerLazySingleton<VersionGateRepository>(

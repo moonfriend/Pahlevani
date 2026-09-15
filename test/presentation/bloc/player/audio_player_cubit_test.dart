@@ -14,6 +14,7 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_player_notification_service.dart';
 
@@ -203,6 +204,7 @@ TrainingSessionPlayerCubit _makeCubit(
   DomainSnapshot snapshot, {
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
+  FakeAudioCatalogRepository? audioCatalogRepo,
 }) {
   final session = snapshot.sessionsById.values.first;
   return TrainingSessionPlayerCubit(
@@ -210,6 +212,7 @@ TrainingSessionPlayerCubit _makeCubit(
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
     downloadRepository: downloadRepo ?? _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
+    audioCatalogRepository: audioCatalogRepo ?? FakeAudioCatalogRepository(),
     notificationService: FakePlayerNotificationService(),
   );
 }
@@ -816,6 +819,7 @@ void main() {
         audioPlayerService: audioService,
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
         notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
@@ -1337,6 +1341,7 @@ void main() {
         audioPlayerService: FakeAudioPlayerService(),
         downloadRepository: downloadRepo,
         sessionRepository: sessionRepo,
+        audioCatalogRepository: FakeAudioCatalogRepository(),
         notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
@@ -1380,6 +1385,7 @@ void main() {
         audioPlayerService: FakeAudioPlayerService(),
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
         notificationService: notification,
       );
       return (cubit, notification);

@@ -17,6 +17,7 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_connectivity_service.dart';
 
@@ -155,6 +156,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -186,6 +188,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -205,6 +208,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -237,6 +241,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -262,6 +267,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -288,6 +294,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -310,6 +317,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
@@ -331,6 +339,7 @@ void main() {
     final cubit = TrainingSessionCubit(
       sessionRepository: _StubRepository(_snapshot),
       downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     );
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);

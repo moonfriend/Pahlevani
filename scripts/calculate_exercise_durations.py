@@ -38,7 +38,7 @@ HEADERS = {
 
 
 def fetch_exercises() -> list[dict]:
-    url = f"{SUPABASE_URL}/rest/v1/exercise?select=id,url&url=not.is.null"
+    url = f"{SUPABASE_URL}/rest/v1/exercise?select=id,audio_url&audio_url=not.is.null"
     resp = requests.get(url, headers=HEADERS, timeout=10)
     resp.raise_for_status()
     return resp.json()
@@ -75,7 +75,7 @@ def main():
     failed = []
     for ex in exercises:
         ex_id = ex["id"]
-        url = ex["url"]
+        url = ex["audio_url"]
         print(f"  Probing exercise {ex_id}: {url[:60]}...", file=sys.stderr)
         duration = probe_duration(url)
         if duration is None:

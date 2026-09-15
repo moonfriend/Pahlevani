@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -11,6 +13,8 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+
+import '../../../fakes/fake_audio_catalog_repository.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -168,9 +172,12 @@ class _FakeDownloadRepository implements DownloadRepository {
       false;
 }
 
-TrainingSessionCubit _makeCubit(_SpyRepository repo) => TrainingSessionCubit(
+TrainingSessionCubit _makeCubit(_SpyRepository repo,
+        {FakeAudioCatalogRepository? audioCatalogRepo}) =>
+    TrainingSessionCubit(
       sessionRepository: repo,
       downloadRepository: _FakeDownloadRepository(),
+      audioCatalogRepository: audioCatalogRepo ?? FakeAudioCatalogRepository(),
     );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -296,6 +303,7 @@ void main() {
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: _FakeDownloadRepository(),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
       );
       addTearDown(cubit.close);
 
@@ -315,6 +323,7 @@ void main() {
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: downloadRepo,
+        audioCatalogRepository: FakeAudioCatalogRepository(),
       );
       addTearDown(cubit.close);
 
@@ -406,6 +415,133 @@ void main() {
     });
   });
 
+  group('buildTrainingSessionsUiModel() — duration estimate', () {
+    test(
+        'resolves duration through the chosen Morshed\'s recording, not the '
+        'raw exercise fields (regression: previously ignored the audio '
+        'catalog entirely, wildly overestimating once a recording\'s real '
+        'rep count diverged from the exercise\'s own stale legacy fields)',
+        () async {
+      const movementTypeId = 5;
+      const chosenMorshedId = 2;
+      const exercise = Exercise(
+        id: 1,
+        name: 'Shena Shalaghi',
+        // Stale legacy values, as if never updated since the old
+        // one-rep-per-recording convention.
+        durationSeconds: 100,
+        repetitionsDefault: 1,
+        movementTypeId: movementTypeId,
+      );
+      // The properly-curated recording: 50 reps really take 300s.
+      const track = MovementAudioTrack(
+        id: 1,
+        movementTypeId: movementTypeId,
+        morshedId: chosenMorshedId,
+        audioUrl: 'https://example.com/shena.mp3',
+        repetitionsDefault: 50,
+        durationSeconds: 300,
+      );
+      final session = _session(1);
+      final snapshot = DomainSnapshot(
+        sessionsById: {1: session},
+        itemsBySessionId: {
+          1: [
+            const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 1,
+              position: 0,
+              // The trainer's corrected count, matching the real recording.
+              prescription: RepsPresc(50),
+            ),
+          ],
+        },
+        exercisesById: {1: exercise},
+      );
+      final repo = _SpyRepository(snapshot);
+      final cubit = _makeCubit(
+        repo,
+        audioCatalogRepo: FakeAudioCatalogRepository(
+          tracks: const [track],
+          selectedMorshedId: chosenMorshedId,
+        ),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.initialize();
+
+      final loaded = cubit.state as TrainingSessionLoaded;
+      // Correct: 300s / 50 reps * 50 reps = 300s.
+      // Old buggy result would have been 100s / 1 rep * 50 reps = 5000s.
+      expect(loaded.uiModel.sessionDurations[1], 300);
+    });
+
+    test('refreshAudioSelection() re-resolves after the Morshed changes',
+        () async {
+      const movementTypeId = 5;
+      const exercise = Exercise(
+        id: 1,
+        name: 'Shena Shalaghi',
+        durationSeconds: 100,
+        repetitionsDefault: 1,
+        movementTypeId: movementTypeId,
+      );
+      const trackA = MovementAudioTrack(
+        id: 1,
+        movementTypeId: movementTypeId,
+        morshedId: 1,
+        audioUrl: 'https://example.com/a.mp3',
+        repetitionsDefault: 50,
+        durationSeconds: 300,
+      );
+      const trackB = MovementAudioTrack(
+        id: 2,
+        movementTypeId: movementTypeId,
+        morshedId: 2,
+        audioUrl: 'https://example.com/b.mp3',
+        repetitionsDefault: 25,
+        durationSeconds: 100,
+      );
+      final session = _session(1);
+      final snapshot = DomainSnapshot(
+        sessionsById: {1: session},
+        itemsBySessionId: {
+          1: [
+            const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 1,
+              position: 0,
+              prescription: RepsPresc(50),
+            ),
+          ],
+        },
+        exercisesById: {1: exercise},
+      );
+      final repo = _SpyRepository(snapshot);
+      final audioRepo = FakeAudioCatalogRepository(
+        tracks: const [trackA, trackB],
+        selectedMorshedId: 1,
+      );
+      final cubit = _makeCubit(repo, audioCatalogRepo: audioRepo);
+      addTearDown(cubit.close);
+
+      await cubit.initialize();
+      expect((cubit.state as TrainingSessionLoaded).uiModel.sessionDurations[1],
+          300);
+
+      // Athlete switches Morshed via the picker; the repository's
+      // persisted selection changes, then the page calls this.
+      audioRepo.selectedMorshedId = 2;
+      await cubit.refreshAudioSelection();
+
+      // 100s / 25 reps * 50 reps = 200s.
+      expect((cubit.state as TrainingSessionLoaded).uiModel.sessionDurations[1],
+          200);
+    });
+  });
+
   group('downloadTrainingSession()', () {
     test('emits Downloading state with progress 0 when download starts',
         () async {
@@ -419,6 +555,7 @@ void main() {
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: downloadRepo,
+        audioCatalogRepository: FakeAudioCatalogRepository(),
       );
       // Close cubit first so its subscription is cancelled before controller close
       addTearDown(() async {
@@ -446,6 +583,7 @@ void main() {
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: downloadRepo,
+        audioCatalogRepository: FakeAudioCatalogRepository(),
       );
       addTearDown(() async {
         await cubit.close();
@@ -473,6 +611,7 @@ void main() {
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: downloadRepo,
+        audioCatalogRepository: FakeAudioCatalogRepository(),
       );
       addTearDown(cubit.close);
 

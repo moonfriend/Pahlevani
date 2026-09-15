@@ -23,13 +23,14 @@ Exercise mapExercise(
       titleFa: movement?.titleFa ?? r.titleFa,
       gloss: movement?.gloss ?? r.gloss,
       author: r.author,
-      type: movement?.type ?? r.type,
-      audioFileUrl: r.url,
+      type: movement?.type,
+      audioFileUrl: r.audioUrl,
       repetitionsDefault: r.repetitions,
       durationSeconds: r.durationSeconds,
       description: movementInfo?.description,
       videoUrl: movementInfo?.videoUrl,
       audioAnchorMs: r.audioAnchorMs,
+      movementTypeId: movement?.typeId,
       media: ExerciseMedia(
         type: movement?.mediaType ?? r.mediaType ?? 'none',
         src: movement?.mediaSrc ?? r.mediaSrc,
@@ -57,4 +58,5 @@ TrainingItem mapItem(TrainingItemRow r) => TrainingItem(
       exerciseId: r.exerciseId,
       position: r.position,
       prescription: RepsPresc(r.repsToDo),
+      isTracked: r.isTracked,
     );
