@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract class AudioCatalogRemoteDataSource {
-  Future<List<Map<String, dynamic>>> fetchMusicianTable();
+  Future<List<Map<String, dynamic>>> fetchMorshedTable();
   Future<List<Map<String, dynamic>>> fetchMovementAudioTrackTable();
 }
 
@@ -12,13 +12,13 @@ class AudioCatalogRemoteDataSourceImpl implements AudioCatalogRemoteDataSource {
       : _client = client ?? Supabase.instance.client;
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMusicianTable() async {
+  Future<List<Map<String, dynamic>>> fetchMorshedTable() async {
     try {
-      final response = await _client.from('musician').select();
+      final response = await _client.from('morshed').select();
       return List<Map<String, dynamic>>.from(
           response.cast<Map<String, dynamic>>());
     } catch (e) {
-      // Table may not exist yet (pre-migration 0022) — no musicians to
+      // Table may not exist yet (pre-migration 0022) — no Morsheds to
       // choose from; callers already treat an empty list as "not curated
       // yet" rather than an error.
       return [];

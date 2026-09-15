@@ -190,10 +190,10 @@ def load_movement_info() -> dict[int, dict]:
         return {}
 
 @st.cache_data(ttl=60)
-def load_musicians() -> pd.DataFrame:
+def load_morsheds() -> pd.DataFrame:
     """The 'Morshed' roster — empty if migration 0022 not applied yet."""
     try:
-        rows = get_client().table("musician").select("*").order("id").execute().data
+        rows = get_client().table("morshed").select("*").order("id").execute().data
         return pd.DataFrame(rows) if rows else pd.DataFrame()
     except Exception:
         return pd.DataFrame()
@@ -212,12 +212,12 @@ def load_movement_types() -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_movement_audio_tracks() -> pd.DataFrame:
-    """One musician's recording of one movement type, with the type/musician
+    """One Morshed's recording of one movement type, with the type/Morshed
     names joined in for display."""
     try:
         rows = (
             get_client().table("movement_audio_track")
-            .select("*, movement_type(key, display_name), musician(name)")
+            .select("*, movement_type(key, display_name), morshed(name)")
             .order("id").execute().data
         )
     except Exception:
@@ -229,9 +229,9 @@ def load_movement_audio_tracks() -> pd.DataFrame:
         df["type_key"]  = df["movement_type"].apply(lambda t: t.get("key")          if isinstance(t, dict) else None)
         df["type_name"] = df["movement_type"].apply(lambda t: t.get("display_name") if isinstance(t, dict) else None)
         df = df.drop(columns=["movement_type"])
-    if "musician" in df.columns:
-        df["musician_name"] = df["musician"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
-        df = df.drop(columns=["musician"])
+    if "morshed" in df.columns:
+        df["morshed_name"] = df["morshed"].apply(lambda m: m.get("name") if isinstance(m, dict) else None)
+        df = df.drop(columns=["morshed"])
     return df
 
 
@@ -241,7 +241,7 @@ def bust_cache():
     load_items.clear()
     load_movements.clear()
     load_release_gate.clear()
-    load_musicians.clear()
+    load_morsheds.clear()
     load_movement_types.clear()
     load_movement_audio_tracks.clear()
 
@@ -1325,10 +1325,10 @@ def tab_movement_media():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tab: Movement Types & Musicians
+# Tab: Movement Types
 #
-# Reference data for the musician-selectable-audio feature (Stage A:
-# supabase/migrations/0022_musician_audio_tracks.sql). movement_type/musician
+# Reference data for the Morshed-selectable-audio feature (Stage A:
+# supabase/migrations/0022_musician_audio_tracks.sql). movement_type/morshed
 # start empty after that migration — this tab is the ONLY place they get
 # populated. Deciding what real movements share a rhythm is a genuine
 # content-curation call for a maintainer; nothing here guesses at it.
@@ -1451,7 +1451,7 @@ def tab_movement_types():
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Recordings
 #
-# A recording is one musician's take on one movement type — this is what the
+# A recording is one Morshed's take on one movement type — this is what the
 # app resolves at play time based on the athlete's chosen Morshed, instead of
 # a trainer hardcoding a specific recording into a session item.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1467,25 +1467,25 @@ def tab_audio_tracks():
     if st.button("↺ Reload", key="rel_tracks"):
         bust_cache()
 
-    # ── Morsheds (musician table) ────────────────────────────────────────
+    # ── Morsheds ─────────────────────────────────────────────────────────
     st.subheader("Morsheds")
-    musicians = load_musicians()
-    if not musicians.empty:
-        show = [c for c in ["id", "name", "photo_url"] if c in musicians.columns]
+    morsheds = load_morsheds()
+    if not morsheds.empty:
+        show = [c for c in ["id", "name", "photo_url"] if c in morsheds.columns]
         cfg = {
             "id":        st.column_config.NumberColumn("ID", disabled=True, width=55),
             "name":      st.column_config.TextColumn("Name ✏️", width=200),
             "photo_url": st.column_config.LinkColumn("Photo URL ✏️", width=220),
         }
         edited = st.data_editor(
-            musicians[show].copy(), column_config=cfg,
+            morsheds[show].copy(), column_config=cfg,
             use_container_width=True, hide_index=True,
-            num_rows="fixed", key="musician_ed",
+            num_rows="fixed", key="morshed_ed",
         )
-        if st.button("💾 Save Morsheds", key="sv_musicians"):
-            patches = _changed_rows(musicians, edited, ["name", "photo_url"])
+        if st.button("💾 Save Morsheds", key="sv_morsheds"):
+            patches = _changed_rows(morsheds, edited, ["name", "photo_url"])
             if patches:
-                save_rows("musician", patches)
+                save_rows("morshed", patches)
                 st.success(f"Updated {len(patches)} Morshed(s).")
                 bust_cache()
             else:
@@ -1494,12 +1494,12 @@ def tab_audio_tracks():
         st.caption("No Morsheds yet — run migration 0022 (it backfills existing "
                     "exercise.author values) or add one below.")
 
-    with st.form("add_musician_form", clear_on_submit=True):
+    with st.form("add_morshed_form", clear_on_submit=True):
         st.markdown("**Add a Morshed**")
         new_name = st.text_input("Name")
         new_photo = st.text_input("Photo URL (optional)")
         if st.form_submit_button("＋ Add Morshed") and new_name.strip():
-            get_client().table("musician").insert({
+            get_client().table("morshed").insert({
                 "name": new_name.strip(),
                 "photo_url": new_photo.strip() or None,
             }).execute()
@@ -1518,13 +1518,13 @@ def tab_audio_tracks():
         st.caption(f"Movement types with at least one recording: **{covered} / {len(types_df)}**")
 
     if not tracks.empty:
-        show = [c for c in ["id", "type_name", "musician_name", "audio_url",
+        show = [c for c in ["id", "type_name", "morshed_name", "audio_url",
                              "repetitions_default", "duration_seconds", "audio_anchor_ms"]
                 if c in tracks.columns]
         cfg = {
             "id":                  st.column_config.NumberColumn("ID", disabled=True, width=55),
             "type_name":           st.column_config.TextColumn("Type", disabled=True, width=180),
-            "musician_name":       st.column_config.TextColumn("Morshed", disabled=True, width=140),
+            "morshed_name":        st.column_config.TextColumn("Morshed", disabled=True, width=140),
             "audio_url":           st.column_config.LinkColumn("Audio URL", disabled=True, width=200),
             "repetitions_default": st.column_config.NumberColumn("Def. reps ✏️", min_value=1, max_value=999, width=90),
             "duration_seconds":    st.column_config.NumberColumn("Duration (s)", disabled=True, width=100),
@@ -1566,12 +1566,12 @@ def tab_audio_tracks():
         # preview below). Root cause: st.data_editor has no on_select in the
         # installed Streamlit version (1.58), only st.dataframe does.
         st.markdown("**Preview**")
-        preview_cols = [c for c in ["type_name", "musician_name"] if c in tracks.columns]
+        preview_cols = [c for c in ["type_name", "morshed_name"] if c in tracks.columns]
         event = st.dataframe(
             tracks[preview_cols],
             column_config={
-                "type_name":     st.column_config.TextColumn("Type", width=180),
-                "musician_name": st.column_config.TextColumn("Morshed", width=140),
+                "type_name":    st.column_config.TextColumn("Type", width=180),
+                "morshed_name": st.column_config.TextColumn("Morshed", width=140),
             },
             use_container_width=True, hide_index=True,
             on_select="rerun", selection_mode="single-row", key="track_preview_select",
@@ -1596,13 +1596,13 @@ def tab_audio_tracks():
         "the guess (preview below) before inserting."
     )
 
-    musician_opts = {r["name"]: int(r["id"]) for _, r in musicians.iterrows()} if not musicians.empty else {}
-    if types_df.empty or not musician_opts:
+    morshed_opts = {r["name"]: int(r["id"]) for _, r in morsheds.iterrows()} if not morsheds.empty else {}
+    if types_df.empty or not morshed_opts:
         st.info("Add at least one movement type and one Morshed first (above).")
         return
 
-    batch_musician_label = st.selectbox(
-        "Morshed (for whole batch)", list(musician_opts.keys()), key="track_batch_musician"
+    batch_morshed_label = st.selectbox(
+        "Morshed (for whole batch)", list(morshed_opts.keys()), key="track_batch_morshed"
     )
 
     uploads = st.file_uploader(
@@ -1676,7 +1676,7 @@ def tab_audio_tracks():
         st.caption("Select a row above to preview it here.")
 
     if st.button("🚀 Upload to R2 + insert recordings", type="primary", key="track_batch_import_btn"):
-        musician_id = musician_opts[batch_musician_label]
+        morshed_id = morshed_opts[batch_morshed_label]
         progress = st.progress(0)
         status = st.empty()
         errors = []
@@ -1691,11 +1691,11 @@ def tab_audio_tracks():
             data = file_map.get(fname, b"")
             try:
                 slug = slugify(row["type_label"])
-                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{musician_id}-{slug}.mp3"
+                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{morshed_id}-{slug}.mp3"
                 url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
                 get_client().table("movement_audio_track").insert({
                     "movement_type_id": type_id,
-                    "musician_id": musician_id,
+                    "morshed_id": morshed_id,
                     "audio_url": url,
                     "repetitions_default": int(row["reps"]),
                     "duration_seconds": int(row["duration_seconds"]) if pd.notna(row["duration_seconds"]) else None,
@@ -1940,12 +1940,12 @@ def tab_video_upload():
 # Tab: Release Gate
 #
 # TODO(content-integrity, deferred by user 2026-09, revisit at the end of the
-# musician-audio-catalog work): now that a session's audio depends on
+# Morshed-audio-catalog work): now that a session's audio depends on
 # multiple joined entities (exercise -> movement -> movement_type ->
-# movement_audio_track -> chosen musician), we need a way to guarantee a
+# movement_audio_track -> chosen Morshed), we need a way to guarantee a
 # training session can never silently ship with missing/broken audio for
-# some musician choice — e.g. a validator here (or a new tab) that checks,
-# for every session item x every musician, that resolveAudioTrack's
+# some Morshed choice — e.g. a validator here (or a new tab) that checks,
+# for every session item x every Morshed, that resolveAudioTrack's
 # equivalent either resolves a real track or the exercise's own legacy
 # audioFileUrl is set, and flags anything that resolves to nothing.
 # ─────────────────────────────────────────────────────────────────────────────

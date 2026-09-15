@@ -8,12 +8,12 @@ const _aram = 2;
 MovementAudioTrack _track({
   required int id,
   required int movementTypeId,
-  required int musicianId,
+  required int morshedId,
 }) =>
     MovementAudioTrack(
       id: id,
       movementTypeId: movementTypeId,
-      musicianId: musicianId,
+      morshedId: morshedId,
       audioUrl: 'https://example.com/$id.mp3',
     );
 
@@ -22,9 +22,9 @@ void main() {
     test('returns null when the movement has no type yet', () {
       final result = resolveAudioTrack(
         movementTypeId: null,
-        chosenMusicianId: 5,
+        chosenMorshedId: 5,
         availableTracks: [
-          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5)
+          _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5)
         ],
       );
       expect(result, isNull);
@@ -33,20 +33,20 @@ void main() {
     test('returns null when nothing has been recorded for that type', () {
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
-        chosenMusicianId: 5,
-        availableTracks: [_track(id: 1, movementTypeId: _aram, musicianId: 5)],
+        chosenMorshedId: 5,
+        availableTracks: [_track(id: 1, movementTypeId: _aram, morshedId: 5)],
       );
       expect(result, isNull);
     });
 
-    test('returns the chosen musician\'s track when one exists for the type',
+    test('returns the chosen Morshed\'s track when one exists for the type',
         () {
-      final wanted = _track(id: 2, movementTypeId: _sarnavazi, musicianId: 7);
+      final wanted = _track(id: 2, movementTypeId: _sarnavazi, morshedId: 7);
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
-        chosenMusicianId: 7,
+        chosenMorshedId: 7,
         availableTracks: [
-          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5),
+          _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5),
           wanted,
         ],
       );
@@ -54,28 +54,28 @@ void main() {
     });
 
     test(
-        'falls back to any track for the type when the chosen musician has none',
+        'falls back to any track for the type when the chosen Morshed has none',
         () {
       final onlyOption =
-          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
+          _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5);
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
-        chosenMusicianId: 999, // no track from this musician exists
+        chosenMorshedId: 999, // no track from this Morshed exists
         availableTracks: [
           onlyOption,
-          _track(id: 2, movementTypeId: _aram, musicianId: 999),
+          _track(id: 2, movementTypeId: _aram, morshedId: 999),
         ],
       );
       expect(result, onlyOption);
     });
 
-    test('falls back to any track for the type when no musician is chosen yet',
+    test('falls back to any track for the type when no Morshed is chosen yet',
         () {
       final onlyOption =
-          _track(id: 1, movementTypeId: _sarnavazi, musicianId: 5);
+          _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5);
       final result = resolveAudioTrack(
         movementTypeId: _sarnavazi,
-        chosenMusicianId: null,
+        chosenMorshedId: null,
         availableTracks: [onlyOption],
       );
       expect(result, onlyOption);

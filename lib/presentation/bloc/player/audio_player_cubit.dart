@@ -249,13 +249,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final sessionId = _trainingSession.id;
       final items = snap.itemsBySessionId[sessionId] ?? [];
 
-      // Resolved once per load — an athlete's chosen musician takes effect
+      // Resolved once per load — an athlete's chosen Morshed takes effect
       // the next time they open a session, not live mid-playback (there's
       // no requirement for the latter, and it would complicate the already
       // subtle position/duration state below for no real benefit).
       final audioTracks = await _audioCatalogRepo.getMovementAudioTracks();
-      final selectedMusicianId =
-          await _audioCatalogRepo.getSelectedMusicianId();
+      final selectedMorshedId = await _audioCatalogRepo.getSelectedMorshedId();
 
       for (final item in items) {
         final rawExercise = snap.exercisesById[item.exerciseId];
@@ -266,7 +265,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // been recorded for it — see resolveAudioTrack's doc comment.
         final resolvedTrack = resolveAudioTrack(
           movementTypeId: rawExercise.movementTypeId,
-          chosenMusicianId: selectedMusicianId,
+          chosenMorshedId: selectedMorshedId,
           availableTracks: audioTracks,
         );
         final exercise = resolvedTrack == null
@@ -275,8 +274,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         AppLogger.d(
           'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
           'movementTypeId=${rawExercise.movementTypeId} '
-          'chosenMusicianId=$selectedMusicianId '
-          'resolvedTrack=${resolvedTrack == null ? 'null (legacy fallback)' : '(musicianId=${resolvedTrack.musicianId}, url=${resolvedTrack.audioUrl})'} '
+          'chosenMorshedId=$selectedMorshedId '
+          'resolvedTrack=${resolvedTrack == null ? 'null (legacy fallback)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
           'finalAudioUrl=${exercise.audioFileUrl}',
         );
 

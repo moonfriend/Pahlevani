@@ -41,7 +41,7 @@ class Exercise {
 
   /// The movement's rhythm/category (movement.type_id) — null until a
   /// maintainer curates it via admin.py. Used to resolve a
-  /// MovementAudioTrack for the athlete's chosen musician; the legacy
+  /// MovementAudioTrack for the athlete's chosen Morshed; the legacy
   /// [audioFileUrl] above stays the fallback for as long as that resolution
   /// comes up empty (uncurated movement, or no recordings yet).
   final int? movementTypeId;

@@ -32,7 +32,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   // stay synchronous — refreshed on initialize() and whenever the athlete's
   // Morshed choice might have changed (see refreshAudioSelection()).
   List<MovementAudioTrack> _audioTracks = const [];
-  int? _selectedMusicianId;
+  int? _selectedMorshedId;
 
   // Future<DomainSnapshot> get currentTSSnapshot => _sessionRepository.getTrainingSessions();
 
@@ -48,8 +48,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   Future<void> _refreshAudioCatalog() async {
     try {
       _audioTracks = await _audioCatalogRepository.getMovementAudioTracks();
-      _selectedMusicianId =
-          await _audioCatalogRepository.getSelectedMusicianId();
+      _selectedMorshedId = await _audioCatalogRepository.getSelectedMorshedId();
     } catch (_) {
       // Leave previous values in place — duration estimates just go stale,
       // this should never take the sessions list down.
@@ -209,7 +208,7 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         // recordings with different natural rep counts.
         final resolved = resolveAudioTrack(
           movementTypeId: exercise.movementTypeId,
-          chosenMusicianId: _selectedMusicianId,
+          chosenMorshedId: _selectedMorshedId,
           availableTracks: _audioTracks,
         );
         final trackDuration =

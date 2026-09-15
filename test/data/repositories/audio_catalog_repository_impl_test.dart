@@ -5,11 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeAudioCatalogRemoteDataSource
     implements AudioCatalogRemoteDataSource {
-  List<Map<String, dynamic>> musicianRows = [];
+  List<Map<String, dynamic>> morshedRows = [];
   List<Map<String, dynamic>> trackRows = [];
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMusicianTable() async => musicianRows;
+  Future<List<Map<String, dynamic>>> fetchMorshedTable() async => morshedRows;
 
   @override
   Future<List<Map<String, dynamic>>> fetchMovementAudioTrackTable() async =>
@@ -28,19 +28,19 @@ void main() {
     repo = AudioCatalogRepositoryImpl(remoteDataSource: remote);
   });
 
-  group('getMusicians', () {
-    test('maps remote rows into domain Musicians', () async {
-      remote.musicianRows = [
+  group('getMorsheds', () {
+    test('maps remote rows into domain Morsheds', () async {
+      remote.morshedRows = [
         {'id': 1, 'name': 'Ali Eshaghi', 'photo_url': null},
         {'id': 2, 'name': 'Sirvan Norouzi', 'photo_url': 'https://x/y.jpg'},
       ];
-      final musicians = await repo.getMusicians();
-      expect(musicians.map((m) => m.name), ['Ali Eshaghi', 'Sirvan Norouzi']);
+      final morsheds = await repo.getMorsheds();
+      expect(morsheds.map((m) => m.name), ['Ali Eshaghi', 'Sirvan Norouzi']);
     });
 
     test('returns an empty list when the table is empty (uncurated/missing)',
         () async {
-      expect(await repo.getMusicians(), isEmpty);
+      expect(await repo.getMorsheds(), isEmpty);
     });
   });
 
@@ -50,30 +50,30 @@ void main() {
         {
           'id': 1,
           'movement_type_id': 4,
-          'musician_id': 7,
+          'morshed_id': 7,
           'audio_url': 'https://x/y.mp3',
         },
       ];
       final tracks = await repo.getMovementAudioTracks();
       expect(tracks.single.movementTypeId, 4);
-      expect(tracks.single.musicianId, 7);
+      expect(tracks.single.morshedId, 7);
     });
   });
 
-  group('selected musician persistence', () {
+  group('selected Morshed persistence', () {
     test('returns null before anything is selected', () async {
-      expect(await repo.getSelectedMusicianId(), isNull);
+      expect(await repo.getSelectedMorshedId(), isNull);
     });
 
-    test('round-trips a selected musician id', () async {
-      await repo.setSelectedMusicianId(7);
-      expect(await repo.getSelectedMusicianId(), 7);
+    test('round-trips a selected Morshed id', () async {
+      await repo.setSelectedMorshedId(7);
+      expect(await repo.getSelectedMorshedId(), 7);
     });
 
     test('setting null clears the selection', () async {
-      await repo.setSelectedMusicianId(7);
-      await repo.setSelectedMusicianId(null);
-      expect(await repo.getSelectedMusicianId(), isNull);
+      await repo.setSelectedMorshedId(7);
+      await repo.setSelectedMorshedId(null);
+      expect(await repo.getSelectedMorshedId(), isNull);
     });
   });
 }

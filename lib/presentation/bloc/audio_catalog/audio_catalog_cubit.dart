@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pahlevani/domain/entities/audio_catalog/musician.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 
 sealed class AudioCatalogState extends Equatable {
@@ -15,16 +15,16 @@ class AudioCatalogLoading extends AudioCatalogState {
 }
 
 class AudioCatalogLoaded extends AudioCatalogState {
-  final List<Musician> musicians;
-  final int? selectedMusicianId;
+  final List<Morshed> morsheds;
+  final int? selectedMorshedId;
 
   const AudioCatalogLoaded({
-    required this.musicians,
-    required this.selectedMusicianId,
+    required this.morsheds,
+    required this.selectedMorshedId,
   });
 
   @override
-  List<Object?> get props => [musicians, selectedMusicianId];
+  List<Object?> get props => [morsheds, selectedMorshedId];
 }
 
 class AudioCatalogError extends AudioCatalogState {
@@ -36,7 +36,7 @@ class AudioCatalogError extends AudioCatalogState {
   List<Object?> get props => [message];
 }
 
-/// Drives the "Choose your Morshed" picker. Loading the musician roster and
+/// Drives the "Choose your Morshed" picker. Loading the Morshed roster and
 /// persisting the athlete's choice are the only jobs here — resolving which
 /// recording actually plays for a movement is resolveAudioTrack's job,
 /// called directly by the player cubit, not this one.
@@ -50,21 +50,21 @@ class AudioCatalogCubit extends Cubit<AudioCatalogState> {
   Future<void> load() async {
     emit(const AudioCatalogLoading());
     try {
-      final musicians = await _repository.getMusicians();
-      final selectedId = await _repository.getSelectedMusicianId();
+      final morsheds = await _repository.getMorsheds();
+      final selectedId = await _repository.getSelectedMorshedId();
       emit(AudioCatalogLoaded(
-          musicians: musicians, selectedMusicianId: selectedId));
+          morsheds: morsheds, selectedMorshedId: selectedId));
     } catch (e) {
-      emit(AudioCatalogError('Failed to load musicians: $e'));
+      emit(AudioCatalogError('Failed to load Morsheds: $e'));
     }
   }
 
-  Future<void> selectMusician(int musicianId) async {
-    await _repository.setSelectedMusicianId(musicianId);
+  Future<void> selectMorshed(int morshedId) async {
+    await _repository.setSelectedMorshedId(morshedId);
     final current = state;
     if (current is AudioCatalogLoaded) {
       emit(AudioCatalogLoaded(
-          musicians: current.musicians, selectedMusicianId: musicianId));
+          morsheds: current.morsheds, selectedMorshedId: morshedId));
     }
   }
 }

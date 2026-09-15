@@ -423,7 +423,7 @@ void main() {
         'rep count diverged from the exercise\'s own stale legacy fields)',
         () async {
       const movementTypeId = 5;
-      const chosenMusicianId = 2;
+      const chosenMorshedId = 2;
       const exercise = Exercise(
         id: 1,
         name: 'Shena Shalaghi',
@@ -437,7 +437,7 @@ void main() {
       const track = MovementAudioTrack(
         id: 1,
         movementTypeId: movementTypeId,
-        musicianId: chosenMusicianId,
+        morshedId: chosenMorshedId,
         audioUrl: 'https://example.com/shena.mp3',
         repetitionsDefault: 50,
         durationSeconds: 300,
@@ -464,7 +464,7 @@ void main() {
         repo,
         audioCatalogRepo: FakeAudioCatalogRepository(
           tracks: const [track],
-          selectedMusicianId: chosenMusicianId,
+          selectedMorshedId: chosenMorshedId,
         ),
       );
       addTearDown(cubit.close);
@@ -490,7 +490,7 @@ void main() {
       const trackA = MovementAudioTrack(
         id: 1,
         movementTypeId: movementTypeId,
-        musicianId: 1,
+        morshedId: 1,
         audioUrl: 'https://example.com/a.mp3',
         repetitionsDefault: 50,
         durationSeconds: 300,
@@ -498,7 +498,7 @@ void main() {
       const trackB = MovementAudioTrack(
         id: 2,
         movementTypeId: movementTypeId,
-        musicianId: 2,
+        morshedId: 2,
         audioUrl: 'https://example.com/b.mp3',
         repetitionsDefault: 25,
         durationSeconds: 100,
@@ -522,7 +522,7 @@ void main() {
       final repo = _SpyRepository(snapshot);
       final audioRepo = FakeAudioCatalogRepository(
         tracks: const [trackA, trackB],
-        selectedMusicianId: 1,
+        selectedMorshedId: 1,
       );
       final cubit = _makeCubit(repo, audioCatalogRepo: audioRepo);
       addTearDown(cubit.close);
@@ -533,7 +533,7 @@ void main() {
 
       // Athlete switches Morshed via the picker; the repository's
       // persisted selection changes, then the page calls this.
-      audioRepo.selectedMusicianId = 2;
+      audioRepo.selectedMorshedId = 2;
       await cubit.refreshAudioSelection();
 
       // 100s / 25 reps * 50 reps = 200s.

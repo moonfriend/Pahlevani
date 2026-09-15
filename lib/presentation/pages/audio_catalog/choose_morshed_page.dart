@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
-import 'package:pahlevani/domain/entities/audio_catalog/musician.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 
 /// Exercise-demonstration videos are timed (their "sarzarb"/beat anchors)
@@ -11,8 +11,8 @@ import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.da
 /// changes before then.
 const _kVideoReferenceMorshedName = 'Sirvan Norouzi';
 
-/// Lets the athlete pick one musician ("Morshed") whose recordings play for
-/// every movement, everywhere — a total override, not a per-movement choice.
+/// Lets the athlete pick one Morshed whose recordings play for every
+/// movement, everywhere — a total override, not a per-movement choice.
 class ChooseMorshedPage extends StatefulWidget {
   const ChooseMorshedPage({super.key});
 
@@ -39,13 +39,13 @@ class _ChooseMorshedPageState extends State<ChooseMorshedPage> {
             AudioCatalogLoading() =>
               const Center(child: CircularProgressIndicator()),
             AudioCatalogError(:final message) => Center(child: Text(message)),
-            AudioCatalogLoaded(:final musicians, :final selectedMusicianId) =>
-              musicians.isEmpty
+            AudioCatalogLoaded(:final morsheds, :final selectedMorshedId) =>
+              morsheds.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(
-                          'No musicians yet — check back once some have been added.',
+                          'No Morsheds yet — check back once some have been added.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: colors.onMuted),
                         ),
@@ -53,12 +53,12 @@ class _ChooseMorshedPageState extends State<ChooseMorshedPage> {
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: musicians.length,
+                      itemCount: morsheds.length,
                       separatorBuilder: (_, __) =>
                           Divider(height: 1, color: colors.borderSoft),
-                      itemBuilder: (context, i) => _MusicianTile(
-                        musician: musicians[i],
-                        selected: musicians[i].id == selectedMusicianId,
+                      itemBuilder: (context, i) => _MorshedTile(
+                        morshed: morsheds[i],
+                        selected: morsheds[i].id == selectedMorshedId,
                       ),
                     ),
           };
@@ -68,49 +68,49 @@ class _ChooseMorshedPageState extends State<ChooseMorshedPage> {
   }
 }
 
-class _MusicianTile extends StatelessWidget {
-  const _MusicianTile({required this.musician, required this.selected});
-  final Musician musician;
+class _MorshedTile extends StatelessWidget {
+  const _MorshedTile({required this.morshed, required this.selected});
+  final Morshed morshed;
   final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final hasPhoto = musician.photoUrl != null && musician.photoUrl!.isNotEmpty;
+    final hasPhoto = morshed.photoUrl != null && morshed.photoUrl!.isNotEmpty;
 
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: colors.surface3,
-        backgroundImage: hasPhoto ? NetworkImage(musician.photoUrl!) : null,
+        backgroundImage: hasPhoto ? NetworkImage(morshed.photoUrl!) : null,
         child: hasPhoto
             ? null
             : Text(
-                musician.name.isNotEmpty ? musician.name[0].toUpperCase() : '?',
+                morshed.name.isNotEmpty ? morshed.name[0].toUpperCase() : '?',
                 style: TextStyle(
                     color: colors.onMuted, fontWeight: FontWeight.w700),
               ),
       ),
-      title: Text(musician.name),
+      title: Text(morshed.name),
       trailing:
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
       onTap: () {
-        context.read<AudioCatalogCubit>().selectMusician(musician.id);
-        if (musician.name != _kVideoReferenceMorshedName) {
-          _showVideoSyncWarning(context, musician);
+        context.read<AudioCatalogCubit>().selectMorshed(morshed.id);
+        if (morshed.name != _kVideoReferenceMorshedName) {
+          _showVideoSyncWarning(context, morshed);
         }
       },
     );
   }
 
-  void _showVideoSyncWarning(BuildContext context, Musician musician) {
+  void _showVideoSyncWarning(BuildContext context, Morshed morshed) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Video sync heads-up'),
         content: Text(
           'Exercise videos are timed to Sirvan Norouzi\'s rhythm. With '
-          '${musician.name} selected, video and audio may drift out of '
+          '${morshed.name} selected, video and audio may drift out of '
           'sync during playback.',
         ),
         actions: [

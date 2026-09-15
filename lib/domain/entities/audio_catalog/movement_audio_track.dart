@@ -1,12 +1,12 @@
 import 'package:equatable/equatable.dart';
 
-/// One musician's recording of one movement type (rhythm/category) —
+/// One Morshed's recording of one movement type (rhythm/category) —
 /// resolved at play time via [resolveAudioTrack] instead of being baked
 /// into a training_session_item at authoring time.
 class MovementAudioTrack extends Equatable {
   final int id;
   final int movementTypeId;
-  final int musicianId;
+  final int morshedId;
   final String audioUrl;
   final int repetitionsDefault;
   final int? durationSeconds;
@@ -15,7 +15,7 @@ class MovementAudioTrack extends Equatable {
   const MovementAudioTrack({
     required this.id,
     required this.movementTypeId,
-    required this.musicianId,
+    required this.morshedId,
     required this.audioUrl,
     this.repetitionsDefault = 1,
     this.durationSeconds,
@@ -26,7 +26,7 @@ class MovementAudioTrack extends Equatable {
   List<Object?> get props => [
         id,
         movementTypeId,
-        musicianId,
+        morshedId,
         audioUrl,
         repetitionsDefault,
         durationSeconds,
