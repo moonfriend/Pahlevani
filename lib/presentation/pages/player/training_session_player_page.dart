@@ -286,110 +286,133 @@ class _Stage extends StatelessWidget {
     return GestureDetector(
       onTap: cubit.togglePlay,
       child: Container(
-        height: 290,
         margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-        decoration: BoxDecoration(
-          color: accent.bg,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(8),
-            bottom: Radius.circular(26),
-          ),
-          border: Border.all(color: colors.borderSoft),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(children: [
-          // Pattern is always the background — visible during load and on error
-          Positioned.fill(
-              child: PersianPattern(
-                  color: accent.fg, opacity: 0.5, tileSize: 110)),
-          if (hasVideo)
-            Positioned.fill(
-              child: _ExerciseVideo(
-                key: ValueKey(track.media.src),
-                path: track.media.src!,
-                posterSrc: track.media.poster,
-                isPlaying: state.isPlaying,
-                startOffsetMs: track.videoStartOffsetMs,
-                resyncGeneration: state.videoResyncGeneration,
-                resyncPositionMs: state.videoResyncPositionMs,
-              ),
-            )
-          else if (hasPhoto || hasVideoPoster)
-            Positioned.fill(
-                child: buildMediaImage(
-                    (hasPhoto ? track.media.src : track.media.poster)!)),
-          // Dark gradient at bottom so text stays legible over photos/video
-          if (hasVisual)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.55)
-                    ],
-                    stops: const [0.45, 1.0],
-                  ),
-                ),
+        // The stage matches the exercise videos' own 16:9 aspect ratio
+        // (rather than a fixed height videos had to be forced into) so a
+        // fitHeight-scaled 1280x720 track fills the box exactly, with no
+        // horizontal overflow to clip and no side cropping.
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Container(
+            // The border lives in foregroundDecoration rather than
+            // decoration: a border inside `decoration` makes Container
+            // implicitly pad its child by the border's own width
+            // (BoxDecoration.padding == border.dimensions), shrinking the
+            // Stack below by 1px on every side and leaving a ring of
+            // `accent.bg` exposed between the video canvas and the border
+            // itself — that ring was the reported side line.
+            // foregroundDecoration paints on top without touching layout,
+            // so the video/pattern/overlays now reach the true edge and
+            // the border draws directly over them with no gap.
+            decoration: BoxDecoration(
+              color: accent.bg,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
+                bottom: Radius.circular(26),
               ),
             ),
-          // Exercise name — bottom left
-          Positioned(
-            left: 16,
-            bottom: 16,
-            right: 80,
-            child: Text(state.currentTrack?.title ?? '',
-                style: PTextStyles.of(context)
-                    .playerExLatin
-                    .copyWith(color: hasVisual ? Colors.white : cs.onSurface),
-                maxLines: 2),
-          ),
-          // Paused overlay
-          if (!state.isPlaying)
-            Positioned.fill(
-              child: ColoredBox(
-                color: colors.scrim,
-                child: Center(
+            foregroundDecoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
+                bottom: Radius.circular(26),
+              ),
+              border: Border.all(color: colors.borderSoft),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(children: [
+              // Pattern is always the background — visible during load and on error
+              Positioned.fill(
+                  child: PersianPattern(
+                      color: accent.fg, opacity: 0.5, tileSize: 110)),
+              if (hasVideo)
+                Positioned.fill(
+                  child: _ExerciseVideo(
+                    key: ValueKey(track.media.src),
+                    path: track.media.src!,
+                    posterSrc: track.media.poster,
+                    isPlaying: state.isPlaying,
+                    startOffsetMs: track.videoStartOffsetMs,
+                    resyncGeneration: state.videoResyncGeneration,
+                    resyncPositionMs: state.videoResyncPositionMs,
+                  ),
+                )
+              else if (hasPhoto || hasVideoPoster)
+                Positioned.fill(
+                    child: buildMediaImage(
+                        (hasPhoto ? track.media.src : track.media.poster)!)),
+              // Dark gradient at bottom so text stays legible over photos/video
+              if (hasVisual)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.55)
+                        ],
+                        stops: const [0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              // Exercise name — bottom left
+              Positioned(
+                left: 16,
+                bottom: 16,
+                right: 80,
+                child: Text(state.currentTrack?.title ?? '',
+                    style: PTextStyles.of(context).playerExLatin.copyWith(
+                        color: hasVisual ? Colors.white : cs.onSurface),
+                    maxLines: 2),
+              ),
+              // Paused overlay
+              if (!state.isPlaying)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: colors.scrim,
+                    child: Center(
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                            color: cs.surface,
+                            shape: BoxShape.circle,
+                            boxShadow: colors.shadowPop),
+                        alignment: Alignment.center,
+                        child: Icon(Icons.play_arrow_rounded,
+                            size: 34, color: cs.primary),
+                      ),
+                    ),
+                  ),
+                ),
+              // Now-playing pill
+              if (state.isPlaying)
+                Positioned(
+                  right: 14,
+                  bottom: 14,
                   child: Container(
-                    width: 72,
-                    height: 72,
+                    padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
                     decoration: BoxDecoration(
                         color: cs.surface,
-                        shape: BoxShape.circle,
-                        boxShadow: colors.shadowPop),
-                    alignment: Alignment.center,
-                    child: Icon(Icons.play_arrow_rounded,
-                        size: 34, color: cs.primary),
+                        borderRadius: BorderRadius.circular(99),
+                        boxShadow: colors.shadowCard),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      _Equalizer(color: accent.fg),
+                      const SizedBox(width: 8),
+                      Text('Pause',
+                          style: TextStyle(
+                              fontFamily: PFonts.ui,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: cs.onSurface)),
+                    ]),
                   ),
                 ),
-              ),
-            ),
-          // Now-playing pill
-          if (state.isPlaying)
-            Positioned(
-              right: 14,
-              bottom: 14,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
-                decoration: BoxDecoration(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(99),
-                    boxShadow: colors.shadowCard),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _Equalizer(color: accent.fg),
-                  const SizedBox(width: 8),
-                  Text('Pause',
-                      style: TextStyle(
-                          fontFamily: PFonts.ui,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: cs.onSurface)),
-                ]),
-              ),
-            ),
-        ]),
+            ]),
+          ),
+        ),
       ),
     );
   }
