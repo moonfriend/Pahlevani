@@ -43,6 +43,27 @@ from supabase import create_client
 CREDS_DIR = Path.home() / "StudioProjects" / "pahlevani-admin-creds"
 ROW_DIFF_THRESHOLD = 200  # tables at or below this row count get a full row-by-row diff
 
+# Row identity for the diff below defaults to the `id` primary key, which
+# only means "the same logical row" when both environments received rows in
+# the same insert order. That's false for tables curated independently on
+# each side (e.g. via admin.py clicks on staging, migrations on
+# production) — their auto-increment ids diverge even when the *content* is
+# the same. Override the identity column per table here where `id` isn't
+# meaningful; leave tables out entirely (see SKIP_ROW_DIFF) where even a
+# natural key isn't a single column.
+NATURAL_KEY = {
+    "movement_type": "key",
+}
+SKIP_ROW_DIFF = {
+    "movement_audio_track": (
+        "insert order differs per environment (admin.py UI clicks on "
+        "staging vs. migrations on production), so ids aren't comparable "
+        "and there's no single natural-key column (it's movement_type.key "
+        "+ musician/morshed.name) — compare by hand via the Recordings tab "
+        "or a dedicated query instead of this script's generic row diff."
+    ),
+}
+
 
 def load_env_file(path: Path) -> dict[str, str]:
     env: dict[str, str] = {}
@@ -149,42 +170,53 @@ def main():
         count_marker = "✅" if s_count == p_count else "⚠️ "
         print(f"  {count_marker} Row count — staging: {s_count}, production: {p_count}")
 
+        if table in SKIP_ROW_DIFF:
+            print(f"  (skipping row-by-row diff — {SKIP_ROW_DIFF[table]})")
+            print()
+            continue
+
         if max(s_count, p_count) > ROW_DIFF_THRESHOLD:
             print(f"  (skipping row-by-row diff — over {ROW_DIFF_THRESHOLD} rows; "
                   f"use --table {table} to focus on just this one if needed)")
             print()
             continue
 
-        s_rows = {r["id"]: r for r in staging.table(table).select("*").execute().data}
-        p_rows = {r["id"]: r for r in prod.table(table).select("*").execute().data}
+        key_col = NATURAL_KEY.get(table, "id")
+        s_rows = {r[key_col]: r for r in staging.table(table).select("*").execute().data}
+        p_rows = {r[key_col]: r for r in prod.table(table).select("*").execute().data}
 
-        only_staging_ids = sorted(set(s_rows) - set(p_rows))
-        only_prod_ids = sorted(set(p_rows) - set(s_rows))
-        common_ids = set(s_rows) & set(p_rows)
+        only_staging_keys = sorted(set(s_rows) - set(p_rows))
+        only_prod_keys = sorted(set(p_rows) - set(s_rows))
+        common_keys = set(s_rows) & set(p_rows)
 
-        if only_staging_ids:
-            print(f"  Rows only on staging (id): {only_staging_ids}")
-        if only_prod_ids:
-            print(f"  Rows only on production (id): {only_prod_ids}")
+        if only_staging_keys:
+            print(f"  Rows only on staging ({key_col}): {only_staging_keys}")
+        if only_prod_keys:
+            print(f"  Rows only on production ({key_col}): {only_prod_keys}")
+
+        # `id` itself is never a meaningful content diff when it's not the
+        # identity column being matched on (e.g. matching by `key`, the two
+        # sides' surrogate `id`s legitimately differ) — exclude it too.
+        ignore_cols = {"updated_at"} | ({"id"} if key_col != "id" else set())
 
         differing = []
-        for rid in sorted(common_ids):
-            s_row, p_row = s_rows[rid], p_rows[rid]
+        for k in sorted(common_keys):
+            s_row, p_row = s_rows[k], p_rows[k]
             shared_keys = set(s_row) & set(p_row)
             diff_cols = {
-                k: (s_row[k], p_row[k])
-                for k in shared_keys
-                if k != "updated_at" and s_row[k] != p_row[k]
+                col: (s_row[col], p_row[col])
+                for col in shared_keys
+                if col not in ignore_cols and s_row[col] != p_row[col]
             }
             if diff_cols:
-                differing.append((rid, diff_cols))
+                differing.append((k, diff_cols))
 
         if differing:
             print(f"  ⚠️  {len(differing)} row(s) with differing content (excluding updated_at):")
-            for rid, diff_cols in differing:
-                print(f"    id={rid}: {diff_cols}")
-        elif not only_staging_ids and not only_prod_ids:
-            print(f"  ✅ All {len(common_ids)} shared rows are identical.")
+            for k, diff_cols in differing:
+                print(f"    {key_col}={k}: {diff_cols}")
+        elif not only_staging_keys and not only_prod_keys:
+            print(f"  ✅ All {len(common_keys)} shared rows are identical.")
 
         print()
 
