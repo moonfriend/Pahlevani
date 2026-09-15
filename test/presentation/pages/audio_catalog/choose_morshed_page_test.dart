@@ -19,8 +19,7 @@ Widget _buildPage(FakeAudioCatalogRepository repo) {
 }
 
 void main() {
-  const sirvan =
-      Musician(id: 1, name: 'Sirvan Norouzi', isVideoReference: true);
+  const sirvan = Musician(id: 1, name: 'Sirvan Norouzi');
   const ali = Musician(id: 2, name: 'Ali Eshaghi');
 
   testWidgets('choosing the video-reference Morshed shows no warning',

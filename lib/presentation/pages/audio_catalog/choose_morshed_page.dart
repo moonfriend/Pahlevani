@@ -4,6 +4,13 @@ import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/musician.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 
+/// Exercise-demonstration videos are timed (their "sarzarb"/beat anchors)
+/// against this specific performer's recordings — hardcoded on purpose
+/// rather than a DB flag, since a proper per-Morshed video sync is planned
+/// to replace this whole check later. Update here if that performer ever
+/// changes before then.
+const _kVideoReferenceMorshedName = 'Sirvan Norouzi';
+
 /// Lets the athlete pick one musician ("Morshed") whose recordings play for
 /// every movement, everywhere — a total override, not a per-movement choice.
 class ChooseMorshedPage extends StatefulWidget {
@@ -89,8 +96,9 @@ class _MusicianTile extends StatelessWidget {
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
       onTap: () {
         context.read<AudioCatalogCubit>().selectMusician(musician.id);
-        if (!musician.isVideoReference)
+        if (musician.name != _kVideoReferenceMorshedName) {
           _showVideoSyncWarning(context, musician);
+        }
       },
     );
   }
