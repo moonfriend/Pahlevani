@@ -1,10 +1,14 @@
 """
 verify_r2_urls.py
 ═════════════════
-One-off check: confirm every exercise.audio_url / movement.media_src value in the
-DB now points at Cloudflare R2 (not Supabase Storage) and actually downloads
-(HTTP 200, non-empty body) — the final verification step of the R2 media
-cutover (see supabase/migrations/0006_r2_media_urls.sql).
+One-off check: confirm every movement.media_src value in the DB now points at
+Cloudflare R2 (not Supabase Storage) and actually downloads (HTTP 200,
+non-empty body) — the final verification step of the R2 media cutover (see
+supabase/migrations/0006_r2_media_urls.sql).
+
+exercise.audio_url is no longer checked here — that column was dropped by
+migration 0034_drop_legacy_exercise_audio_columns.sql; audio URLs now live on
+movement_audio_track instead.
 
 Usage:
     bash scripts/run_admin.sh --script verify_r2_urls.py
@@ -56,11 +60,6 @@ def main() -> None:
 
     client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    audio_rows = (
-        client.table("exercise").select("id, audio_url").not_.is_("audio_url", "null").execute().data
-    )
-    audio = [(r["id"], r["audio_url"].strip()) for r in audio_rows if r.get("audio_url", "").strip()]
-
     image_rows = (
         client.table("movement")
         .select("id, media_src, media_type")
@@ -71,13 +70,12 @@ def main() -> None:
     )
     images = [(r["id"], r["media_src"].strip()) for r in image_rows if r.get("media_src", "").strip()]
 
-    a_ok, a_bad_host, a_fail = check("AUDIO (exercise.audio_url)", audio)
     i_ok, i_bad_host, i_fail = check("IMAGES (movement.media_src)", images)
 
-    total_bad = a_bad_host + a_fail + i_bad_host + i_fail
+    total_bad = i_bad_host + i_fail
     print(f"\n{'═' * 60}")
     if total_bad == 0:
-        print(f"  ✓  All {a_ok + i_ok} media URLs point to Cloudflare and download successfully.")
+        print(f"  ✓  All {i_ok} media URLs point to Cloudflare and download successfully.")
     else:
         print(f"  ✗  {total_bad} problem(s) found — see above.")
     print(f"{'═' * 60}\n")

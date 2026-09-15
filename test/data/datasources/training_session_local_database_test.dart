@@ -110,16 +110,8 @@ void main() {
 
     test('round-trips a list of exercises', () async {
       final exercises = [
-        HiveExercise(
-            id: 101,
-            name: 'Shena',
-            url: 'https://ex.com/s.mp3',
-            repetitions: 3),
-        HiveExercise(
-            id: 102,
-            name: 'Kabbadeh',
-            url: 'https://ex.com/k.mp3',
-            repetitions: 1),
+        HiveExercise(id: 101, name: 'Shena', repetitions: 3),
+        HiveExercise(id: 102, name: 'Kabbadeh', repetitions: 1),
       ];
       await db.saveExercises(exercises);
 

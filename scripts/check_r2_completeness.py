@@ -24,7 +24,7 @@ ENVIRONMENT VARIABLES
 Required:
     SUPABASE_URL              Full project URL, e.g. https://abc123.supabase.co
     SUPABASE_SERVICE_ROLE_KEY Service-role key (Settings → API → service_role).
-                               Needs SELECT on 'exercise' and 'movement' tables.
+                               Needs SELECT on the 'movement' table.
     R2_ACCESS_KEY_ID      R2 API token ID with at least Object Read + List
                           permissions on the target bucket.
     R2_SECRET_ACCESS_KEY  Matching secret for the above token.
@@ -47,8 +47,11 @@ HOW TO GET R2 CREDENTIALS
 WHAT IT CHECKS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    exercise.audio_url   → audio files  (R2 bucket folder: "Sirvan/")
     movement.media_src   → image files  (R2 bucket folder: "movement_images/")
+
+exercise.audio_url is no longer checked — that column was dropped by
+migration 0034_drop_legacy_exercise_audio_columns.sql; audio URLs now live on
+movement_audio_track instead (not covered by this script).
 
 R2 files were uploaded manually into flat folders, not mirroring the Supabase
 bucket/path structure — matching is by filename only. The script extracts the
@@ -92,9 +95,8 @@ R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
 # R2 bucket layout actually used (flat folders, not a mirror of the Supabase
-# bucket/path structure): audio under "Sirvan/", images under "movement_images/".
+# bucket/path structure): images under "movement_images/".
 # Matching is by filename (basename) within the relevant R2 prefix.
-R2_AUDIO_PREFIX = "Sirvan/"
 R2_IMAGE_PREFIX = "movement_images/"
 
 
@@ -133,34 +135,14 @@ def _filename_from_url(url: str) -> str | None:
 
 # ── Supabase queries ──────────────────────────────────────────────────────────
 
-def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
-    """Return two dicts: {filename: original_url} for audio and images."""
+def fetch_db_files(supabase_url: str, supabase_key: str) -> dict:
+    """Return {filename: original_url} for images."""
     client = create_client(supabase_url, supabase_key)
 
-    audio: dict[str, str] = {}
     images: dict[str, str] = {}
 
-    # Audio: exercise.audio_url
-    page, page_size = 0, 1000
-    while True:
-        rows = (
-            client.table("exercise")
-            .select("id, audio_url")
-            .not_.is_("audio_url", "null")
-            .range(page * page_size, (page + 1) * page_size - 1)
-            .execute()
-        ).data
-        for row in rows:
-            url = (row.get("audio_url") or "").strip()
-            name = _filename_from_url(url)
-            if name:
-                audio[name] = url
-        if len(rows) < page_size:
-            break
-        page += 1
-
     # Images: movement.media_src (only photo type)
-    page = 0
+    page, page_size = 0, 1000
     while True:
         rows = (
             client.table("movement")
@@ -179,7 +161,7 @@ def fetch_db_files(supabase_url: str, supabase_key: str) -> tuple[dict, dict]:
             break
         page += 1
 
-    return audio, images
+    return images
 
 
 # ── R2 listing ────────────────────────────────────────────────────────────────
@@ -238,17 +220,14 @@ def main() -> None:
     print(f"Listing R2 bucket     : {R2_BUCKET} @ {R2_ENDPOINT}")
 
     print("\nFetching DB file references…")
-    audio, images = fetch_db_files(SUPABASE_URL, SUPABASE_KEY)
-    print(f"  Found {len(audio)} audio URLs and {len(images)} image URLs in DB.")
+    images = fetch_db_files(SUPABASE_URL, SUPABASE_KEY)
+    print(f"  Found {len(images)} image URLs in DB.")
 
-    print(f"\nListing R2 objects under '{R2_AUDIO_PREFIX}' and '{R2_IMAGE_PREFIX}'…")
-    r2_audio = list_r2_filenames(R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_AUDIO_PREFIX)
+    print(f"\nListing R2 objects under '{R2_IMAGE_PREFIX}'…")
     r2_images = list_r2_filenames(R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_IMAGE_PREFIX)
-    print(f"  Found {len(r2_audio)} files under '{R2_AUDIO_PREFIX}', "
-          f"{len(r2_images)} under '{R2_IMAGE_PREFIX}'.")
+    print(f"  Found {len(r2_images)} files under '{R2_IMAGE_PREFIX}'.")
 
     total_missing = 0
-    total_missing += report("AUDIO (exercise.audio_url)", audio, r2_audio)
     total_missing += report("IMAGES (movement.media_src)", images, r2_images)
 
     print(f"\n{'═' * 60}")

@@ -4,17 +4,10 @@ class ExerciseRow {
   final String? name; // present before migration; null after
   final String? titleFa; // present before migration; null after
   final String? gloss; // present before migration; null after
-  final String? author;
-  final String? audioUrl;
   final int repetitions;
-  final int? durationSeconds;
   final String? mediaType; // present before migration; null after
   final String? mediaSrc; // present before migration; null after
   final String? mediaPoster; // present before migration; null after
-
-  /// "Sarzarb"/main-beat timestamp (ms) in this exercise's audio recording,
-  /// for video/audio sync. Null = no anchor set.
-  final int? audioAnchorMs;
 
   ExerciseRow({
     required this.id,
@@ -22,14 +15,10 @@ class ExerciseRow {
     this.name,
     this.titleFa,
     this.gloss,
-    this.author,
-    this.audioUrl,
     required this.repetitions,
-    this.durationSeconds,
     this.mediaType,
     this.mediaSrc,
     this.mediaPoster,
-    this.audioAnchorMs,
   });
 
   factory ExerciseRow.fromJson(Map<String, Object?> m) => ExerciseRow(
@@ -38,13 +27,9 @@ class ExerciseRow {
         name: m['name'] as String?,
         titleFa: m['title_fa'] as String?,
         gloss: m['gloss'] as String?,
-        author: m['author'] as String?,
-        audioUrl: m['audio_url'] as String?,
         repetitions: (m['repetitions'] as num?)?.toInt() ?? 0,
-        durationSeconds: (m['duration_seconds'] as num?)?.toInt(),
         mediaType: m['media_type'] as String?,
         mediaSrc: m['media_src'] as String?,
         mediaPoster: m['media_poster'] as String?,
-        audioAnchorMs: (m['audio_anchor_ms'] as num?)?.toInt(),
       );
 }

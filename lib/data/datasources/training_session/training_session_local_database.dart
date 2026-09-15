@@ -31,7 +31,15 @@ class TrainingSessionLocalDatabase {
   // String (trackedMovementType), now a non-nullable bool (isTracked). A
   // box written under the brief String-typed version would otherwise throw
   // the same class of crash as above.
-  static const int _cacheVersion = 4;
+  //
+  // 5: HiveExercise fields 2/3/4/7/16 (author/type/audioFileUrl/
+  // durationSeconds/audioAnchorMs) were removed when the legacy
+  // per-exercise Morshed/audio columns dropped (migration
+  // 0034_drop_legacy_exercise_audio_columns.sql). Not safety-critical the
+  // way 3→4 was — HiveExerciseAdapter.read() never dereferences the now-gone
+  // indices, so stale bytes there are harmless — but bumped anyway for
+  // hygiene, to clear them out on next sync.
+  static const int _cacheVersion = 5;
   static const String _cacheVersionKey = 'cache_version';
 
   /// Initialize Hive and register adapters.

@@ -200,19 +200,16 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
           allKnown = false;
           continue;
         }
-        // Same resolution the player actually plays through — falls back to
-        // the exercise's own legacy fields when uncurated, exactly like
-        // resolveAudioTrack's callers elsewhere. Using the raw exercise
-        // fields unconditionally here (as this used to) silently diverges
-        // from real playback once a movement has multiple Morshed-specific
-        // recordings with different natural rep counts.
+        // Same resolution the player actually plays through, exactly like
+        // resolveAudioTrack's callers elsewhere — there is no more legacy
+        // per-exercise fallback, so when this comes up null the item's
+        // duration is simply unknown (handled by allKnown below).
         final resolved = resolveAudioTrack(
           movementTypeId: exercise.movementTypeId,
           chosenMorshedId: _selectedMorshedId,
           availableTracks: _audioTracks,
         );
-        final trackDuration =
-            resolved?.durationSeconds ?? exercise.durationSeconds;
+        final trackDuration = resolved?.durationSeconds;
         final defaultReps =
             resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
         if (trackDuration == null) {

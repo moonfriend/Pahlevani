@@ -22,8 +22,6 @@ class Exercise {
   final String name;
   final String? titleFa;
   final String? gloss;
-  final String? author;
-  final String? type;
   final String? audioFileUrl;
   final int repetitionsDefault;
   final int? durationSeconds;
@@ -41,9 +39,10 @@ class Exercise {
 
   /// The movement's rhythm/category (movement.type_id) — null until a
   /// maintainer curates it via admin.py. Used to resolve a
-  /// MovementAudioTrack for the athlete's chosen Morshed; the legacy
-  /// [audioFileUrl] above stays the fallback for as long as that resolution
-  /// comes up empty (uncurated movement, or no recordings yet).
+  /// MovementAudioTrack for the athlete's chosen Morshed. There is no more
+  /// per-exercise fallback — when resolution comes up empty (uncurated
+  /// movement, or no recordings yet), [audioFileUrl] and the other
+  /// audio-shaped fields below stay null.
   final int? movementTypeId;
 
   const Exercise({
@@ -52,8 +51,6 @@ class Exercise {
     required this.name,
     this.titleFa,
     this.gloss,
-    this.author,
-    this.type,
     this.audioFileUrl,
     this.repetitionsDefault = 1,
     this.durationSeconds,
