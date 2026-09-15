@@ -87,8 +87,9 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     );
   }
 
-  void _openMorshedPicker(BuildContext context) {
-    Navigator.push(
+  Future<void> _openMorshedPicker(BuildContext context) async {
+    final cubit = context.read<TrainingSessionCubit>();
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
@@ -97,6 +98,9 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         ),
       ),
     );
+    // Session-list duration estimates depend on the chosen Morshed — refresh
+    // now rather than waiting for the next cold start.
+    unawaited(cubit.refreshAudioSelection());
   }
 
   Future<void> _openPlayer(TrainingSession session) async {

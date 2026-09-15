@@ -138,6 +138,7 @@ Widget _buildPage(DomainSnapshot snapshot, DownloadRepository downloadRepo) {
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
       downloadRepository: downloadRepo,
+      audioCatalogRepository: FakeAudioCatalogRepository(),
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),

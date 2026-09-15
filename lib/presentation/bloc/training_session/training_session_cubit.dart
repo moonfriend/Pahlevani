@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -16,6 +19,7 @@ part 'training_session_state.dart';
 class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   final TrainingSessionRepository _sessionRepository;
   final DownloadRepository _downloadRepository;
+  final AudioCatalogRepository _audioCatalogRepository;
   StreamSubscription? _downloadSubscription;
 
   // Store current data locally in cubit to avoid passing it around in states excessively
@@ -24,19 +28,49 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   Map<int, DownloadStatus> _currentDownloadStatus = {};
   final Map<int, double> _currentDownloadProgress = {};
 
+  // Cached alongside _currentTSSnapshot so buildTrainingSessionsUiModel() can
+  // stay synchronous — refreshed on initialize() and whenever the athlete's
+  // Morshed choice might have changed (see refreshAudioSelection()).
+  List<MovementAudioTrack> _audioTracks = const [];
+  int? _selectedMusicianId;
+
   // Future<DomainSnapshot> get currentTSSnapshot => _sessionRepository.getTrainingSessions();
 
   TrainingSessionCubit({
     required TrainingSessionRepository sessionRepository,
     required DownloadRepository downloadRepository,
+    required AudioCatalogRepository audioCatalogRepository,
   })  : _sessionRepository = sessionRepository,
         _downloadRepository = downloadRepository,
+        _audioCatalogRepository = audioCatalogRepository,
         super(TrainingSessionInitial());
+
+  Future<void> _refreshAudioCatalog() async {
+    try {
+      _audioTracks = await _audioCatalogRepository.getMovementAudioTracks();
+      _selectedMusicianId =
+          await _audioCatalogRepository.getSelectedMusicianId();
+    } catch (_) {
+      // Leave previous values in place — duration estimates just go stale,
+      // this should never take the sessions list down.
+    }
+  }
+
+  /// Re-resolves audio-catalog data and re-emits — call after returning from
+  /// the Morshed picker so session-list duration estimates reflect the new
+  /// choice immediately, not just on the next cold start.
+  Future<void> refreshAudioSelection() async {
+    await _refreshAudioCatalog();
+    if (!isClosed) {
+      emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+    }
+  }
 
   /// Loads initial download statuses and fetches the training_session list.
   /// Returns fast from Hive on subsequent launches, then syncs remote in background.
   Future<void> initialize() async {
     await loadInitialStatuses();
+    await _refreshAudioCatalog();
     await fetchTrainingSessions();
     // Fire-and-forget: refresh from Supabase; re-emits when done.
     unawaited(_sessionRepository.syncFromRemote().then((snap) {
@@ -163,8 +197,25 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       var allKnown = true;
       for (final item in items) {
         final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
-        final trackDuration = exercise?.durationSeconds;
-        final defaultReps = exercise?.repetitionsDefault ?? 1;
+        if (exercise == null) {
+          allKnown = false;
+          continue;
+        }
+        // Same resolution the player actually plays through — falls back to
+        // the exercise's own legacy fields when uncurated, exactly like
+        // resolveAudioTrack's callers elsewhere. Using the raw exercise
+        // fields unconditionally here (as this used to) silently diverges
+        // from real playback once a movement has multiple Morshed-specific
+        // recordings with different natural rep counts.
+        final resolved = resolveAudioTrack(
+          movementTypeId: exercise.movementTypeId,
+          chosenMusicianId: _selectedMusicianId,
+          availableTracks: _audioTracks,
+        );
+        final trackDuration =
+            resolved?.durationSeconds ?? exercise.durationSeconds;
+        final defaultReps =
+            resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
         if (trackDuration == null) {
           allKnown = false;
           continue;

@@ -135,6 +135,7 @@ class DependencyInjection {
       () => TrainingSessionCubit(
         sessionRepository: getIt<TrainingSessionRepository>(),
         downloadRepository: getIt<DownloadRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
       ),
     );
 
