@@ -11,6 +11,12 @@
 -- 0024's throwaway 'mile_aram' test type is the same real category as file
 -- 18 ("Mile Aram") — renamed in place (same id, so the movement/track rows
 -- already pointing at it keep working) rather than left as a duplicate.
+-- This UPDATE only matches anything where 0024 already ran (e.g. staging);
+-- on environments where 0024 is deliberately skipped (production — its
+-- test_morshed/test_morshed_2 fixtures must never reach real users), it's a
+-- harmless no-op and the explicit ('18_mile_aram', ...) row below (guarded
+-- by the same on conflict (key) do nothing as every other row) creates the
+-- type fresh instead — either path lands at the same 41-row result.
 
 update public.movement_type
   set key = '18_mile_aram', display_name = '18 Mile Aram'
@@ -35,6 +41,7 @@ insert into public.movement_type (key, display_name)
     ('15_shomareshe_gardan', '15 Shomareshe Gardan'),
     ('16_neshasto_barkhast', '16 Neshasto Barkhast'),
     ('17_paye_hamrah_ba_takhteh', '17 Paye Hamrah Ba Takhteh'),
+    ('18_mile_aram', '18 Mile Aram'),
     ('19_narmeshe_ba_mil', '19 Narmeshe Ba Mil'),
     ('20_mil_shalaghi', '20 Mil Shalaghi'),
     ('21_paye_aval', '21 Paye Aval'),
