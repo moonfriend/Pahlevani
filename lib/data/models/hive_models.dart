@@ -128,23 +128,17 @@ class HiveExercise extends HiveObject {
   @HiveField(1)
   final String name;
 
-  @HiveField(2)
-  final String? author;
-
-  @HiveField(3)
-  final String? type;
-
-  @HiveField(4)
-  final String? url;
+  // Fields 2/3/4/7 formerly held author/type/audioFileUrl/durationSeconds —
+  // removed when the legacy per-exercise Morshed/audio columns were dropped
+  // (migration 0034_drop_legacy_exercise_audio_columns.sql). Never reuse
+  // these indices; stale bytes at them are simply never dereferenced by
+  // HiveExerciseAdapter.read().
 
   @HiveField(5)
   final int position;
 
   @HiveField(6)
   final int? repetitions;
-
-  @HiveField(7)
-  final int? durationSeconds;
 
   @HiveField(8)
   final String? titleFa;
@@ -172,10 +166,8 @@ class HiveExercise extends HiveObject {
   @HiveField(15)
   final String? videoUrl;
 
-  // Nullable so the adapter safely reads null for boxes written before these
-  // fields existed (video/audio sync anchors — see migration 0012).
-  @HiveField(16)
-  final int? audioAnchorMs;
+  // Field 16 formerly held audioAnchorMs (exercise.audio_anchor_ms) —
+  // removed alongside the other legacy audio columns above. Never reuse.
 
   @HiveField(17)
   final int? videoAnchorMs;
@@ -189,12 +181,8 @@ class HiveExercise extends HiveObject {
   HiveExercise({
     required this.id,
     required this.name,
-    this.author,
-    this.type,
-    this.url,
     this.position = 0,
     this.repetitions,
-    this.durationSeconds,
     this.titleFa,
     this.gloss,
     this.mediaType,
@@ -203,20 +191,19 @@ class HiveExercise extends HiveObject {
     this.movementId,
     this.description,
     this.videoUrl,
-    this.audioAnchorMs,
     this.videoAnchorMs,
     this.movementTypeId,
   });
 
+  // audioFileUrl/durationSeconds/audioAnchorMs are deliberately not cached
+  // here: fromDomain is only ever called on the raw (un-resolved) Exercise —
+  // the resolved-per-Morshed version built by _withResolvedAudio() is
+  // transient/player-only — so those fields would always be null anyway.
   factory HiveExercise.fromDomain(Exercise e) => HiveExercise(
         id: e.id,
         movementId: e.movementId,
         name: e.name,
-        author: e.author,
-        type: e.type,
-        url: e.audioFileUrl,
         repetitions: e.repetitionsDefault,
-        durationSeconds: e.durationSeconds,
         titleFa: e.titleFa,
         gloss: e.gloss,
         mediaType: e.media.type,
@@ -224,7 +211,6 @@ class HiveExercise extends HiveObject {
         mediaPoster: e.media.poster,
         description: e.description,
         videoUrl: e.videoUrl,
-        audioAnchorMs: e.audioAnchorMs,
         videoAnchorMs: e.media.videoAnchorMs,
         movementTypeId: e.movementTypeId,
       );
@@ -235,14 +221,9 @@ class HiveExercise extends HiveObject {
         name: name,
         titleFa: titleFa,
         gloss: gloss,
-        author: author,
-        type: type,
-        audioFileUrl: url,
         repetitionsDefault: repetitions ?? 1,
-        durationSeconds: durationSeconds,
         description: description,
         videoUrl: videoUrl,
-        audioAnchorMs: audioAnchorMs,
         movementTypeId: movementTypeId,
         media: ExerciseMedia(
           type: mediaType ?? 'none',

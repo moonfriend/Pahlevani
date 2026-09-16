@@ -80,12 +80,8 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
     return HiveExercise(
       id: fields[0] as int,
       name: fields[1] as String,
-      author: fields[2] as String?,
-      type: fields[3] as String?,
-      url: fields[4] as String?,
       position: fields[5] as int,
       repetitions: fields[6] as int?,
-      durationSeconds: fields[7] as int?,
       titleFa: fields[8] as String?,
       gloss: fields[9] as String?,
       mediaType: fields[10] as String?,
@@ -94,7 +90,6 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       movementId: fields[13] as int?,
       description: fields[14] as String?,
       videoUrl: fields[15] as String?,
-      audioAnchorMs: fields[16] as int?,
       videoAnchorMs: fields[17] as int?,
       movementTypeId: fields[18] as int?,
     );
@@ -103,23 +98,15 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
       ..write(obj.name)
-      ..writeByte(2)
-      ..write(obj.author)
-      ..writeByte(3)
-      ..write(obj.type)
-      ..writeByte(4)
-      ..write(obj.url)
       ..writeByte(5)
       ..write(obj.position)
       ..writeByte(6)
       ..write(obj.repetitions)
-      ..writeByte(7)
-      ..write(obj.durationSeconds)
       ..writeByte(8)
       ..write(obj.titleFa)
       ..writeByte(9)
@@ -136,8 +123,6 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..write(obj.description)
       ..writeByte(15)
       ..write(obj.videoUrl)
-      ..writeByte(16)
-      ..write(obj.audioAnchorMs)
       ..writeByte(17)
       ..write(obj.videoAnchorMs)
       ..writeByte(18)

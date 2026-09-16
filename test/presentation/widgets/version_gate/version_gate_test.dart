@@ -42,4 +42,32 @@ void main() {
     expect(find.text('APP CONTENT'), findsNothing);
     expect(find.text('Time to update!'), findsOneWidget);
   });
+
+  testWidgets('re-checks the gate when the app resumes from the background',
+      (tester) async {
+    final repo = FakeVersionGateRepository();
+    final cubit = VersionGateCubit(repository: repo, currentBuildNumber: 1);
+    addTearDown(cubit.close);
+
+    await tester.pumpWidget(_harness(cubit));
+    await tester.pump();
+    expect(find.text('APP CONTENT'), findsOneWidget);
+
+    // Server-side config changes to blocking while the app sits in the
+    // background — nothing re-runs the check on its own from here.
+    repo.config = const VersionGateConfig(
+        minSupportedBuildNumber: 10,
+        updateMessage: 'Please update now!',
+        forceUpdate: true);
+
+    // Simulate the app returning to the foreground (e.g. reopened from the
+    // launcher without the process having been killed).
+    tester.binding
+        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('APP CONTENT'), findsNothing);
+    expect(find.text('Please update now!'), findsOneWidget);
+  });
 }

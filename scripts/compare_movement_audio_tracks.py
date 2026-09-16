@@ -60,7 +60,7 @@ def load_client(env_name: str, musician_table: str):
 
 
 def main():
-    staging = load_client("staging", "musician")
+    staging = load_client("staging", "morshed")
     prod = load_client("production", "morshed")
 
     only_staging = sorted(set(staging) - set(prod))

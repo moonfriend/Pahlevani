@@ -3,7 +3,6 @@ class MovementRow {
   final String name;
   final String? titleFa;
   final String? gloss;
-  final String? type;
   final String mediaType;
   final String? mediaSrc;
   final String? mediaPoster;
@@ -14,8 +13,7 @@ class MovementRow {
   final int? videoAnchorMs;
 
   /// FK into movement_type — null until a maintainer curates it via
-  /// admin.py (see migration 0022_musician_audio_tracks.sql). Distinct from
-  /// the legacy, unused [type] free-text field above.
+  /// admin.py (see migration 0022_musician_audio_tracks.sql).
   final int? typeId;
 
   MovementRow({
@@ -23,7 +21,6 @@ class MovementRow {
     required this.name,
     this.titleFa,
     this.gloss,
-    this.type,
     required this.mediaType,
     this.mediaSrc,
     this.mediaPoster,
@@ -36,7 +33,6 @@ class MovementRow {
         name: m['name'] as String? ?? 'Movement ${m['id']}',
         titleFa: m['title_fa'] as String?,
         gloss: m['gloss'] as String?,
-        type: m['type'] as String?,
         mediaType: m['media_type'] as String? ?? 'none',
         mediaSrc: m['media_src'] as String?,
         mediaPoster: m['media_poster'] as String?,

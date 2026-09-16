@@ -27,8 +27,6 @@ Exercise _withResolvedAudio(Exercise base, MovementAudioTrack track) =>
       name: base.name,
       titleFa: base.titleFa,
       gloss: base.gloss,
-      author: base.author,
-      type: base.type,
       audioFileUrl: track.audioUrl,
       repetitionsDefault: track.repetitionsDefault,
       durationSeconds: track.durationSeconds,
@@ -260,9 +258,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final rawExercise = snap.exercisesById[item.exerciseId];
         if (rawExercise == null) continue;
 
-        // Falls back to the exercise's own (legacy) audio fields whenever
-        // the movement hasn't been curated with a type yet, or nothing has
-        // been recorded for it — see resolveAudioTrack's doc comment.
+        // Null when the movement hasn't been curated with a type yet, or
+        // nothing has been recorded for it — the terminal state now (no
+        // legacy per-exercise fallback exists anymore); the exercise then
+        // keeps its own audio-shaped fields at null, which the empty-source
+        // check in _loadSourceAtIndex below turns into a per-track
+        // errorMessage rather than a crash.
         final resolvedTrack = resolveAudioTrack(
           movementTypeId: rawExercise.movementTypeId,
           chosenMorshedId: selectedMorshedId,
@@ -275,7 +276,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
           'movementTypeId=${rawExercise.movementTypeId} '
           'chosenMorshedId=$selectedMorshedId '
-          'resolvedTrack=${resolvedTrack == null ? 'null (legacy fallback)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
+          'resolvedTrack=${resolvedTrack == null ? 'null (no curated audio)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
           'finalAudioUrl=${exercise.audioFileUrl}',
         );
 

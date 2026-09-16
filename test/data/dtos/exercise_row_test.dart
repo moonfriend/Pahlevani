@@ -7,15 +7,11 @@ void main() {
       final row = ExerciseRow.fromJson({
         'id': 123, // int
         'name': 'Push Ups',
-        'author': 'Coach A',
-        'audio_url': 'https://example.com/pushups',
         'repetitions': 10,
       });
 
       expect(row.id, 123);
       expect(row.name, 'Push Ups');
-      expect(row.author, 'Coach A');
-      expect(row.audioUrl, 'https://example.com/pushups');
       expect(row.repetitions, 10);
     });
 
@@ -45,29 +41,13 @@ void main() {
       expect(row2.repetitions, 0);
     });
 
-    test('parses audio_anchor_ms when present, null when absent', () {
-      final row = ExerciseRow.fromJson({
-        'id': 1,
-        'repetitions': 3,
-        'audio_anchor_ms': 1250,
-      });
-      expect(row.audioAnchorMs, 1250);
-
-      final rowWithout = ExerciseRow.fromJson({'id': 1, 'repetitions': 3});
-      expect(rowWithout.audioAnchorMs, isNull);
-    });
-
     test('allows nullable text fields', () {
       final row = ExerciseRow.fromJson({
         'id': 1,
         'name': null,
-        'author': null,
-        'audio_url': null,
         'repetitions': 3,
       });
       expect(row.name, isNull);
-      expect(row.author, isNull);
-      expect(row.audioUrl, isNull);
     });
 
     test('throws if id is missing or not numeric', () {
