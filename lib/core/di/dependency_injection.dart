@@ -12,6 +12,7 @@ import '../../data/datasources/training_session/training_session_remote_datasour
 import '../../data/repositories_impl/audio_catalog_repository_impl.dart';
 import '../../data/repositories_impl/auth_repository_impl.dart';
 import '../../data/repositories_impl/download_repository_impl.dart';
+import '../../data/repositories_impl/learnt_exercises_repository_impl.dart';
 import '../../data/repositories_impl/tracking/training_history_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
 import '../../data/repositories_impl/version_gate_repository_impl.dart';
@@ -24,6 +25,7 @@ import '../../data/services/pahlevani_audio_handler.dart';
 import '../../domain/repositories/audio_catalog_repository.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/download_repository.dart';
+import '../../domain/repositories/learnt_exercises_repository.dart';
 import '../../domain/repositories/tracking/training_history_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/repositories/version_gate_repository.dart';
@@ -72,6 +74,9 @@ class DependencyInjection {
         localDataSource: getIt<TrainingSessionLocalDataSource>(),
       ),
     );
+
+    getIt.registerLazySingleton<LearntExercisesRepository>(
+        () => LearntExercisesRepositoryImpl());
 
     getIt.registerLazySingleton<TrainingHistoryLocalDatabase>(
         () => TrainingHistoryLocalDatabase());

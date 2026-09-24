@@ -13,9 +13,11 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -205,14 +207,19 @@ TrainingSessionPlayerCubit _makeCubit(
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
   FakeAudioCatalogRepository? audioCatalogRepo,
+  FakeLearntExercisesRepository? learntExercisesRepo,
+  PlayerMode mode = PlayerMode.athlete,
 }) {
   final session = snapshot.sessionsById.values.first;
   return TrainingSessionPlayerCubit(
     trainingSession: session,
+    mode: mode,
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
     downloadRepository: downloadRepo ?? _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
     audioCatalogRepository: audioCatalogRepo ?? FakeAudioCatalogRepository(),
+    learntExercisesRepository:
+        learntExercisesRepo ?? FakeLearntExercisesRepository(),
     notificationService: FakePlayerNotificationService(),
   );
 }
@@ -816,10 +823,12 @@ void main() {
       final audioService = FakeAudioPlayerService();
       final cubit = TrainingSessionPlayerCubit(
         trainingSession: session,
+        mode: PlayerMode.athlete,
         audioPlayerService: audioService,
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
         audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
         notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
@@ -1338,10 +1347,12 @@ void main() {
       final sessionRepo = _MutableSessionRepo(snapWithVideo);
       final cubit = TrainingSessionPlayerCubit(
         trainingSession: session,
+        mode: PlayerMode.athlete,
         audioPlayerService: FakeAudioPlayerService(),
         downloadRepository: downloadRepo,
         sessionRepository: sessionRepo,
         audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
         notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
@@ -1382,10 +1393,12 @@ void main() {
       final session = snap.sessionsById.values.first;
       final cubit = TrainingSessionPlayerCubit(
         trainingSession: session,
+        mode: PlayerMode.athlete,
         audioPlayerService: FakeAudioPlayerService(),
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
         audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
         notificationService: notification,
       );
       return (cubit, notification);
@@ -1497,6 +1510,235 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(notification.lastTitle, _exercise(2).name);
+    });
+  });
+
+  // ---------- learning mode: never auto-plays; only explicit play() starts a track ----------
+
+  group('learning mode', () {
+    test('loadTracks loads the first track without playing it', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+      expect(audioService.lastSetSourcePath, isNotNull);
+    });
+
+    test('startCurrentTrack() starts the pending track via play(path)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      // Must go through play(path), not resume() — the track was only ever
+      // handed to the engine via setSource(), never actually played, and
+      // resuming a never-played source isn't something every platform
+      // backend supports (this is what broke Learning Mode's Go button on
+      // a real device: resume() alone left the engine in a bad state).
+      await cubit.startCurrentTrack();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(audioService.playCallCount, 1);
+      expect(audioService.resumed, isFalse);
+    });
+
+    test('next() advances without auto-playing the new track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      await cubit.startCurrentTrack(); // Go — starts track 0
+      expect(cubit.state.isPlaying, isTrue);
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'learning mode must not auto-play the next track');
+    });
+
+    test('setIndexAndPlay does not auto-play the tapped track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.setIndexAndPlay(1);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+    });
+  });
+
+  // ---------- learning mode: "Learnt" moves skip the prompt entirely ----------
+
+  group('learning mode — learnt exercises', () {
+    test('a learnt exercise auto-plays without waiting for Go', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {10}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(audioService.playCallCount, 1);
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+
+    test('an unlearnt exercise still pauses and waits for Go', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+      expect(cubit.shouldPromptLearningMode, isTrue);
+    });
+
+    test('next() auto-plays a learnt track but pauses for an unlearnt one',
+        () async {
+      // Exercise 11 (track 1) is learnt; exercise 10 (track 0) is not.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {11}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'track 0 (exercise 10) is not learnt');
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isTrue,
+          reason: 'track 1 (exercise 11) is learnt — auto-plays');
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+  });
+
+  // ---------- zoorkhaneh mode: never auto-advances; rep count climbs past total ----------
+
+  group('zoorkhaneh mode', () {
+    test('does not auto-advance once the target duration is reached', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+          _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+        ],
+        [_exercise(10, reps: 1), _exercise(11, reps: 1)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+
+      expect(cubit.state.playingIndex, 0,
+          reason: 'zoorkhaneh mode must not auto-advance mid-loop');
+      expect(cubit.state.logicalPosition.inMilliseconds,
+          greaterThan(cubit.state.logicalDuration.inMilliseconds));
+    });
+
+    test('a manual next() still advances immediately', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+          _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+        ],
+        [_exercise(10, reps: 1), _exercise(11, reps: 1)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
     });
   });
 

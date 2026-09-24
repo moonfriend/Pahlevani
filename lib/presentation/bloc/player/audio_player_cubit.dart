@@ -10,10 +10,12 @@ import 'package:pahlevani/domain/entities/training_session/session_details.dart'
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 
 /// Substitutes a resolved recording's audio-shaped fields onto [base] —
 /// everything else (name, media, description...) stays the exercise's own.
@@ -138,10 +140,18 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final DownloadRepository _downloadRepo;
   final TrainingSessionRepository _sessionRepo;
   final AudioCatalogRepository _audioCatalogRepo;
+  final LearntExercisesRepository _learntExercisesRepo;
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
+  final PlayerMode _mode;
 
   final List<ItemDetail> _itemDetails = [];
+
+  // Snapshotted once per loadTracks() call — Learning Mode's "skip the
+  // prompt for moves I already know" is scoped to a single play-through; a
+  // toggle made mid-session (via the ⓘ page) takes effect the next time this
+  // session is opened, not retroactively for tracks already in this run.
+  Set<int> _learntExerciseIds = {};
 
   // Tracks which track indices have already been scheduled for background
   // caching this session — prevents concurrent redundant downloads.
@@ -160,16 +170,20 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   TrainingSessionPlayerCubit({
     required TrainingSession trainingSession,
+    required PlayerMode mode,
     required AudioPlayerService audioPlayerService,
     required DownloadRepository downloadRepository,
     required TrainingSessionRepository sessionRepository,
     required AudioCatalogRepository audioCatalogRepository,
+    required LearntExercisesRepository learntExercisesRepository,
     required PlayerNotificationService notificationService,
   })  : _trainingSession = trainingSession,
+        _mode = mode,
         _audioService = audioPlayerService,
         _downloadRepo = downloadRepository,
         _sessionRepo = sessionRepository,
         _audioCatalogRepo = audioCatalogRepository,
+        _learntExercisesRepo = learntExercisesRepository,
         _notification = notificationService,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
@@ -207,6 +221,22 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
     _audioService.setLooping(true);
   }
+
+  bool _isLearnt(Exercise? exercise) =>
+      exercise != null && _learntExerciseIds.contains(exercise.id);
+
+  /// Learning mode pauses before every track that hasn't been marked
+  /// "Learnt" — the page shows the move's prompt with a "Go" button that
+  /// calls [startCurrentTrack] once the user is ready. A learnt move starts
+  /// on its own, same as every other mode.
+  bool _shouldAutoPlay(int index) =>
+      _mode != PlayerMode.learning || _isLearnt(exerciseAt(index));
+
+  /// Exposed for the page: whether Learning Mode's pre-track prompt should
+  /// be shown for the currently-loaded track. Mirrors [_shouldAutoPlay]
+  /// without the page needing to know about the learnt-exercises store
+  /// itself.
+  bool get shouldPromptLearningMode => !_shouldAutoPlay(state.playingIndex);
 
   /// The full [Exercise] behind the track at [index] (for the info page +
   /// per-item length). Null if the index is out of range.
@@ -246,6 +276,10 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final snap = await _sessionRepo.getTrainingSessions();
       final sessionId = _trainingSession.id;
       final items = snap.itemsBySessionId[sessionId] ?? [];
+
+      if (_mode == PlayerMode.learning) {
+        _learntExerciseIds = await _learntExercisesRepo.getLearntExerciseIds();
+      }
 
       // Resolved once per load — an athlete's chosen Morshed takes effect
       // the next time they open a session, not live mid-playback (there's
@@ -363,7 +397,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           isLoading: false,
           errorMessage: null,
         ));
-        await _loadSourceAtIndex(0, shouldPlay: true);
+        await _loadSourceAtIndex(0, shouldPlay: _shouldAutoPlay(0));
       }
     } catch (e) {
       emit(state.copyWith(
@@ -381,7 +415,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         duration: Duration.zero,
         isFinished: false,
       ));
-      _loadSourceAtIndex(nextIndex, shouldPlay: true);
+      _loadSourceAtIndex(nextIndex, shouldPlay: _shouldAutoPlay(nextIndex));
     } else {
       _audioService.stop();
       _stopLogicalTimer();
@@ -399,7 +433,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       isPlaying: false,
       isFinished: false,
     ));
-    _loadSourceAtIndex(0, shouldPlay: true);
+    _loadSourceAtIndex(0, shouldPlay: _shouldAutoPlay(0));
   }
 
   /// Below this, "previous" is treated as the start of a fresh tap rather
@@ -421,7 +455,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       position: Duration.zero,
       duration: Duration.zero,
     ));
-    unawaited(_loadSourceAtIndex(prevIndex, shouldPlay: true));
+    unawaited(
+        _loadSourceAtIndex(prevIndex, shouldPlay: _shouldAutoPlay(prevIndex)));
   }
 
   void setIndex(int index) {
@@ -440,8 +475,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   void setIndexAndPlay(int index) {
     if (index >= 0 && index < state.tracks.length) {
-      emit(state.copyWith(playingIndex: index, isPlaying: true));
-      _loadSourceAtIndex(index, shouldPlay: true);
+      final autoPlay = _shouldAutoPlay(index);
+      emit(state.copyWith(playingIndex: index, isPlaying: autoPlay));
+      _loadSourceAtIndex(index, shouldPlay: autoPlay);
     }
   }
 
@@ -616,6 +652,15 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
+  /// Starts the current track for the first time — used by Learning Mode's
+  /// "Go" button. That track was only ever handed to the engine via
+  /// setSource() (never played), so this goes through the same play(path)
+  /// bootstrap every other track start uses, rather than [play]'s resume() —
+  /// resuming a source that was never actually played is not something every
+  /// platform backend supports, unlike a genuine pause-then-resume mid-track.
+  Future<void> startCurrentTrack() =>
+      _loadSourceAtIndex(state.playingIndex, shouldPlay: true);
+
   void togglePlay() {
     if (state.isFinished) {
       replay();
@@ -701,7 +746,13 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       }
       if (!state.isPlaying) return;
       _logicalElapsed += const Duration(milliseconds: 200);
-      if (_logicalElapsed >= _logicalTargetDuration!) {
+      // Zoorkhaneh mode never auto-advances — the clip keeps looping
+      // (see _handleDynamicDuration) and _logicalElapsed keeps climbing past
+      // the target forever, which _RepCounter reads as an uncapped rep
+      // count. Only a manual next() (button, track tap, lock screen) moves
+      // the session forward in this mode.
+      if (_logicalElapsed >= _logicalTargetDuration! &&
+          _mode != PlayerMode.zoorkhaneh) {
         timer.cancel();
         next();
         return;
