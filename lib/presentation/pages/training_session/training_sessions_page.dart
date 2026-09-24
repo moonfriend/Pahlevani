@@ -14,6 +14,7 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/widgets/player/player_mode_dialog.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_page.dart';
@@ -104,10 +105,12 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   }
 
   Future<void> _openPlayer(TrainingSession session) async {
+    final mode = await showPlayerModeDialog(context);
+    if (mode == null || !mounted) return;
     await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => AudioPlayerPage(trainingSession: session),
+          builder: (_) => AudioPlayerPage(trainingSession: session, mode: mode),
         ));
     // Player may have cached tracks via lookahead — reload statuses so the
     // "downloaded" badge appears if all tracks are now on disk.

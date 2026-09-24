@@ -11,6 +11,7 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -18,25 +19,30 @@ import 'package:pahlevani/domain/entities/tracking/session_completion_record.dar
 import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
+import 'package:pahlevani/presentation/widgets/player/learning_mode_prompt.dart';
 import 'package:pahlevani/presentation/widgets/tracking/movement_count_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────────────────────────
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key, required this.trainingSession});
+  const AudioPlayerPage(
+      {super.key, required this.trainingSession, required this.mode});
   final TrainingSession trainingSession;
+  final PlayerMode mode;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -52,10 +58,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     super.initState();
     _cubit = TrainingSessionPlayerCubit(
       trainingSession: widget.trainingSession,
+      mode: widget.mode,
       audioPlayerService: getIt<AudioPlayerService>(),
       downloadRepository: getIt<DownloadRepository>(),
       sessionRepository: getIt<TrainingSessionRepository>(),
       audioCatalogRepository: getIt<AudioCatalogRepository>(),
+      learntExercisesRepository: getIt<LearntExercisesRepository>(),
       notificationService: getIt<PlayerNotificationService>(),
     );
     _cubit.loadTracks();
@@ -69,6 +77,19 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     unawaited(WakelockPlus.disable());
     _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
+  }
+
+  /// Learning Mode's forced pre-track gate. Awaits the prompt's result and
+  /// only starts the track once the dialog has actually finished closing —
+  /// deliberately not firing play before/alongside the pop, which raced the
+  /// engine against the dialog's own dismissal on-device.
+  Future<void> _promptLearningMode(
+      BuildContext context, Exercise exercise, ExerciseMedia media) async {
+    final shouldStart =
+        await showLearningModePrompt(context, exercise: exercise, media: media);
+    if (shouldStart && mounted) {
+      unawaited(_cubit.startCurrentTrack());
+    }
   }
 
   /// Records this play-through in local history — always, so the calendar
@@ -113,6 +134,15 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             if (state.isFinished) {
               unawaited(_handleSessionFinished(context));
             }
+            if (state.tracks.isNotEmpty &&
+                !state.isFinished &&
+                _cubit.shouldPromptLearningMode) {
+              final exercise = _cubit.exerciseAt(state.playingIndex);
+              if (exercise != null) {
+                unawaited(_promptLearningMode(
+                    context, exercise, state.tracks[state.playingIndex].media));
+              }
+            }
             _trackListKey.currentState?.scrollToActive(state.playingIndex);
             // Precache each image URL at most once per player session.
             // Previously this looped all tracks on every index change, causing
@@ -143,7 +173,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               Column(children: [
                 _AppBar(session: widget.trainingSession),
                 _Stage(state: state, accent: accent, cubit: _cubit),
-                _RepCounter(state: state),
+                _RepCounter(state: state, mode: widget.mode),
                 _ProgressBlock(state: state, cubit: _cubit),
                 // Fills the rest of the screen, extending behind the
                 // transport bar below (a transparent overlay) rather than
@@ -669,8 +699,9 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
 // Rep counter — the signature moment
 // ─────────────────────────────────────────────────────────────────────────────
 class _RepCounter extends StatefulWidget {
-  const _RepCounter({required this.state});
+  const _RepCounter({required this.state, required this.mode});
   final AudioPlayerState state;
+  final PlayerMode mode;
 
   @override
   State<_RepCounter> createState() => _RepCounterState();
@@ -716,7 +747,9 @@ class _RepCounterState extends State<_RepCounter>
   void didUpdateWidget(_RepCounter old) {
     super.didUpdateWidget(old);
     final total = widget.state.currentTrack?.effectiveRepetitions ?? 1;
-    final rep = _computeRep(widget.state).clamp(1, total);
+    final rawRep = _computeRep(widget.state);
+    final rep =
+        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
     if (_lastRep != 0 && rep != _lastRep) {
       HapticFeedback.selectionClick();
       _ctrl.forward(from: 0);
@@ -739,14 +772,12 @@ class _RepCounterState extends State<_RepCounter>
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final track = s.currentTrack!;
     final total = track.effectiveRepetitions;
-    final isCustom =
-        track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
-    final rep = _computeRep(s).clamp(1, total);
-    final pillBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
-    final pillFg = isCustom ? colors.repCustom : colors.repDefault;
-    final glow = isCustom
-        ? colors.repCustom.withValues(alpha: 0.4)
-        : colors.repDefault.withValues(alpha: 0.36);
+    final rawRep = _computeRep(s);
+    final rep =
+        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
+    final pillBg = colors.repDefaultBg;
+    final pillFg = colors.repDefault;
+    final glow = colors.repDefault.withValues(alpha: 0.36);
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -795,16 +826,15 @@ class _RepCounterState extends State<_RepCounter>
                         .repPill
                         .copyWith(color: pillFg, fontSize: 13),
                     children: [
-                      TextSpan(text: 'Rep $rep '),
                       TextSpan(
-                          text: 'of $total',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 12)),
-                      if (isCustom)
-                        const TextSpan(
-                            text: '  · custom',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 10)),
+                          text: widget.mode == PlayerMode.zoorkhaneh
+                              ? 'Rep $rep'
+                              : 'Rep $rep '),
+                      if (widget.mode != PlayerMode.zoorkhaneh)
+                        TextSpan(
+                            text: 'of $total',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 12)),
                     ],
                   )),
                 ]),
@@ -957,10 +987,8 @@ class _TrackListState extends State<_TrackList> {
         _itemKeys[i] ??= GlobalKey();
         final track = tracks[i];
         final active = i == activeIndex;
-        final isCustom =
-            track.effectiveRepetitions != (track.defaultRepetitions ?? 1);
-        final repFg = isCustom ? colors.repCustom : colors.repDefault;
-        final repBg = isCustom ? colors.repCustomBg : colors.repDefaultBg;
+        final repFg = colors.repDefault;
+        final repBg = colors.repDefaultBg;
         final exercise = widget.cubit.exerciseAt(i);
         final lengthSeconds = trackDurationSeconds(
           audioSeconds: exercise?.durationSeconds,
@@ -1031,11 +1059,22 @@ class _TrackListState extends State<_TrackList> {
                     // Explicit pause, not togglePlay() — opening the info
                     // page must always stop playback, never resume it.
                     widget.cubit.pause();
+                    // opaque: false (not a plain MaterialPageRoute) — an
+                    // opaque route lets the Navigator skip ticking whatever
+                    // is fully covered underneath, which is this page with
+                    // its own looping video controller. That combination is
+                    // what froze the app on back-navigation; the same fix
+                    // already proven for Learning Mode's prompt applies here.
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                          builder: (_) => ExerciseInfoPage(
-                              exercise: exercise, media: track.media)),
+                      PageRouteBuilder(
+                        opaque: false,
+                        barrierColor: Colors.transparent,
+                        pageBuilder: (_, __, ___) => ExerciseInfoPage(
+                            exercise: exercise, media: track.media),
+                        transitionsBuilder: (_, animation, __, child) =>
+                            FadeTransition(opacity: animation, child: child),
+                      ),
                     );
                   },
                   child: SizedBox(

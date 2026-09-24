@@ -7,19 +7,29 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
+import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
+import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
+import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_connectivity_service.dart';
+import '../../../fakes/fake_player_notification_service.dart';
+import '../../../fakes/fake_training_history_repository.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -350,5 +360,98 @@ void main() {
     await tester.pump();
 
     expect(find.text('No internet connection'), findsNothing);
+  });
+
+  // ── Mode-selection dialog ──────────────────────────────────────────────────
+
+  void registerPlayerFakes() {
+    getIt.registerSingleton<TrainingSessionRepository>(
+        _StubRepository(_snapshot));
+    getIt.registerSingleton<DownloadRepository>(_StubDownloadRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+    getIt.registerFactory<AudioPlayerService>(() => FakeAudioPlayerService());
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+  }
+
+  testWidgets(
+      'tapping a session card shows Athlete/Learning/Zoorkhaneh options',
+      (tester) async {
+    registerPlayerFakes();
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    await tester.tap(find.text('Session A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Athlete mode'), findsOneWidget);
+    expect(find.text('Learning Mode'), findsOneWidget);
+    expect(find.text('Zoorkhaneh mode'), findsOneWidget);
+  });
+
+  testWidgets('choosing a mode opens the player', (tester) async {
+    registerPlayerFakes();
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    await tester.tap(find.text('Session A'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Athlete mode'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AudioPlayerPage), findsOneWidget);
+  });
+
+  testWidgets('dismissing the mode dialog does not open the player',
+      (tester) async {
+    registerPlayerFakes();
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await cubit.fetchTrainingSessions();
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    await tester.tap(find.text('Session A'));
+    await tester.pumpAndSettle();
+
+    // Tap the scrim, outside the dialog's content, to dismiss without
+    // picking a mode.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AudioPlayerPage), findsNothing);
+    expect(find.text('Session A'), findsOneWidget);
   });
 }
