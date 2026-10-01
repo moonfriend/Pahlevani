@@ -16,8 +16,10 @@ import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/widgets/player/player_mode_dialog.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
+import 'package:pahlevani/presentation/bloc/path/path_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_page.dart';
+import 'package:pahlevani/presentation/pages/path/path_page.dart';
 import 'package:pahlevani/presentation/pages/trainer/assign_session_page.dart';
 import 'package:pahlevani/presentation/pages/tracking/training_history_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -83,6 +85,18 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         builder: (_) => BlocProvider.value(
           value: getIt<TrainingHistoryCubit>(),
           child: const TrainingHistoryPage(),
+        ),
+      ),
+    );
+  }
+
+  void _openPath(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: getIt<PathCubit>(),
+          child: const PathPage(),
         ),
       ),
     );
@@ -301,6 +315,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                   onRefresh: _refresh,
                   onHistoryTap: () => _openHistory(context),
                   onMorshedTap: () => _openMorshedPicker(context),
+                  onPathTap: () => _openPath(context),
                 ),
                 if (isLoading && sessions.isEmpty)
                   const Expanded(
@@ -342,12 +357,14 @@ class _Header extends StatelessWidget {
     required this.onRefresh,
     required this.onHistoryTap,
     required this.onMorshedTap,
+    required this.onPathTap,
   });
 
   final bool refreshing;
   final VoidCallback onRefresh;
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
+  final VoidCallback onPathTap;
 
   @override
   Widget build(BuildContext context) {
@@ -402,6 +419,7 @@ class _Header extends StatelessWidget {
                   onAccountTap: () => _handleAccountTap(authContext, authState),
                   onHistoryTap: onHistoryTap,
                   onMorshedTap: onMorshedTap,
+                  onPathTap: onPathTap,
                 ),
               ),
             ),
@@ -476,7 +494,7 @@ void _showAccountSheet(BuildContext context, AppUser user) {
   );
 }
 
-enum _MenuAction { refresh, toggleTheme, account, history, morshed }
+enum _MenuAction { refresh, toggleTheme, account, history, morshed, path }
 
 /// Consolidated "..." menu — refresh, theme toggle, and account/login all
 /// live here instead of as separate always-visible icon buttons, so the
@@ -490,6 +508,7 @@ class _OverflowMenu extends StatelessWidget {
     required this.onAccountTap,
     required this.onHistoryTap,
     required this.onMorshedTap,
+    required this.onPathTap,
   });
 
   final ThemeMode themeMode;
@@ -499,6 +518,7 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onAccountTap;
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
+  final VoidCallback onPathTap;
 
   @override
   Widget build(BuildContext context) {
@@ -528,9 +548,19 @@ class _OverflowMenu extends StatelessWidget {
             onHistoryTap();
           case _MenuAction.morshed:
             onMorshedTap();
+          case _MenuAction.path:
+            onPathTap();
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _MenuAction.path,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.route_outlined),
+            title: Text('Path'),
+          ),
+        ),
         const PopupMenuItem(
           value: _MenuAction.history,
           child: ListTile(
