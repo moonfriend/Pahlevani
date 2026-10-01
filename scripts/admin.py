@@ -212,6 +212,39 @@ def load_movement_types() -> pd.DataFrame:
         return pd.DataFrame()
 
 @st.cache_data(ttl=60)
+def load_fitness_test_charts() -> pd.DataFrame:
+    """Fitness-test stages — empty if migration 0035 not applied yet."""
+    try:
+        rows = get_client().table("fitness_test_chart").select("*").order("sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_axes() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_axis").select("*").order("chart_id,sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_subtests() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_subtest").select("*").order("axis_id,sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_levels() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_level").select("*").order("subtest_id,level_number").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
 def load_movement_audio_tracks() -> pd.DataFrame:
     """One Morshed's recording of one movement type, with the type/Morshed
     names joined in for display."""
@@ -245,6 +278,10 @@ def bust_cache():
     load_morsheds.clear()
     load_movement_types.clear()
     load_movement_audio_tracks.clear()
+    load_fitness_test_charts.clear()
+    load_fitness_test_axes.clear()
+    load_fitness_test_subtests.clear()
+    load_fitness_test_levels.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -2218,6 +2255,282 @@ def tab_utility():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Fitness Test Criteria
+#
+# CRUD over the 4-table rubric hierarchy behind the app's Fitness Test module
+# (migration 0035_fitness_test_criteria.sql): chart -> axis -> subtest ->
+# level. The app (lib/features/fitness_test/) treats this data as read-only —
+# this tab is the only place it's ever written. Drill down chart -> axis ->
+# subtest to edit one subtest's up-to-7 levels at a time.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_fitness_test_criteria():
+    st.header("Fitness Test Criteria")
+    st.caption(
+        "The Haft Khan self-assessment rubric behind the app's Fitness Test "
+        "module. Each axis is a 7-level ladder (or, for scoring_logic="
+        "'average', 2 ladders averaged together) — enter each level's "
+        "requirement text and matching threshold below."
+    )
+    if st.button("↺ Reload", key="rel_fitness_test"):
+        bust_cache()
+
+    charts_df = load_fitness_test_charts()
+    axes_df = load_fitness_test_axes()
+    subtests_df = load_fitness_test_subtests()
+    levels_df = load_fitness_test_levels()
+
+    # ── Charts ──────────────────────────────────────────────────────────────
+    st.subheader("Charts (stages)")
+    if not charts_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "chart_key": st.column_config.TextColumn("Key ✏️", width=180),
+            "title": st.column_config.TextColumn("Title ✏️", width=260),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "chart_key", "title", "sort_order"]
+        edited = st.data_editor(
+            charts_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_chart_ed",
+        )
+        if st.button("💾 Save charts", key="sv_ft_chart"):
+            patches = _changed_rows(charts_df, edited, ["chart_key", "title", "sort_order"])
+            if patches:
+                save_rows("fitness_test_chart", patches)
+                st.success(f"Updated {len(patches)} chart(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No charts yet — add the first one below.")
+
+    with st.form("add_ft_chart_form", clear_on_submit=True):
+        st.markdown("**Add a chart**")
+        new_key = st.text_input("Key (e.g. 'bodyweight_midline')")
+        new_title = st.text_input("Title")
+        new_order = st.number_input("Sort order", min_value=0, step=1, value=len(charts_df))
+        if st.form_submit_button("＋ Add chart") and new_key.strip() and new_title.strip():
+            get_client().table("fitness_test_chart").insert({
+                "chart_key": new_key.strip(), "title": new_title.strip(), "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if charts_df.empty:
+        st.info("Add a chart above first.")
+        return
+
+    # ── Axes ────────────────────────────────────────────────────────────────
+    st.subheader("Axes")
+    chart_opts = {f"{r['title']} ({r['chart_key']})": int(r["id"]) for _, r in charts_df.iterrows()}
+    chart_label = st.selectbox("Chart", list(chart_opts.keys()), key="ft_axis_chart_sel")
+    chart_id = chart_opts[chart_label]
+
+    chart_axes_df = axes_df[axes_df["chart_id"] == chart_id] if not axes_df.empty else pd.DataFrame()
+    if not chart_axes_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "axis_key": st.column_config.TextColumn("Key ✏️", width=160),
+            "display_name": st.column_config.TextColumn("Display name ✏️", width=200),
+            "scoring_logic": st.column_config.SelectboxColumn("Scoring ✏️", options=["single", "average"], width=110),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "axis_key", "display_name", "scoring_logic", "sort_order"]
+        edited = st.data_editor(
+            chart_axes_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_axis_ed",
+        )
+        if st.button("💾 Save axes", key="sv_ft_axis"):
+            patches = _changed_rows(
+                chart_axes_df, edited, ["axis_key", "display_name", "scoring_logic", "sort_order"])
+            if patches:
+                save_rows("fitness_test_axis", patches)
+                st.success(f"Updated {len(patches)} axis(es).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No axes yet for this chart — add the first one below.")
+
+    with st.form("add_ft_axis_form", clear_on_submit=True):
+        st.markdown("**Add an axis to this chart**")
+        new_key = st.text_input("Key (e.g. 'horizontal_push')")
+        new_name = st.text_input("Display name")
+        new_logic = st.selectbox("Scoring logic", ["single", "average"])
+        new_order = st.number_input(
+            "Sort order", min_value=0, step=1, value=len(chart_axes_df), key="ft_axis_order")
+        if st.form_submit_button("＋ Add axis") and new_key.strip() and new_name.strip():
+            get_client().table("fitness_test_axis").insert({
+                "chart_id": chart_id, "axis_key": new_key.strip(), "display_name": new_name.strip(),
+                "scoring_logic": new_logic, "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if chart_axes_df.empty:
+        st.info("Add an axis above first.")
+        return
+
+    # ── Subtests ────────────────────────────────────────────────────────────
+    st.subheader("Subtests")
+    axis_opts = {f"{r['display_name']} ({r['axis_key']})": int(r["id"]) for _, r in chart_axes_df.iterrows()}
+    axis_label = st.selectbox("Axis", list(axis_opts.keys()), key="ft_subtest_axis_sel")
+    axis_id = axis_opts[axis_label]
+
+    axis_subtests_df = subtests_df[subtests_df["axis_id"] == axis_id] if not subtests_df.empty else pd.DataFrame()
+    if not axis_subtests_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "subtest_key": st.column_config.TextColumn("Key ✏️", width=160),
+            "display_name": st.column_config.TextColumn("Display name ✏️", width=180),
+            "needs_bodyweight": st.column_config.CheckboxColumn("Needs bodyweight ✏️", width=130),
+            "needs_height": st.column_config.CheckboxColumn("Needs height ✏️", width=110),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "subtest_key", "display_name", "needs_bodyweight", "needs_height", "sort_order"]
+        edited = st.data_editor(
+            axis_subtests_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_subtest_ed",
+        )
+        if st.button("💾 Save subtests", key="sv_ft_subtest"):
+            patches = _changed_rows(
+                axis_subtests_df, edited,
+                ["subtest_key", "display_name", "needs_bodyweight", "needs_height", "sort_order"],
+            )
+            if patches:
+                save_rows("fitness_test_subtest", patches)
+                st.success(f"Updated {len(patches)} subtest(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption(
+            "No subtests yet for this axis — add one below. Most axes need "
+            "exactly 1 (matching its own key/name); 'average'-scoring axes "
+            "need 2."
+        )
+
+    with st.form("add_ft_subtest_form", clear_on_submit=True):
+        st.markdown("**Add a subtest to this axis**")
+        new_key = st.text_input("Key (e.g. 'handstand_hold')")
+        new_name = st.text_input("Display name")
+        new_bw = st.checkbox("Needs bodyweight")
+        new_ht = st.checkbox("Needs height")
+        new_order = st.number_input(
+            "Sort order", min_value=0, step=1, value=len(axis_subtests_df), key="ft_subtest_order")
+        if st.form_submit_button("＋ Add subtest") and new_key.strip() and new_name.strip():
+            get_client().table("fitness_test_subtest").insert({
+                "axis_id": axis_id, "subtest_key": new_key.strip(), "display_name": new_name.strip(),
+                "needs_bodyweight": new_bw, "needs_height": new_ht, "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if axis_subtests_df.empty:
+        st.info("Add a subtest above first.")
+        return
+
+    # ── Levels ──────────────────────────────────────────────────────────────
+    st.subheader("Levels")
+    st.caption(
+        "One row per level (1-7). ratio_denominator set to 'bodyweight' or "
+        "'height' means the real target is threshold_value × that profile "
+        "field + ratio_offset (e.g. Broad Jump's 'Height + 30cm' level = "
+        "threshold_value 1.0, ratio_offset 30 — leave ratio_offset at 0 for "
+        "a plain percentage like '80% of height'). "
+        "continuous_from_previous=false marks a level that switches exercise "
+        "or unit from the one below it — the app scores that transition as a "
+        "whole level rather than interpolating.\n\n"
+        "Phrasing tips: for a load-ratio axis (Deadlift, Press, Farmer Carry) "
+        "always collect weight — put the rep/distance target as text in "
+        "requirement_label, e.g. '0.5x Bodyweight for 8 reps'. For a timed "
+        "exercise with a rep target (e.g. Jump Rope), phrase input_label as "
+        "'Max reps in X min' rather than mentioning 'unbroken'."
+    )
+    subtest_opts = {f"{r['display_name']} ({r['subtest_key']})": int(r["id"]) for _, r in axis_subtests_df.iterrows()}
+    subtest_label = st.selectbox("Subtest", list(subtest_opts.keys()), key="ft_level_subtest_sel")
+    subtest_id = subtest_opts[subtest_label]
+
+    subtest_levels_df = levels_df[levels_df["subtest_id"] == subtest_id] if not levels_df.empty else pd.DataFrame()
+    if not subtest_levels_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "level_number": st.column_config.NumberColumn("Level", disabled=True, width=60),
+            "requirement_label": st.column_config.TextColumn("Requirement ✏️", width=240),
+            "input_label": st.column_config.TextColumn("Input label ✏️", width=200),
+            "input_unit": st.column_config.TextColumn("Unit ✏️", width=90),
+            "threshold_value": st.column_config.NumberColumn("Threshold ✏️", width=100),
+            "higher_is_better": st.column_config.CheckboxColumn("Higher=better ✏️", width=110),
+            "ratio_denominator": st.column_config.SelectboxColumn(
+                "Ratio of ✏️", options=[None, "bodyweight", "height"], width=110),
+            "ratio_offset": st.column_config.NumberColumn("Ratio offset ✏️", width=100),
+            "continuous_from_previous": st.column_config.CheckboxColumn("Continuous ✏️", width=100),
+        }
+        show = [
+            "id", "level_number", "requirement_label", "input_label", "input_unit",
+            "threshold_value", "higher_is_better", "ratio_denominator", "ratio_offset",
+            "continuous_from_previous",
+        ]
+        edited = st.data_editor(
+            subtest_levels_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_level_ed",
+        )
+        if st.button("💾 Save levels", key="sv_ft_level"):
+            patches = _changed_rows(
+                subtest_levels_df, edited,
+                ["requirement_label", "input_label", "input_unit", "threshold_value",
+                 "higher_is_better", "ratio_denominator", "ratio_offset", "continuous_from_previous"],
+            )
+            if patches:
+                save_rows("fitness_test_level", patches)
+                st.success(f"Updated {len(patches)} level(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No levels yet for this subtest.")
+
+    existing_levels = set(subtest_levels_df["level_number"]) if not subtest_levels_df.empty else set()
+    missing_levels = [n for n in range(1, 8) if n not in existing_levels]
+    if missing_levels:
+        with st.form("add_ft_level_form", clear_on_submit=True):
+            st.markdown("**Add a level**")
+            new_level = st.selectbox("Level number", missing_levels)
+            new_req = st.text_input("Requirement label (shown to the test-taker)")
+            new_input_label = st.text_input("Input field label")
+            new_unit = st.text_input("Unit (reps / seconds / meters / kg / minutes)")
+            new_threshold = st.number_input("Threshold value", value=0.0)
+            new_higher = st.checkbox("Higher is better", value=True)
+            new_ratio = st.selectbox("Ratio of", [None, "bodyweight", "height"])
+            new_ratio_offset = st.number_input("Ratio offset (added after the ratio, 0 for a plain percentage)", value=0.0)
+            new_continuous = st.checkbox("Continuous from previous level", value=True)
+            if st.form_submit_button("＋ Add level") and new_req.strip():
+                get_client().table("fitness_test_level").insert({
+                    "subtest_id": subtest_id, "level_number": new_level,
+                    "requirement_label": new_req.strip(),
+                    "input_label": new_input_label.strip() or new_req.strip(),
+                    "input_unit": new_unit.strip() or "reps", "threshold_value": new_threshold,
+                    "higher_is_better": new_higher, "ratio_denominator": new_ratio,
+                    "ratio_offset": new_ratio_offset, "continuous_from_previous": new_continuous,
+                }).execute()
+                bust_cache()
+                st.rerun()
+    else:
+        st.caption("All 7 levels defined for this subtest.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2240,7 +2553,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
         "🔍  Inspector",
@@ -2251,6 +2564,7 @@ def main():
         "🎟️  Invite Codes",
         "👤  Users",
         "🧰  Utility",
+        "🏋️  Fitness Test",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
@@ -2262,6 +2576,7 @@ def main():
     with t8: tab_invite_codes()
     with t9: tab_users()
     with t10: tab_utility()
+    with t11: tab_fitness_test_criteria()
 
 
 if __name__ == "__main__":
