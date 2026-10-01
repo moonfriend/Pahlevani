@@ -62,8 +62,7 @@ void main() {
 
     // Simulate the app returning to the foreground (e.g. reopened from the
     // launcher without the process having been killed).
-    tester.binding
-        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     await tester.pump();
 

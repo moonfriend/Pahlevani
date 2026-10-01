@@ -43,6 +43,7 @@ import '../../presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../presentation/bloc/path/path_cubit.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 import '../../presentation/bloc/tracking/training_history_cubit.dart';
+import '../../features/fitness_test/fitness_test_module.dart';
 
 final getIt = GetIt.instance;
 
@@ -181,6 +182,10 @@ class DependencyInjection {
         () => SupabaseVersionGateRepository());
 
     getIt.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl());
+
+    // Self-contained feature module — see fitness_test_module.dart for why
+    // its registrations live there instead of inline here.
+    await registerFitnessTestDependencies(getIt);
   }
 
   Future<void> ensureInitialized() async {

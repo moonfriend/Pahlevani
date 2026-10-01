@@ -29,6 +29,7 @@ import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
+import 'package:pahlevani/features/fitness_test/presentation/pages/fitness_test_landing_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -99,6 +100,13 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
           child: const PathPage(),
         ),
       ),
+    );
+  }
+
+  void _openFitnessTest(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FitnessTestLandingPage()),
     );
   }
 
@@ -316,6 +324,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                   onHistoryTap: () => _openHistory(context),
                   onMorshedTap: () => _openMorshedPicker(context),
                   onPathTap: () => _openPath(context),
+                  onFitnessTestTap: () => _openFitnessTest(context),
                 ),
                 if (isLoading && sessions.isEmpty)
                   const Expanded(
@@ -358,6 +367,7 @@ class _Header extends StatelessWidget {
     required this.onHistoryTap,
     required this.onMorshedTap,
     required this.onPathTap,
+    required this.onFitnessTestTap,
   });
 
   final bool refreshing;
@@ -365,6 +375,7 @@ class _Header extends StatelessWidget {
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
   final VoidCallback onPathTap;
+  final VoidCallback onFitnessTestTap;
 
   @override
   Widget build(BuildContext context) {
@@ -420,6 +431,7 @@ class _Header extends StatelessWidget {
                   onHistoryTap: onHistoryTap,
                   onMorshedTap: onMorshedTap,
                   onPathTap: onPathTap,
+                  onFitnessTestTap: onFitnessTestTap,
                 ),
               ),
             ),
@@ -494,7 +506,15 @@ void _showAccountSheet(BuildContext context, AppUser user) {
   );
 }
 
-enum _MenuAction { refresh, toggleTheme, account, history, morshed, path }
+enum _MenuAction {
+  refresh,
+  toggleTheme,
+  account,
+  history,
+  morshed,
+  path,
+  fitnessTest,
+}
 
 /// Consolidated "..." menu — refresh, theme toggle, and account/login all
 /// live here instead of as separate always-visible icon buttons, so the
@@ -509,6 +529,7 @@ class _OverflowMenu extends StatelessWidget {
     required this.onHistoryTap,
     required this.onMorshedTap,
     required this.onPathTap,
+    required this.onFitnessTestTap,
   });
 
   final ThemeMode themeMode;
@@ -519,6 +540,7 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
   final VoidCallback onPathTap;
+  final VoidCallback onFitnessTestTap;
 
   @override
   Widget build(BuildContext context) {
@@ -550,6 +572,8 @@ class _OverflowMenu extends StatelessWidget {
             onMorshedTap();
           case _MenuAction.path:
             onPathTap();
+          case _MenuAction.fitnessTest:
+            onFitnessTestTap();
         }
       },
       itemBuilder: (context) => [
@@ -575,6 +599,14 @@ class _OverflowMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.mic_rounded),
             title: Text('Choose your Morshed'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _MenuAction.fitnessTest,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.monitor_heart_outlined),
+            title: Text('Fitness Test'),
           ),
         ),
         const PopupMenuItem(
