@@ -8,7 +8,7 @@ part of 'hive_fitness_test_result.dart';
 
 class HiveFitnessTestResultAdapter extends TypeAdapter<HiveFitnessTestResult> {
   @override
-  final int typeId = 4;
+  final int typeId = 8;
 
   @override
   HiveFitnessTestResult read(BinaryReader reader) {

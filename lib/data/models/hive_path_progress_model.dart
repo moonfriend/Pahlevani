@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 part 'hive_path_progress_model.g.dart';
 
@@ -6,7 +7,7 @@ part 'hive_path_progress_model.g.dart';
 /// keyed by id (see PathProgressLocalDatabase's `box.put`, not `box.add`) so
 /// this is settable/toggleable, unlike the append-only
 /// HiveSessionCompletionRecord.
-@HiveType(typeId: 4)
+@HiveType(typeId: HiveTypeIds.pathItemCompletion)
 class HivePathItemCompletion extends HiveObject {
   @HiveField(0)
   final int pathItemId;

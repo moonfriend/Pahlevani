@@ -1,4 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 import '../models/hive_fitness_test_result.dart';
 
@@ -18,9 +19,7 @@ class FitnessTestResultsLocalDataSourceImpl
   /// Hive.initFlutter() has already happened elsewhere in app startup — DI
   /// wiring guarantees that ordering.
   static Future<void> init() async {
-    if (!Hive.isAdapterRegistered(4)) {
-      Hive.registerAdapter(HiveFitnessTestResultAdapter());
-    }
+    registerHiveAdapter(HiveFitnessTestResultAdapter());
   }
 
   Future<Box<HiveFitnessTestResult>> _getBox() async {

@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 import '../../domain/entities/fitness_test_result.dart';
 
@@ -8,7 +9,7 @@ part 'hive_fitness_test_result.g.dart';
 /// lists (key/name/score) rather than nested Hive objects — same "parallel
 /// primitive lists" convention already used by HiveSessionCompletionRecord
 /// in lib/data/models/hive_models.dart for its movement counts.
-@HiveType(typeId: 4)
+@HiveType(typeId: HiveTypeIds.fitnessTestResult)
 class HiveFitnessTestResult extends HiveObject {
   @HiveField(0)
   final String id;

@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 import 'package:pahlevani/domain/entities/path/path_detail.dart';
 import 'package:pahlevani/domain/entities/path/path_item.dart';
 import 'package:pahlevani/domain/entities/path/path_node.dart';
@@ -10,7 +11,7 @@ part 'hive_path_models.g.dart';
 /// single serialized snapshot rather than TrainingSessionLocalDatabase's
 /// box-per-table split — nothing else needs to join against Path rows
 /// independently, so one nested value is simpler.
-@HiveType(typeId: 5)
+@HiveType(typeId: HiveTypeIds.pathDetail)
 class HivePathDetail extends HiveObject {
   @HiveField(0)
   final int id;
@@ -46,7 +47,7 @@ class HivePathDetail extends HiveObject {
       );
 }
 
-@HiveType(typeId: 6)
+@HiveType(typeId: HiveTypeIds.pathNode)
 class HivePathNode extends HiveObject {
   @HiveField(0)
   final int id;
@@ -108,7 +109,7 @@ class HivePathNode extends HiveObject {
       );
 }
 
-@HiveType(typeId: 7)
+@HiveType(typeId: HiveTypeIds.pathNodeItem)
 class HivePathNodeItem extends HiveObject {
   @HiveField(0)
   final int id;

@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 /// Hive box management for locally-tracked session completions. Mirrors
 /// TrainingSessionLocalDatabase's shape but stays a separate, self-contained
@@ -12,9 +13,7 @@ class TrainingHistoryLocalDatabase {
   /// TrainingSessionLocalDatabase.init() (which calls Hive.initFlutter()) —
   /// DI wiring guarantees that ordering.
   static Future<void> init() async {
-    if (!Hive.isAdapterRegistered(3)) {
-      Hive.registerAdapter(HiveSessionCompletionRecordAdapter());
-    }
+    registerHiveAdapter(HiveSessionCompletionRecordAdapter());
   }
 
   Future<Box<HiveSessionCompletionRecord>> _getBox() async {

@@ -183,7 +183,7 @@ lib/
 │   │   ├── row_to_domain.dart               # DTO → domain entity conversion
 │   │   └── snapshot_builders.dart           # Builds DomainSnapshot and SessionDetail
 │   ├── models/
-│   │   ├── hive_models.dart                 # @HiveType models (typeIds 0–2)
+│   │   ├── hive_models.dart                 # @HiveType models (typeIds: see hive_type_ids.dart)
 │   │   └── hive_models.g.dart              # GENERATED — never edit manually
 │   ├── repositories_impl/
 │   │   ├── training_session_repository_impl.dart
@@ -327,7 +327,7 @@ The normalised data model refactor is **complete**. The app is functional on `ma
 - **File names**: `snake_case`. Class names: `PascalCase`.
 - **Cubits only** — no `Bloc` + events pattern. All state management via `Cubit<State>`.
 - **Equatable** on state classes for equality; `sealed` keyword on state hierarchies.
-- **Hive type IDs**: `HiveTrainingSession=0`, `HiveExercise=1`, `HiveTrainingSessionItem=2`. Increment sequentially; never reuse a type ID.
+- **Hive type IDs**: declared only in `lib/data/models/hive_type_ids.dart` (`HiveTypeIds`, currently 0–8) and registered only via `registerHiveAdapter()`, which throws on a clash. Add every new adapter to `test/data/models/hive_type_ids_test.dart`. Increment sequentially; never reuse or renumber a shipped type ID.
 - **Always run `build_runner`** after any change to `@HiveType` or `@HiveField` annotations.
 - **`DomainSnapshot` is the single in-memory truth.** Do not bypass it by going directly to local DB in the presentation layer.
 - **Use `AppLogger`** (`lib/core/utils/app_logger.dart`) instead of `print()`. Use `.d()` for debug, `.w()` for handled errors, `.e()` for unexpected failures.

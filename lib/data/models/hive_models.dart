@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
@@ -8,7 +9,7 @@ import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 part 'hive_models.g.dart';
 
 ///
-@HiveType(typeId: 0)
+@HiveType(typeId: HiveTypeIds.trainingSession)
 class HiveTrainingSession extends HiveObject {
   @HiveField(0)
   final int id;
@@ -120,7 +121,7 @@ class HiveTrainingSession extends HiveObject {
   }
 }
 
-@HiveType(typeId: 1)
+@HiveType(typeId: HiveTypeIds.exercise)
 class HiveExercise extends HiveObject {
   @HiveField(0)
   final int id;
@@ -234,7 +235,7 @@ class HiveExercise extends HiveObject {
       );
 }
 
-@HiveType(typeId: 2)
+@HiveType(typeId: HiveTypeIds.trainingSessionItem)
 class HiveTrainingSessionItem extends HiveObject {
   @HiveField(0)
   final int trainingSessionId; // it doesn't really need it todo: remove
@@ -282,7 +283,7 @@ class HiveTrainingSessionItem extends HiveObject {
 /// after the player's completion screen appears. `movementCounts`/
 /// `movementNames` only hold entries for movements actually tracked in
 /// that session, keyed by [MovementKey.value].
-@HiveType(typeId: 3)
+@HiveType(typeId: HiveTypeIds.sessionCompletionRecord)
 class HiveSessionCompletionRecord extends HiveObject {
   @HiveField(0)
   final String id;

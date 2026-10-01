@@ -237,7 +237,7 @@ def load_movement_types() -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_fitness_test_charts() -> pd.DataFrame:
-    """Fitness-test stages — empty if migration 0035 not applied yet."""
+    """Fitness-test stages — empty if migration 0039 not applied yet."""
     try:
         rows = get_client().table("fitness_test_chart").select("*").order("sort_order").execute().data
         return pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -2814,7 +2814,7 @@ def tab_utility():
 # Tab: Fitness Test Criteria
 #
 # CRUD over the 4-table rubric hierarchy behind the app's Fitness Test module
-# (migration 0035_fitness_test_criteria.sql): chart -> axis -> subtest ->
+# (migration 0039_fitness_test_criteria.sql): chart -> axis -> subtest ->
 # level. The app (lib/features/fitness_test/) treats this data as read-only —
 # this tab is the only place it's ever written. Drill down chart -> axis ->
 # subtest to edit one subtest's up-to-7 levels at a time.

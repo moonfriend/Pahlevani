@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pahlevani/data/models/hive_path_progress_model.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 /// Hive box management for locally-tracked path-item completion. Keyed by
 /// item id via `box.put` (not `.add()`) so entries are settable/toggleable —
@@ -9,9 +10,7 @@ class PathProgressLocalDatabase {
   static const String _boxName = 'path_progress';
 
   static Future<void> init() async {
-    if (!Hive.isAdapterRegistered(4)) {
-      Hive.registerAdapter(HivePathItemCompletionAdapter());
-    }
+    registerHiveAdapter(HivePathItemCompletionAdapter());
   }
 
   Future<Box<HivePathItemCompletion>> _getBox() async {

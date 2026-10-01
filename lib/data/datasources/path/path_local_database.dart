@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pahlevani/data/models/hive_path_models.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 /// Hive box management for the cached Path content (nodes/items), keyed by
 /// a single entry since there's only one path for now — see
@@ -12,15 +13,9 @@ class PathLocalDatabase {
   /// TrainingSessionLocalDatabase.init() (which calls Hive.initFlutter()) —
   /// DI wiring guarantees that ordering.
   static Future<void> init() async {
-    if (!Hive.isAdapterRegistered(5)) {
-      Hive.registerAdapter(HivePathDetailAdapter());
-    }
-    if (!Hive.isAdapterRegistered(6)) {
-      Hive.registerAdapter(HivePathNodeAdapter());
-    }
-    if (!Hive.isAdapterRegistered(7)) {
-      Hive.registerAdapter(HivePathNodeItemAdapter());
-    }
+    registerHiveAdapter(HivePathDetailAdapter());
+    registerHiveAdapter(HivePathNodeAdapter());
+    registerHiveAdapter(HivePathNodeItemAdapter());
   }
 
   Future<Box<HivePathDetail>> _getBox() async {
