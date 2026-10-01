@@ -75,6 +75,17 @@ and the `scripts/*.py` one-off tools (see their own docstrings for exact invocat
 **Never put a service-role key in anything under `env/`.** Those files get compiled
 straight into the app via `--dart-define` — only the **anon/public** key belongs there.
 
+**No repo-local file should ever hold an actual secret value — full stop.** Not a scratch
+`.env`, not `scripts/.streamlit/secrets.toml`, not a prod DB dump under
+`supabase/db_snapshot/`. Every one of those is gitignored, which only stops it from being
+*pushed* — it still sits in plaintext on disk, and a stray full-repo backup/clone copies it
+right along with the code (this happened: a 2026-08-28 backup folder carried a live
+service-role key and a prod data/auth dump for over a month before anyone noticed). If a
+script needs a credential, it reads it live from `pahlevani-admin-creds/` via
+`scripts/with_admin_creds.sh` — it never gets copied into a file inside the repo tree, not
+even temporarily. Treat any local file that violates this as a rotate-the-credential
+incident, not a cleanup task.
+
 ---
 
 ## Build / Run / Test
