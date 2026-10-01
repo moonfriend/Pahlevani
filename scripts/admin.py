@@ -153,6 +153,30 @@ def load_items() -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=60)
+def load_path_nodes() -> pd.DataFrame:
+    """Nodes of the single default path (id=1, seeded by migration
+    0036_seed_default_path.sql) — empty if migration 0035 not applied yet."""
+    try:
+        rows = (
+            get_client().table("path_node")
+            .select("*").eq("path_id", 1).order("position").execute().data
+        )
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_path_node_items() -> pd.DataFrame:
+    try:
+        rows = (
+            get_client().table("path_node_item")
+            .select("*").order("path_node_id,position").execute().data
+        )
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
 def load_release_gate() -> dict | None:
     rows = get_client().table("app_release_gate").select("*").eq("id", 1).execute().data
     return rows[0] if rows else None
@@ -245,6 +269,8 @@ def bust_cache():
     load_morsheds.clear()
     load_movement_types.clear()
     load_movement_audio_tracks.clear()
+    load_path_nodes.clear()
+    load_path_node_items.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -945,12 +971,13 @@ def tab_movements():
 # Tab: Sessions
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, is_tracked, uid}]
-_SB_META          = "sb_meta"         # {title, title_fa, description, difficulty}
-_SB_MODE          = "sb_mode"         # "new" | "edit"
-_SB_SID           = "sb_sid"          # session id being edited
-_SB_PENDING_OP    = "sb_pending_op"   # deferred list op applied before next render
-_SB_PENDING_RESET = "sb_pending_reset"  # deferred metadata reset applied before text_inputs
+_SB_ITEMS            = "sb_items"           # list[{exercise_id, reps_to_do, is_tracked, uid}]
+_SB_META             = "sb_meta"            # {title, title_fa, description, difficulty}
+_SB_MODE             = "sb_mode"            # "new" | "edit"
+_SB_SID              = "sb_sid"             # session id being edited
+_SB_PENDING_OP       = "sb_pending_op"      # deferred remove op applied before next render
+_SB_PENDING_REORDER  = "sb_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_SB_PENDING_RESET    = "sb_pending_reset"   # deferred metadata reset applied before text_inputs
 
 def _as_bool(value) -> bool:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -1088,20 +1115,25 @@ def tab_sessions():
     # (browser-side widget state is keyed by widget key, not session state).
     _kns = st.session_state.get(_SB_SID, "new")
 
-    # Apply any pending list operation BEFORE widgets are instantiated.
-    # (Streamlit forbids modifying widget-keyed session state after instantiation,
-    # so we defer move/remove ops to the top of the next render pass.)
-    # Reps widgets use uid-based keys (not position-based), so keys travel with
-    # items on move — no session-state key manipulation needed.
+    # Apply any pending remove BEFORE widgets are instantiated. (Streamlit
+    # forbids modifying widget-keyed session state after instantiation, so
+    # we defer it to the top of the next render pass.) Reps/tracked widgets
+    # use uid-based keys (not position-based), so keys travel with items on
+    # reorder — no session-state key manipulation needed for those.
     pending = st.session_state.pop(_SB_PENDING_OP, None)
-    if pending:
-        op = pending["op"]
-        if op == "move":
-            a, b = pending["a"], pending["b"]
-            items[a], items[b] = items[b], items[a]
-        elif op == "remove":
-            items.pop(pending["i"])
+    if pending and pending["op"] == "remove":
+        items.pop(pending["i"])
         st.session_state[_SB_ITEMS] = items
+
+    # Apply any pending reorder the same way — additionally, position widget
+    # keys must be reset to the new order here, before they're instantiated.
+    pending_reorder = st.session_state.pop(_SB_PENDING_REORDER, None)
+    if pending_reorder:
+        moved = items.pop(pending_reorder["from"])
+        items.insert(pending_reorder["to"], moved)
+        st.session_state[_SB_ITEMS] = items
+        for new_i, it in enumerate(items):
+            st.session_state[f"pos_{_kns}_{it['uid']}"] = new_i + 1
 
     # Build a lookup for display
     ex_by_id: dict[int, pd.Series] = {
@@ -1119,8 +1151,13 @@ def tab_sessions():
         ex = ex_by_id.get(item["exercise_id"])
         label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
 
-        c_name, c_reps, c_track, c_up, c_dn, c_rm = st.columns([4, 1.5, 1.6, 0.5, 0.5, 0.5])
+        c_name, c_pos, c_reps, c_track, c_rm = st.columns([3.5, 1, 1.5, 1.6, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(items), value=i + 1,
+            key=f"pos_{_kns}_{item['uid']}", label_visibility="collapsed",
+        )
         new_reps = c_reps.number_input(
             "Reps", min_value=1, max_value=999,
             value=item["reps_to_do"],
@@ -1135,14 +1172,13 @@ def tab_sessions():
             key=f"tracked_{_kns}_{item['uid']}",
         )
 
-        if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
-            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i - 1}
-            st.rerun()
-        if c_dn.button("↓", key=f"dn_{_kns}_{i}", disabled=i == len(items) - 1):
-            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i + 1}
-            st.rerun()
         if c_rm.button("✕", key=f"rm_{_kns}_{i}"):
             st.session_state[_SB_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(items) - 1, new_pos - 1))
+            st.session_state[_SB_PENDING_REORDER] = {"from": i, "to": target}
             st.rerun()
 
     st.session_state[_SB_ITEMS] = items
@@ -1287,6 +1323,526 @@ def tab_sessions():
             bust_cache()
             st.session_state[_SB_PENDING_RESET] = True
             st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Path
+# ─────────────────────────────────────────────────────────────────────────────
+# The Godar / Milestone progression system: a single default path (id=1,
+# seeded by migration 0036_seed_default_path.sql) made of an ordered sequence
+# of nodes, each with an ordered checklist of items (session / video /
+# quote). A node's `kind` is either 'godar' (a small waypoint) or 'milestone'
+# (a bigger "test stage" — what was previously split into 'darvazeh'/'khan';
+# migration 0037 collapsed them since they were conceptually the same thing,
+# only ever distinguished by free-text title/title_fa and, later, graphics).
+#
+# Unlike Sessions' delete-and-reinsert-on-save (safe there because
+# training_session_item has no identity anything else references), a
+# path_node_item's id IS referenced elsewhere: the Flutter app's local
+# "mark done" progress tracking is keyed by it. A save here must preserve
+# the id of anything that isn't actually removed — update rows in place,
+# insert only genuinely new ones, delete only what's explicitly removed —
+# or every save would silently reset every athlete's progress on that node.
+# The same reasoning applies one level up to path_node itself, since deleting
+# and recreating a node would cascade-delete (and thus re-id) all its items.
+
+_PATH_ID = 1  # the single path for now — see migrations 0035/0036.
+
+_PB_NODES               = "pb_nodes"                # list[{id, kind, position, title, title_fa, subtitle, description, uid}]
+_PB_ORIGINAL_NODE_IDS   = "pb_original_node_ids"
+_PB_NODE_PENDING_OP     = "pb_node_pending_op"       # deferred remove op applied before next render
+_PB_NODE_PENDING_REORDER = "pb_node_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_PB_SELECTED_UID        = "pb_selected_uid"          # None => the node form is in "add" mode; else editing that node's uid
+_PB_FORM_LOADED_UID     = "pb_form_loaded_uid"       # which node's values are currently seeded into the node-form widgets ("__new__" for add mode)
+_PB_PENDING_FORM_RESET  = "pb_pending_form_reset"    # deferred: reseed the node form to blank/add-mode on the next render
+_PB_ITEMS               = "pb_items"                 # list[{id, item_type, training_session_id, repeat_count, video_url, video_title, quote_text, quote_author, uid}]
+_PB_ITEMS_FOR_NODE_ID   = "pb_items_for_node_id"
+_PB_ORIGINAL_ITEM_IDS   = "pb_original_item_ids"
+_PB_ITEM_PENDING_OP     = "pb_item_pending_op"       # deferred remove op applied before next render
+_PB_ITEM_PENDING_REORDER = "pb_item_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_PB_PENDING_ITEM_RESET  = "pb_pending_item_reset"    # deferred: {"node_id": int, "keys": [str, ...]} — add-item fields to blank on the next render
+
+_PB_KIND_BADGE = {"godar": "🟢 Godar", "milestone": "⚔️ Milestone"}
+
+def _pb_load_nodes():
+    nodes_df = load_path_nodes()
+    nodes = [
+        {
+            "id": int(r["id"]),
+            "kind": r["kind"],
+            "position": int(r["position"]),
+            "title": r.get("title") or "",
+            "title_fa": r.get("title_fa") or "",
+            "subtitle": r.get("subtitle") or "",
+            "description": r.get("description") or "",
+            "uid": str(int(r["id"])),
+        }
+        for _, r in nodes_df.iterrows()
+    ]
+    st.session_state[_PB_NODES] = nodes
+    st.session_state[_PB_ORIGINAL_NODE_IDS] = {n["id"] for n in nodes}
+
+def _pb_seed_form_state(*, kind, title, title_fa, subtitle, description):
+    # Directly set widget-bound state so the node form reflects the new
+    # selection on the next render. Must only ever run BEFORE the matching
+    # widgets are instantiated in the current script run — Streamlit forbids
+    # mutating a widget-bound key afterwards (this is the fix for the crash
+    # the old direct post-instantiation resets caused).
+    st.session_state["pb_f_kind"] = kind
+    st.session_state["pb_f_title"] = title
+    st.session_state["pb_f_title_fa"] = title_fa
+    st.session_state["pb_f_subtitle"] = subtitle
+    st.session_state["pb_f_description"] = description
+
+def _pb_load_items(node_id: int):
+    items_df = load_path_node_items()
+    rows = (
+        items_df[items_df["path_node_id"] == node_id].sort_values("position")
+        if not items_df.empty else items_df
+    )
+    items = [
+        {
+            "id": int(r["id"]),
+            "item_type": r["item_type"],
+            "training_session_id": int(r["training_session_id"]) if pd.notna(r.get("training_session_id")) else None,
+            "repeat_count": int(r["repeat_count"]) if pd.notna(r.get("repeat_count")) else 1,
+            "video_url": r.get("video_url") or "",
+            "video_title": r.get("video_title") or "",
+            "quote_text": r.get("quote_text") or "",
+            "quote_author": r.get("quote_author") or "",
+            "uid": str(int(r["id"])),
+        }
+        for _, r in rows.iterrows()
+    ]
+    st.session_state[_PB_ITEMS] = items
+    st.session_state[_PB_ORIGINAL_ITEM_IDS] = {i["id"] for i in items}
+    st.session_state[_PB_ITEMS_FOR_NODE_ID] = node_id
+
+def tab_path():
+    st.header("Path")
+    st.caption("Design the Godar / Milestone sequence athletes progress through.")
+
+    if st.button("↺ Reload", key="pb_reload"):
+        bust_cache()
+        st.session_state.pop(_PB_NODES, None)
+        st.session_state.pop(_PB_SELECTED_UID, None)
+        st.session_state.pop(_PB_FORM_LOADED_UID, None)
+
+    if _PB_NODES not in st.session_state:
+        _pb_load_nodes()
+
+    nodes: list[dict] = st.session_state[_PB_NODES]
+
+    # Apply any pending node-list op / reorder / form reset BEFORE widgets
+    # are instantiated — Streamlit forbids mutating widget-keyed state
+    # mid-render (same reason tab_sessions() defers its exercise-list edits
+    # and its post-save reset via _SB_PENDING_RESET).
+    pending = st.session_state.pop(_PB_NODE_PENDING_OP, None)
+    if pending and pending["op"] == "remove":
+        removed = nodes.pop(pending["i"])
+        if st.session_state.get(_PB_SELECTED_UID) == removed["uid"]:
+            st.session_state[_PB_SELECTED_UID] = None
+        st.session_state[_PB_NODES] = nodes
+
+    pending_reorder = st.session_state.pop(_PB_NODE_PENDING_REORDER, None)
+    if pending_reorder:
+        moved = nodes.pop(pending_reorder["from"])
+        nodes.insert(pending_reorder["to"], moved)
+        st.session_state[_PB_NODES] = nodes
+        for new_i, n in enumerate(nodes):
+            st.session_state[f"pb_node_pos_{n['uid']}"] = new_i + 1
+
+    if st.session_state.pop(_PB_PENDING_FORM_RESET, False):
+        st.session_state[_PB_SELECTED_UID] = None
+        _pb_seed_form_state(
+            kind="godar", title="", title_fa="", subtitle="", description="",
+        )
+        st.session_state[_PB_FORM_LOADED_UID] = "__new__"
+
+    sessions_df = load_sessions()
+    session_titles = (
+        {int(r["id"]): r["title"] for _, r in sessions_df.iterrows()}
+        if not sessions_df.empty else {}
+    )
+    all_items_df = load_path_node_items()
+
+    # ── Full path at a glance ────────────────────────────────────────────────
+    # Read-only, always-expanded overview so the whole sequence — and every
+    # node's items — is visible without clicking into each node individually.
+    st.subheader("📖 Full path at a glance")
+    if not nodes:
+        st.caption("No nodes yet — add one below.")
+    for i, node in enumerate(nodes):
+        badge = _PB_KIND_BADGE.get(node["kind"], node["kind"])
+        st.markdown(f"**{i+1}. {badge} — {node['title'] or '(untitled)'}**")
+        node_items = (
+            all_items_df[all_items_df["path_node_id"] == node["id"]].sort_values("position")
+            if not all_items_df.empty else all_items_df
+        )
+        if node_items.empty:
+            st.caption("　　(no items)")
+        else:
+            for _, it in node_items.iterrows():
+                if it["item_type"] == "session":
+                    sid = int(it["training_session_id"]) if pd.notna(it.get("training_session_id")) else None
+                    st.caption(f"　　🏋️ {int(it['repeat_count'])}x {session_titles.get(sid, f'session {sid}')}")
+                elif it["item_type"] == "video":
+                    st.caption(f"　　🎬 {it.get('video_title') or it.get('video_url')}")
+                else:
+                    st.caption(f"　　💬 {(it.get('quote_text') or '')[:60]}")
+
+    st.divider()
+
+    # ── Sequence ─────────────────────────────────────────────────────────────
+    st.subheader("Sequence")
+    if not nodes:
+        st.info("No nodes yet — add one in the form below.")
+    for i, node in enumerate(nodes):
+        badge = _PB_KIND_BADGE.get(node["kind"], node["kind"])
+        c_name, c_pos, c_edit, c_rm = st.columns([4.5, 1, 1, 0.5])
+        c_name.markdown(f"**{i+1}.** {badge} — {node['title'] or '(untitled)'}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(nodes), value=i + 1,
+            key=f"pb_node_pos_{node['uid']}", label_visibility="collapsed",
+        )
+        if c_edit.button("✎ Edit", key=f"pb_edit_{node['uid']}"):
+            st.session_state[_PB_SELECTED_UID] = node["uid"]
+            _pb_load_items(node["id"])
+            st.rerun()
+        if c_rm.button("✕", key=f"pb_node_rm_{node['uid']}"):
+            st.session_state[_PB_NODE_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(nodes) - 1, new_pos - 1))
+            st.session_state[_PB_NODE_PENDING_REORDER] = {"from": i, "to": target}
+            st.rerun()
+
+    st.session_state[_PB_NODES] = nodes
+
+    st.caption("⚠️ Removing a node here only takes effect once you save the "
+               "sequence order below — it permanently deletes the node and "
+               "all its items.")
+    if st.button("💾 Save sequence order", key="pb_save_order", disabled=not nodes):
+        db = get_client()
+        with st.spinner("Saving order…"):
+            original_ids = st.session_state.get(_PB_ORIGINAL_NODE_IDS, set())
+            current_ids = {n["id"] for n in nodes}
+            for removed_id in original_ids - current_ids:
+                db.table("path_node_item").delete().eq("path_node_id", removed_id).execute()
+                db.table("path_node").delete().eq("id", removed_id).execute()
+            # Two-phase position update: writing final positions in a single
+            # pass can collide with unique(path_id, position) mid-loop — e.g.
+            # moving a node into position 0 while another node still holds
+            # position 0 there, not yet reassigned. Bump every row to a
+            # temporary position nothing else ever uses (negative) first, so
+            # no write in either phase can ever hit an occupied slot.
+            for offset, node in enumerate(nodes):
+                db.table("path_node").update({"position": -(offset + 1)}).eq("id", node["id"]).execute()
+            for pos, node in enumerate(nodes):
+                db.table("path_node").update({"position": pos}).eq("id", node["id"]).execute()
+        st.success("Sequence order saved.")
+        bust_cache()
+        st.session_state.pop(_PB_NODES, None)
+        st.rerun()
+
+    # ── Node form: one form for both "add a node" and "edit the selected
+    # node" — switches mode based on _PB_SELECTED_UID rather than rendering
+    # two separate forms.
+    st.divider()
+    selected_uid = st.session_state.get(_PB_SELECTED_UID)
+    selected_node = next((n for n in nodes if n["uid"] == selected_uid), None) if selected_uid else None
+    if selected_uid and selected_node is None:
+        # Selected node was removed from the list above but not saved yet.
+        selected_uid = None
+        st.session_state[_PB_SELECTED_UID] = None
+
+    form_target = selected_uid or "__new__"
+    if st.session_state.get(_PB_FORM_LOADED_UID) != form_target:
+        if selected_node is None:
+            _pb_seed_form_state(
+                kind="godar", title="", title_fa="", subtitle="", description="",
+            )
+        else:
+            _pb_seed_form_state(
+                kind=selected_node["kind"],
+                title=selected_node["title"], title_fa=selected_node["title_fa"],
+                subtitle=selected_node["subtitle"], description=selected_node["description"],
+            )
+        st.session_state[_PB_FORM_LOADED_UID] = form_target
+
+    if selected_node is not None:
+        c_head, c_cancel = st.columns([5, 1.3])
+        c_head.subheader(f"Editing: {selected_node['title'] or '(untitled)'}")
+        if c_cancel.button("✕ Cancel / New node", key="pb_form_cancel"):
+            st.session_state[_PB_PENDING_FORM_RESET] = True
+            st.rerun()
+    else:
+        st.subheader("Add a node")
+
+    f_kind = st.radio("Kind", ["godar", "milestone"], horizontal=True, key="pb_f_kind")
+    c1, c2 = st.columns(2)
+    with c1:
+        f_title = st.text_input("Title", key="pb_f_title")
+        f_title_fa = st.text_input("Farsi title", key="pb_f_title_fa")
+    with c2:
+        f_subtitle = st.text_input("Subtitle", key="pb_f_subtitle")
+        f_description = st.text_area("Description", key="pb_f_description", height=80)
+
+    submit_label = "💾 Save node" if selected_node is not None else "＋ Add node"
+    if st.button(submit_label, key="pb_form_submit"):
+        if not f_title.strip():
+            st.warning("Title is required.")
+        else:
+            db = get_client()
+            payload = {
+                "kind": f_kind,
+                "title": f_title.strip(),
+                "title_fa": f_title_fa.strip() or None,
+                "subtitle": f_subtitle.strip() or None,
+                "description": f_description.strip() or None,
+            }
+            if selected_node is not None:
+                db.table("path_node").update(payload).eq("id", selected_node["id"]).execute()
+                for n in nodes:
+                    if n["uid"] == selected_node["uid"]:
+                        n.update({
+                            **payload,
+                            "title_fa": f_title_fa.strip(), "subtitle": f_subtitle.strip(),
+                            "description": f_description.strip(),
+                        })
+                st.session_state[_PB_NODES] = nodes
+                bust_cache()
+                st.success("Node saved.")
+                st.rerun()
+            else:
+                result = db.table("path_node").insert({
+                    **payload, "path_id": _PATH_ID, "position": len(nodes),
+                }).execute()
+                new_id = result.data[0]["id"]
+                nodes.append({
+                    **payload, "id": new_id, "position": len(nodes),
+                    "title_fa": f_title_fa.strip(), "subtitle": f_subtitle.strip(),
+                    "description": f_description.strip(), "uid": str(new_id),
+                })
+                st.session_state[_PB_NODES] = nodes
+                st.session_state[_PB_ORIGINAL_NODE_IDS] = (
+                    st.session_state.get(_PB_ORIGINAL_NODE_IDS, set()) | {new_id}
+                )
+                bust_cache()
+                st.success(f"Node '{f_title}' added.")
+                st.session_state[_PB_PENDING_FORM_RESET] = True
+                st.rerun()
+
+    if selected_node is None:
+        return
+    node_id = selected_node["id"]
+
+    st.markdown("**Checklist items**")
+    if st.session_state.get(_PB_ITEMS_FOR_NODE_ID) != node_id:
+        _pb_load_items(node_id)
+    items: list[dict] = st.session_state[_PB_ITEMS]
+
+    pending_item = st.session_state.pop(_PB_ITEM_PENDING_OP, None)
+    if pending_item and pending_item["op"] == "remove":
+        items.pop(pending_item["i"])
+        st.session_state[_PB_ITEMS] = items
+
+    pending_item_reorder = st.session_state.pop(_PB_ITEM_PENDING_REORDER, None)
+    if pending_item_reorder:
+        moved = items.pop(pending_item_reorder["from"])
+        items.insert(pending_item_reorder["to"], moved)
+        st.session_state[_PB_ITEMS] = items
+        for new_i, it in enumerate(items):
+            st.session_state[f"pb_item_pos_{it['uid']}"] = new_i + 1
+
+    # Same deferred-reset requirement as the node form above — these keys
+    # are namespaced by node_id and instantiated further down in "Add item".
+    pending_item_reset = st.session_state.pop(_PB_PENDING_ITEM_RESET, None)
+    if pending_item_reset and pending_item_reset.get("node_id") == node_id:
+        for key in pending_item_reset.get("keys", []):
+            st.session_state[key] = ""
+
+    if not items:
+        st.caption("No items yet — add one below.")
+    for i, item in enumerate(items):
+        if item["item_type"] == "session":
+            sid = item["training_session_id"]
+            label = f"🏋️ {item['repeat_count']}x {session_titles.get(sid, f'session {sid}')}"
+        elif item["item_type"] == "video":
+            label = f"🎬 {item['video_title'] or item['video_url']}"
+        else:
+            label = f"💬 {(item['quote_text'] or '')[:60]}"
+
+        c_name, c_pos, c_rm = st.columns([6, 1, 0.5])
+        c_name.markdown(f"**{i+1}.** {label}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(items), value=i + 1,
+            key=f"pb_item_pos_{item['uid']}", label_visibility="collapsed",
+        )
+        if c_rm.button("✕", key=f"pb_item_rm_{item['uid']}"):
+            st.session_state[_PB_ITEM_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(items) - 1, new_pos - 1))
+            st.session_state[_PB_ITEM_PENDING_REORDER] = {"from": i, "to": target}
+            st.rerun()
+
+    st.session_state[_PB_ITEMS] = items
+
+    if st.button("💾 Save items", key=f"pb_save_items_{node_id}", disabled=not items):
+        db = get_client()
+        with st.spinner("Saving items…"):
+            original_ids = st.session_state.get(_PB_ORIGINAL_ITEM_IDS, set())
+            current_ids = {i["id"] for i in items}
+            for removed_id in original_ids - current_ids:
+                db.table("path_node_item").delete().eq("id", removed_id).execute()
+            # Same reorder-through-a-unique-index hazard as path_node's
+            # "Save sequence order" above (unique(path_node_id, position)
+            # here) — bump existing rows to temporary, never-otherwise-used
+            # positions first so no later write in this loop can collide.
+            existing_ids = [item["id"] for item in items if item["id"] is not None]
+            for offset, item_id in enumerate(existing_ids):
+                db.table("path_node_item").update({"position": -(offset + 1)}).eq("id", item_id).execute()
+            for pos, item in enumerate(items):
+                payload = {
+                    "path_node_id": node_id,
+                    "position": pos,
+                    "item_type": item["item_type"],
+                    "training_session_id": item["training_session_id"] if item["item_type"] == "session" else None,
+                    "repeat_count": item["repeat_count"] if item["item_type"] == "session" else 1,
+                    "video_url": (item["video_url"] or None) if item["item_type"] == "video" else None,
+                    "video_title": (item["video_title"] or None) if item["item_type"] == "video" else None,
+                    "quote_text": (item["quote_text"] or None) if item["item_type"] == "quote" else None,
+                    "quote_author": (item["quote_author"] or None) if item["item_type"] == "quote" else None,
+                }
+                if item["id"] is not None:
+                    db.table("path_node_item").update(payload).eq("id", item["id"]).execute()
+                else:
+                    result = db.table("path_node_item").insert(payload).execute()
+                    item["id"] = result.data[0]["id"]
+                    item["uid"] = str(item["id"])
+        st.session_state[_PB_ITEMS] = items
+        st.session_state[_PB_ORIGINAL_ITEM_IDS] = {i["id"] for i in items}
+        bust_cache()
+        st.success("Items saved.")
+        st.rerun()
+
+    # ── Add item ─────────────────────────────────────────────────────────────
+    st.markdown("**Add item**")
+    add_kind = st.radio(
+        "Add", ["Existing session", "New session", "Video", "Quote"],
+        horizontal=True, key=f"pb_add_kind_{node_id}", label_visibility="collapsed",
+    )
+
+    if add_kind == "Existing session":
+        if sessions_df.empty:
+            st.info("No sessions yet.")
+        else:
+            opts = {f"{r['title']}  (id {int(r['id'])})": int(r["id"]) for _, r in sessions_df.iterrows()}
+            c_sel, c_rep, c_add = st.columns([4, 1.5, 1])
+            chosen_label = c_sel.selectbox(
+                "Session", list(opts.keys()), key=f"pb_add_session_select_{node_id}",
+                label_visibility="collapsed",
+            )
+            chosen_id = opts[chosen_label]
+            repeat_count = c_rep.number_input(
+                "Reps", min_value=1, max_value=99, value=1,
+                key=f"pb_add_session_reps_{node_id}", label_visibility="collapsed",
+            )
+            if c_add.button("＋ Add", key=f"pb_add_session_btn_{node_id}"):
+                items.append({
+                    "id": None, "item_type": "session", "training_session_id": chosen_id,
+                    "repeat_count": repeat_count, "video_url": "", "video_title": "",
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.rerun()
+
+    elif add_kind == "New session":
+        st.caption("Creates the session immediately (title only) — add its "
+                    "exercises in the Sessions tab.")
+        c_title, c_add = st.columns([4, 1])
+        new_session_title = c_title.text_input(
+            "New session title", key=f"pb_new_session_title_{node_id}",
+            label_visibility="collapsed", placeholder="New session title",
+        )
+        if c_add.button("＋ Create & add", key=f"pb_new_session_btn_{node_id}"):
+            if not new_session_title.strip():
+                st.warning("Title is required.")
+            else:
+                db = get_client()
+                # id column has no sequence — compute next id manually, same
+                # as tab_sessions()'s save flow.
+                max_row = db.table("training_session").select("id").order("id", desc=True).limit(1).execute()
+                next_id = (max_row.data[0]["id"] + 1) if max_row.data else 1
+                db.table("training_session").insert({
+                    "id": next_id, "title": new_session_title.strip(),
+                    "description": "", "difficulty": 2,
+                }).execute()
+                items.append({
+                    "id": None, "item_type": "session", "training_session_id": next_id,
+                    "repeat_count": 1, "video_url": "", "video_title": "",
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id, "keys": [f"pb_new_session_title_{node_id}"],
+                }
+                load_sessions.clear()
+                st.success(f"Session '{new_session_title}' created (id {next_id}) and added.")
+                st.rerun()
+
+    elif add_kind == "Video":
+        c_url, c_vtitle, c_add = st.columns([3, 3, 1])
+        v_url = c_url.text_input(
+            "Video URL", key=f"pb_add_video_url_{node_id}",
+            label_visibility="collapsed", placeholder="Video URL",
+        )
+        v_title = c_vtitle.text_input(
+            "Video title", key=f"pb_add_video_title_{node_id}",
+            label_visibility="collapsed", placeholder="Title (optional)",
+        )
+        if c_add.button("＋ Add", key=f"pb_add_video_btn_{node_id}"):
+            if not v_url.strip():
+                st.warning("A URL is required.")
+            else:
+                items.append({
+                    "id": None, "item_type": "video", "training_session_id": None,
+                    "repeat_count": 1, "video_url": v_url.strip(), "video_title": v_title.strip(),
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id,
+                    "keys": [f"pb_add_video_url_{node_id}", f"pb_add_video_title_{node_id}"],
+                }
+                st.rerun()
+
+    else:  # Quote
+        q_text = st.text_area("Quote text", key=f"pb_add_quote_text_{node_id}")
+        c_author, c_add = st.columns([4, 1])
+        q_author = c_author.text_input(
+            "Author (optional)", key=f"pb_add_quote_author_{node_id}",
+        )
+        if c_add.button("＋ Add", key=f"pb_add_quote_btn_{node_id}"):
+            if not q_text.strip():
+                st.warning("Quote text is required.")
+            else:
+                items.append({
+                    "id": None, "item_type": "quote", "training_session_id": None,
+                    "repeat_count": 1, "video_url": "", "video_title": "",
+                    "quote_text": q_text.strip(), "quote_author": q_author.strip(),
+                    "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id,
+                    "keys": [f"pb_add_quote_text_{node_id}", f"pb_add_quote_author_{node_id}"],
+                }
+                st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Session Inspector
@@ -2240,9 +2796,10 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
+        "🗺️  Path",
         "🔍  Inspector",
         "🎙️  Movement Types",
         "🎵  Recordings",
@@ -2254,14 +2811,15 @@ def main():
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
-    with t3: tab_inspector()
-    with t4: tab_movement_types()
-    with t5: tab_audio_tracks()
-    with t6: tab_release_gate()
-    with t7: tab_grant_trainer()
-    with t8: tab_invite_codes()
-    with t9: tab_users()
-    with t10: tab_utility()
+    with t3: tab_path()
+    with t4: tab_inspector()
+    with t5: tab_movement_types()
+    with t6: tab_audio_tracks()
+    with t7: tab_release_gate()
+    with t8: tab_grant_trainer()
+    with t9: tab_invite_codes()
+    with t10: tab_users()
+    with t11: tab_utility()
 
 
 if __name__ == "__main__":
