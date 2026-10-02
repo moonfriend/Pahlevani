@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -14,6 +15,9 @@ import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import '../../widgets/kashi/khatam_window.dart';
+import '../progress/calendar_page.dart';
+import '../session_flow/complete_page.dart';
+import '../session_flow/rep_log_page.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -82,6 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   style: KashiTextStyles.body.copyWith(
                       fontSize: 12.5, height: 1.55, color: colors.textMuted),
                 ),
+                if (kDebugMode) const _DesignPreviews(),
               ],
             ),
           ),
@@ -193,4 +198,70 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _note(String text, KashiColors colors) => Text(text,
       style:
           KashiTextStyles.body.copyWith(fontSize: 13, color: colors.textMuted));
+}
+
+/// Debug builds only: opens the Kashi screens that aren't reachable from
+/// the app yet (they belong to the player flow or the future Home), with
+/// sample values, so they can be reviewed on a device.
+class _DesignPreviews extends StatelessWidget {
+  const _DesignPreviews();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    final history = context.read<TrainingHistoryCubit>();
+    final state = history.state;
+    final sessions =
+        state is TrainingHistoryLoaded ? state.completions.length : 0;
+
+    void push(Widget page) =>
+        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+    Widget entry(String label, VoidCallback onTap) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(label,
+              style: KashiTextStyles.ui.copyWith(color: colors.textPrimary)),
+          trailing: Icon(Icons.chevron_right, color: colors.textMuted),
+          onTap: onTap,
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const KashiSectionLabel('Design previews (debug)'),
+          entry(
+            'Rep log',
+            () => push(Builder(
+              builder: (context) => RepLogPage(
+                moveName: 'Shena',
+                moveNumber: 2,
+                moveCount: 7,
+                target: 40,
+                counted: 24,
+                onSave: (_) => Navigator.pop(context),
+                onSkip: () => Navigator.pop(context),
+              ),
+            )),
+          ),
+          entry(
+            'Complete',
+            () => push(Builder(
+              builder: (context) => CompletePage(
+                tileNumber: sessions + 1,
+                loggedReps: const [('Shena', 46), ('Meel Giri', 55)],
+                onReturnHome: () => Navigator.pop(context),
+              ),
+            )),
+          ),
+          entry(
+            'Calendar',
+            () => push(BlocProvider.value(
+                value: history, child: const CalendarPage())),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -10,6 +10,9 @@ import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/profile/profile_page.dart';
+import 'package:pahlevani/presentation/pages/progress/calendar_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/khatam_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -151,4 +154,36 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('design previews (debug builds only)', () {
+    Future<void> open(WidgetTester tester, String label) async {
+      await tester.scrollUntilVisible(find.text(label), 80,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Rep log preview opens and Save returns', (tester) async {
+      await _pump(tester);
+      await open(tester, 'Rep log');
+      expect(find.byType(RepLogPage), findsOneWidget);
+      await tester.tap(find.text('Save and continue'));
+      await tester.pumpAndSettle();
+      expect(find.byType(RepLogPage), findsNothing);
+    });
+
+    testWidgets('Complete preview opens', (tester) async {
+      await _pump(tester, sessions: 3);
+      await open(tester, 'Complete');
+      expect(find.byType(CompletePage), findsOneWidget);
+      expect(find.text('Tile 4 is set in your shamseh.'), findsOneWidget,
+          reason: 'previews the next tile from real history');
+    });
+
+    testWidgets('Calendar preview opens with history', (tester) async {
+      await _pump(tester, sessions: 3);
+      await open(tester, 'Calendar');
+      expect(find.byType(CalendarPage), findsOneWidget);
+    });
+  });
 }
