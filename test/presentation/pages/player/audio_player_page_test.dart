@@ -922,6 +922,68 @@ void main() {
     await tester.pump();
   });
 
+  // ── Layout across window sizes ─────────────────────────────────────────────
+
+  group('player layout', () {
+    // tester.view (not setSurfaceSize) so MediaQuery reports the same size —
+    // the stage's height cap is computed from MediaQuery.
+    Future<void> openAt(WidgetTester tester, Size size) async {
+      tester.view
+        ..devicePixelRatio = 1.0
+        ..physicalSize = size;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Size stageSize(WidgetTester tester) => tester.getSize(find
+        .descendant(
+            of: find.byType(AudioPlayerPage),
+            matching: find.byType(AspectRatio))
+        .first);
+
+    testWidgets('a wide, short desktop window does not overflow',
+        (tester) async {
+      await openAt(tester, const Size(1134, 720)); // the reported window
+      expect(tester.takeException(), isNull,
+          reason: 'the player column must fit the window (no overflow)');
+      final stage = stageSize(tester);
+      expect(stage.width / stage.height, closeTo(16 / 9, 0.01),
+          reason: 'the stage keeps the videos\' 16:9 shape');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    for (final size in const [
+      Size(844, 390), // phone, landscape
+      Size(834, 1194), // tablet, portrait
+      Size(1194, 834), // tablet, landscape
+      Size(1280, 800), // small desktop window
+    ]) {
+      testWidgets('no overflow at ${size.width.toInt()}x${size.height.toInt()}',
+          (tester) async {
+        await openAt(tester, size);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+    }
+
+    testWidgets('a phone keeps the full-width stage', (tester) async {
+      await openAt(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+      expect(stageSize(tester).width, 390 - 32,
+          reason: 'phones are unaffected: stage spans the width minus margins');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
   // ── Edit from the player ───────────────────────────────────────────────────
 
   group('Edit from the player', () {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -321,6 +322,21 @@ class _AppBar extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Media stage (232px)
 // ─────────────────────────────────────────────────────────────────────────────
+/// Largest share of the window height the media stage may take.
+const double _maxStageHeightFraction = 0.42;
+
+/// Height the player column needs for everything except the stage and the
+/// track list (app bar, rep counter, progress block, paddings). Very short
+/// windows (phones in landscape) get a smaller stage instead of overflowing.
+const double _fixedControlsHeight = 240;
+
+/// The stage's height cap for a window of [windowHeight].
+double maxStageHeight(double windowHeight) => math.max(
+      0,
+      math.min(windowHeight * _maxStageHeightFraction,
+          windowHeight - _fixedControlsHeight),
+    );
+
 class _Stage extends StatelessWidget {
   const _Stage(
       {required this.state, required this.accent, required this.cubit});
@@ -359,6 +375,13 @@ class _Stage extends StatelessWidget {
       onTap: cubit.togglePlay,
       child: Container(
         margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+        // In wide, short windows (desktop, landscape tablets and phones) a
+        // full-width 16:9 stage is taller than the screen can spare and
+        // overflowed the player column. Cap its height (see maxStageHeight);
+        // AspectRatio then narrows the stage instead, keeping 16:9. On phones
+        // and tablets in portrait the width-based height is below the cap.
+        constraints: BoxConstraints(
+            maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height)),
         // The stage matches the exercise videos' own 16:9 aspect ratio
         // (rather than a fixed height videos had to be forced into) so a
         // fitHeight-scaled 1280x720 track fills the box exactly, with no
