@@ -39,4 +39,25 @@ void main() {
     await relaunch.load();
     expect(relaunch.state, const FirstRunDone());
   });
+
+  group('when local storage fails, the app still opens', () {
+    test('load() → Done if preferences cannot be read', () async {
+      final cubit = FirstRunCubit(
+        preferences: () =>
+            Future.error(const FormatException('corrupt preferences file')),
+      );
+      addTearDown(cubit.close);
+      await cubit.load();
+      expect(cubit.state, const FirstRunDone());
+    });
+
+    test('complete() → Done even if the flag cannot be saved', () async {
+      final cubit = FirstRunCubit(
+        preferences: () => Future.error(Exception('disk full')),
+      );
+      addTearDown(cubit.close);
+      await cubit.complete();
+      expect(cubit.state, const FirstRunDone());
+    });
+  });
 }
