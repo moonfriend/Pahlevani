@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'kashi/kashi_colors.dart';
 import 'pahlevani_colors.dart';
 
 /// Font family constants — single source of truth.
@@ -111,6 +112,7 @@ class PahlevaniTheme {
           surfaceContainer: Color(0xFFF6EEDE),
         ),
         ext: PahlevaniColors.light,
+        kashi: KashiColors.light,
       );
 
   static ThemeData dark() => _build(
@@ -127,12 +129,14 @@ class PahlevaniTheme {
           surfaceContainer: Color(0xFF2B2114),
         ),
         ext: PahlevaniColors.dark,
+        kashi: KashiColors.dark,
       );
 
   static ThemeData _build({
     required Brightness brightness,
     required ColorScheme cs,
     required PahlevaniColors ext,
+    required KashiColors kashi,
   }) {
     final base = brightness == Brightness.dark
         ? ThemeData.dark(useMaterial3: true)
@@ -141,7 +145,8 @@ class PahlevaniTheme {
     return base.copyWith(
       colorScheme: cs,
       scaffoldBackgroundColor: ext.bg,
-      extensions: [ext],
+      // Kashi tokens sit alongside the old palette while screens migrate.
+      extensions: [ext, kashi],
       textTheme: base.textTheme.apply(fontFamily: PFonts.ui),
       appBarTheme: AppBarTheme(
         backgroundColor: ext.bg,

@@ -97,8 +97,16 @@ flutter:
     # compliant: exact logo, colors and padding without us reproducing
     # Google's proprietary spec ourselves.
     - assets/google_signin/
+    - assets/brand/
+    - assets/illustrations/
 
   fonts:
+    # Kashi headings and numbers (OFL — see assets/fonts/NotoSerif-OFL.txt).
+    - family: NotoSerif
+      fonts:
+        - asset: assets/fonts/NotoSerif-Bold.ttf
+          weight: 700
+
     - family: Lora
       fonts:
         - asset: assets/fonts/Lora-SemiBold.ttf
