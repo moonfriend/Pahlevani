@@ -49,27 +49,92 @@ class AudioPlayerPage extends StatefulWidget {
 }
 
 class _AudioPlayerPageState extends State<AudioPlayerPage> {
-  late final TrainingSessionPlayerCubit _cubit;
+  /// The session being played — starts as the widget's, and is replaced by
+  /// the saved copy when the user edits the session from the player.
+  late TrainingSession _session;
+  late TrainingSessionPlayerCubit _cubit;
+
+  /// Bumped on every restart so everything below the page (stage, video
+  /// widget and its controller, track list) is rebuilt from scratch.
+  int _playerGeneration = 0;
   final _trackListKey = GlobalKey<_TrackListState>();
   final _precachedUrls = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _cubit = TrainingSessionPlayerCubit(
-      trainingSession: widget.trainingSession,
-      mode: widget.mode,
-      audioPlayerService: getIt<AudioPlayerService>(),
-      downloadRepository: getIt<DownloadRepository>(),
-      sessionRepository: getIt<TrainingSessionRepository>(),
-      audioCatalogRepository: getIt<AudioCatalogRepository>(),
-      learntExercisesRepository: getIt<LearntExercisesRepository>(),
-      notificationService: getIt<PlayerNotificationService>(),
-    );
+    _session = widget.trainingSession;
+    _cubit = _createPlayer(_session, autoStart: true);
     _cubit.loadTracks();
     // Kept on for the whole session (not just while isPlaying) so a brief
     // pause to check form doesn't let the screen lock mid-training.
     unawaited(WakelockPlus.enable());
+  }
+
+  TrainingSessionPlayerCubit _createPlayer(TrainingSession session,
+          {required bool autoStart}) =>
+      TrainingSessionPlayerCubit(
+        trainingSession: session,
+        mode: widget.mode,
+        autoStart: autoStart,
+        audioPlayerService: getIt<AudioPlayerService>(),
+        downloadRepository: getIt<DownloadRepository>(),
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
+        learntExercisesRepository: getIt<LearntExercisesRepository>(),
+        notificationService: getIt<PlayerNotificationService>(),
+      );
+
+  /// Edit from the player: pause first (audio and demo video stop while
+  /// editing). Cancelling leaves the player paused where it was. Saving
+  /// restarts the player from a clean slate on the saved session — a server
+  /// session is saved as a copy with a new id, so it must be reopened rather
+  /// than reloaded in place.
+  Future<void> _openEdit(BuildContext context) async {
+    _cubit.pause();
+    final sessionCubit = context.read<TrainingSessionCubit>();
+    final detail = sessionCubit.getSessionDetail(_session.id);
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => EditTrainingSessionPage(
+                trainingSession: _session,
+                items: detail?.items ?? const [],
+              )),
+    );
+    if (result == null || !context.mounted) return;
+
+    final updated = result['session'] as TrainingSession;
+    final items = result['items'] as List<ItemDetail>?;
+    await sessionCubit.updateTrainingSession(updated, items: items);
+    if (!context.mounted) return;
+    final saved = sessionCubit.getSessionDetail(updated.id);
+    final messenger = ScaffoldMessenger.of(context);
+    if (saved == null) {
+      messenger.showSnackBar(
+          SnackBar(content: Text("Couldn't save ${updated.title}")));
+      return;
+    }
+    await _restartPlayer(saved.session);
+    messenger.showSnackBar(SnackBar(
+      content: Text('${saved.session.title} saved'),
+      duration: const Duration(milliseconds: 2200),
+    ));
+  }
+
+  /// Replaces the player with a fresh one for [session], paused at the start.
+  /// The old player is fully closed first, so it releases the audio engine
+  /// (shared app-wide on Android) before the new one loads into it.
+  Future<void> _restartPlayer(TrainingSession session) async {
+    await _cubit.close();
+    if (!mounted) return;
+    setState(() {
+      _session = session;
+      _playerGeneration++;
+      _precachedUrls.clear();
+      _cubit = _createPlayer(session, autoStart: false);
+    });
+    unawaited(_cubit.loadTracks());
   }
 
   @override
@@ -107,9 +172,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     }
     await getIt<TrainingHistoryRepository>().recordCompletion(
       SessionCompletionRecord(
-        id: '${widget.trainingSession.id}-${DateTime.now().millisecondsSinceEpoch}',
-        sessionId: widget.trainingSession.id,
-        sessionTitle: widget.trainingSession.title,
+        id: '${_session.id}-${DateTime.now().millisecondsSinceEpoch}',
+        sessionId: _session.id,
+        sessionTitle: _session.title,
         completedAt: DateTime.now(),
         movementCounts: counts,
       ),
@@ -119,13 +184,15 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final accent = colors.accentFor(widget.trainingSession.id);
+    final accent = colors.accentFor(_session.id);
 
     return BlocProvider.value(
       value: _cubit,
       child: Scaffold(
         backgroundColor: colors.bg,
         body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
+          // A restart (see _restartPlayer) rebuilds the whole player subtree.
+          key: ValueKey(_playerGeneration),
           listenWhen: (prev, cur) =>
               prev.playingIndex != cur.playingIndex ||
               (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
@@ -171,7 +238,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             }
             return Stack(children: [
               Column(children: [
-                _AppBar(session: widget.trainingSession),
+                _AppBar(session: _session, onEdit: () => _openEdit(context)),
                 _Stage(state: state, accent: accent, cubit: _cubit),
                 _RepCounter(state: state, mode: widget.mode),
                 _ProgressBlock(state: state, cubit: _cubit),
@@ -193,7 +260,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               ),
               if (state.isFinished)
                 _CompletionSheet(
-                  session: widget.trainingSession,
+                  session: _session,
                   trackCount: state.tracks.length,
                   onReplay: _cubit.replay,
                   onDone: () => Navigator.pop(context),
@@ -210,32 +277,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 // App bar
 // ─────────────────────────────────────────────────────────────────────────────
 class _AppBar extends StatelessWidget {
-  const _AppBar({required this.session});
+  const _AppBar({required this.session, required this.onEdit});
   final TrainingSession session;
-
-  Future<void> _openEdit(BuildContext context) async {
-    final sessionCubit = context.read<TrainingSessionCubit>();
-    final detail = sessionCubit.getSessionDetail(session.id);
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-          builder: (_) => EditTrainingSessionPage(
-                trainingSession: session,
-                items: detail?.items ?? const [],
-              )),
-    );
-    if (result != null && context.mounted) {
-      final updated = result['session'] as TrainingSession;
-      final items = result['items'] as List<ItemDetail>?;
-      await sessionCubit.updateTrainingSession(updated, items: items);
-      if (!context.mounted) return;
-      unawaited(context.read<TrainingSessionPlayerCubit>().loadTracks());
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${updated.title} saved'),
-        duration: const Duration(milliseconds: 2200),
-      ));
-    }
-  }
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -267,9 +311,7 @@ class _AppBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis),
               ])),
           _RoundBtn(
-              icon: Icons.edit_outlined,
-              color: colors.onMuted,
-              onTap: () => _openEdit(context)),
+              icon: Icons.edit_outlined, color: colors.onMuted, onTap: onEdit),
         ]),
       ),
     );
