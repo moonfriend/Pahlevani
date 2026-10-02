@@ -12,7 +12,9 @@ import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
+import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -21,6 +23,10 @@ void main() {
   setUpAll(() async {
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     await DependencyInjection().ensureInitialized();
+
+    // Boot past the first-open splash: these tests start from Home.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(FirstRunCubit.splashSeenKey, true);
   });
 
   Future<void> screenshot(WidgetTester tester, String name) async {

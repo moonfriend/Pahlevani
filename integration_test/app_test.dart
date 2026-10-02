@@ -24,8 +24,10 @@ import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
+import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/fakes/fake_audio_catalog_repository.dart';
 import '../test/fakes/fake_audio_player_service.dart';
@@ -48,6 +50,10 @@ void main() {
   setUpAll(() async {
     // Wipe any prior registrations (e.g. from a previous run in the same process).
     await getIt.reset();
+
+    // Boot past the first-open splash: these tests start from Home.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(FirstRunCubit.splashSeenKey, true);
 
     fakeSessionRepo = FakeTrainingSessionRepository(buildTestSnapshot());
     fakeDownloadRepo = FakeDownloadRepository();

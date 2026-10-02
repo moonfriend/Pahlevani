@@ -16,10 +16,12 @@ import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
+import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
+import 'package:pahlevani/presentation/widgets/first_run_gate.dart';
 import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -126,6 +128,10 @@ class PahlevaniApp extends StatelessWidget {
           create: (_) => SettingsCubit()..load(),
           lazy: false,
         ),
+        BlocProvider<FirstRunCubit>(
+          create: (_) => FirstRunCubit()..load(),
+          lazy: false,
+        ),
         BlocProvider<TrainingSessionCubit>(
           create: (_) => getIt<TrainingSessionCubit>()..initialize(),
           lazy: false,
@@ -150,7 +156,11 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
-          home: const VersionGate(child: TrainingSessionPage()),
+          // Version gate stays outermost: an outdated app is blocked before
+          // the first-open splash.
+          home: const VersionGate(
+            child: FirstRunGate(child: TrainingSessionPage()),
+          ),
         ),
       ),
     );
