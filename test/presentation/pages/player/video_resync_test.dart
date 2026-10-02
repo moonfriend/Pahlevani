@@ -83,9 +83,16 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<void> pause(int playerId) async => calls.add('pause');
 
+  /// When set, every seek is recorded on arrival but only completes once
+  /// this gate is completed — models a slow native seek (e.g. Android
+  /// re-buffering) so a test can observe overlapping seeks.
+  Completer<void>? seekGate;
+
   @override
-  Future<void> seekTo(int playerId, Duration position) async =>
-      calls.add('seekTo:${position.inMilliseconds}');
+  Future<void> seekTo(int playerId, Duration position) async {
+    calls.add('seekTo:${position.inMilliseconds}');
+    await seekGate?.future;
+  }
 
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
@@ -198,6 +205,74 @@ void main() {
     await tester.pump();
 
     expect(fakePlatform.calls, contains('seekTo:3000'));
+
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
+  testWidgets(
+      'a burst of resyncs (seek-bar drag) keeps one video seek in flight and '
+      'applies only the latest', (tester) async {
+    const exercise = Exercise(
+      id: 10,
+      name: 'Video Ex',
+      audioFileUrl: 'https://audio.mp3',
+      repetitionsDefault: 1,
+      media:
+          ExerciseMedia(type: 'video', src: 'https://cdn.example.com/clip.mp4'),
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [
+          const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 10,
+              position: 0,
+              prescription: RepsPresc(1))
+        ]
+      },
+      exercisesById: {10: exercise},
+    );
+    late FakeAudioPlayerService audio;
+    _registerFakes(snap, onAudioServiceCreated: (a) => audio = a);
+
+    await tester.binding.setSurfaceSize(const Size(800, 900));
+    await tester.pumpWidget(_buildPage(snap));
+    await tester.pump();
+    await tester.pump();
+    fakePlatform.sendInitialized(0, duration: const Duration(seconds: 10));
+    await tester.pump();
+    audio.emitDuration(const Duration(seconds: 8));
+    await tester.pump();
+
+    final playerCubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+    List<String> seeks() =>
+        fakePlatform.calls.where((c) => c.startsWith('seekTo:')).toList();
+    final seeksBefore = seeks().length;
+
+    final gate = fakePlatform.seekGate = Completer<void>();
+    for (final ms in [1000, 2000, 3000, 4000]) {
+      await playerCubit.seekTo(Duration(milliseconds: ms));
+      await tester.pump();
+    }
+    expect(seeks().skip(seeksBefore), ['seekTo:1000'],
+        reason: 'only one native video seek may be in flight');
+
+    fakePlatform.seekGate = null;
+    gate.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(seeks().skip(seeksBefore), ['seekTo:1000', 'seekTo:4000'],
+        reason: 'intermediate drag positions are skipped; the latest wins');
 
     addTearDown(() async {
       await tester.binding.setSurfaceSize(null);

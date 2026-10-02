@@ -695,13 +695,37 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       _lastAppliedResyncGeneration = widget.resyncGeneration;
       final targetMs = computeVideoResyncTargetMs(widget.resyncPositionMs,
           widget.startOffsetMs, _controller.value.duration.inMilliseconds);
-      unawaited(_controller.seekTo(Duration(milliseconds: targetMs)));
+      unawaited(_seekVideo(targetMs));
     }
     if (widget.isPlaying && !_controller.value.isPlaying) {
       _controller.play();
     } else if (!widget.isPlaying && _controller.value.isPlaying) {
       _controller.pause();
     }
+  }
+
+  bool _seekInFlight = false;
+  int? _pendingSeekMs;
+
+  /// Seeks the video with at most one native seek in flight; targets that
+  /// arrive meanwhile replace each other and only the latest is applied.
+  /// A seek-bar drag resyncs on every drag update (~60/s), and each native
+  /// seek is expensive (a real re-buffer on Android) — firing them all,
+  /// overlapping, only adds load and lands on stale positions.
+  Future<void> _seekVideo(int targetMs) async {
+    if (_seekInFlight) {
+      _pendingSeekMs = targetMs;
+      return;
+    }
+    _seekInFlight = true;
+    try {
+      await _controller.seekTo(Duration(milliseconds: targetMs));
+    } finally {
+      _seekInFlight = false;
+    }
+    final next = _pendingSeekMs;
+    _pendingSeekMs = null;
+    if (next != null && mounted) await _seekVideo(next);
   }
 
   @override
