@@ -24,6 +24,52 @@ abstract final class KashiTextStyles {
     height: 1.2,
   );
 
+  /// Page title (Library, Calendar, Progress…).
+  static const title = TextStyle(
+    fontFamily: KashiFonts.heading,
+    fontWeight: FontWeight.w700,
+    fontSize: 24,
+    height: 1.2,
+  );
+
+  /// Counts and rep values.
+  static const number = TextStyle(
+    fontFamily: KashiFonts.heading,
+    fontWeight: FontWeight.w700,
+    fontSize: 26,
+    height: 1.1,
+  );
+
+  /// Uppercase section label (11px, w800, .14em tracking).
+  static const label = TextStyle(
+    fontFamily: KashiFonts.ui,
+    fontWeight: FontWeight.w800,
+    fontSize: 11,
+    letterSpacing: 11 * .14,
+  );
+
+  /// Body copy.
+  static const body = TextStyle(
+    fontFamily: KashiFonts.ui,
+    fontWeight: FontWeight.w400,
+    fontSize: 14.5,
+    height: 1.6,
+  );
+
+  /// Small UI text: list titles, captions.
+  static const ui = TextStyle(
+    fontFamily: KashiFonts.ui,
+    fontWeight: FontWeight.w700,
+    fontSize: 14,
+  );
+
+  /// Farsi name next to an English one.
+  static const farsi = TextStyle(
+    fontFamily: KashiFonts.farsi,
+    fontWeight: FontWeight.w500,
+    fontSize: 12.5,
+  );
+
   /// Label on an action button.
   static const buttonLabel = TextStyle(
     fontFamily: KashiFonts.ui,

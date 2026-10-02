@@ -18,6 +18,8 @@ void main() {
       expect(c.textMuted, const Color(0xFF56648F));
       expect(c.line, const Color(0xFFCFC3AE));
       expect(c.farsiAccent, const Color(0xFF1E8C88));
+      expect(c.tileEmpty, const Color(0xFFF7F3EA));
+      expect(c.shamsehRing1, const Color(0xFF1C3F94));
     });
 
     test('dark roles', () {
@@ -30,6 +32,8 @@ void main() {
       expect(c.textMuted, const Color(0xFFA39B8F));
       expect(c.line, const Color(0xFF33363B));
       expect(c.farsiAccent, const Color(0xFF7FE0D6));
+      expect(c.tileEmpty, const Color(0xFF33363B));
+      expect(c.shamsehRing1, const Color(0xFF5170FF));
     });
 
     test('action, reward and scene colours are identical in both themes', () {

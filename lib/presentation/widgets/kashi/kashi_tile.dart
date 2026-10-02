@@ -46,6 +46,23 @@ final Path _innerStar = Path()
   ..lineTo(17.4, 14.1)
   ..close();
 
+/// Paints one Kashi day tile of [size] at [origin]: a turquoise square
+/// under a lajvard khatam, plus the yellow inner star when [trained].
+/// Shared by the tile wall and calendar day tiles so they stay identical.
+void paintKashiTile(Canvas canvas, Offset origin, double size,
+    {required bool trained}) {
+  final scale = size / _grid;
+  final scaling = Matrix4.diagonal3Values(scale, scale, 1).storage;
+  canvas.drawRect(
+      origin & Size.square(size), Paint()..color = KashiPalette.turquoise500);
+  canvas.drawPath(_khatam.transform(scaling).shift(origin),
+      Paint()..color = KashiPalette.lajvard500);
+  if (trained) {
+    canvas.drawPath(_innerStar.transform(scaling).shift(origin),
+        Paint()..color = KashiPalette.yellow400);
+  }
+}
+
 /// A wall of Kashi day tiles — the splash pattern, and what a perfect month
 /// looks like on the calendar.
 ///
@@ -99,26 +116,15 @@ class KashiTileWallPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = tileSize / _grid;
-    final scaling = Matrix4.diagonal3Values(scale, scale, 1).storage;
-    final khatam = _khatam.transform(scaling);
-    final innerStar = _innerStar.transform(scaling);
-
-    final grout = Paint()..color = KashiPalette.lajvard500;
-    final ground = Paint()..color = KashiPalette.turquoise500;
-    final khatamPaint = Paint()..color = KashiPalette.lajvard500;
-    final starPaint = Paint()..color = KashiPalette.yellow400;
-
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, grout);
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = KashiPalette.lajvard500);
     final (cols, rows) = tilesFor(size, pitch);
     for (var row = 0; row < rows; row++) {
       for (var col = 0; col < cols; col++) {
-        final origin = Offset(col * pitch, row * pitch);
-        canvas.drawRect(origin & Size.square(tileSize), ground);
-        canvas.drawPath(khatam.shift(origin), khatamPaint);
-        if (trained) canvas.drawPath(innerStar.shift(origin), starPaint);
+        paintKashiTile(canvas, Offset(col * pitch, row * pitch), tileSize,
+            trained: trained);
       }
     }
     canvas.restore();

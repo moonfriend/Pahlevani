@@ -22,6 +22,8 @@ class KashiColors extends ThemeExtension<KashiColors> {
     required this.textMuted,
     required this.line,
     required this.farsiAccent,
+    required this.tileEmpty,
+    required this.shamsehRing1,
   });
 
   /// Every screen and tab background.
@@ -39,6 +41,12 @@ class KashiColors extends ThemeExtension<KashiColors> {
 
   /// Farsi labels next to English text.
   final Color farsiAccent;
+
+  /// A shamseh slot not yet earned.
+  final Color tileEmpty;
+
+  /// Ring 1 of the shamseh (ring 2 is [tile], the centre is [reward]).
+  final Color shamsehRing1;
 
   // ── Same in both themes ────────────────────────────────────────────────
   Color get action => KashiPalette.azure500;
@@ -70,6 +78,8 @@ class KashiColors extends ThemeExtension<KashiColors> {
     textMuted: Color(0xFF56648F),
     line: KashiPalette.plasterLine,
     farsiAccent: KashiPalette.turquoiseInk,
+    tileEmpty: KashiPalette.plaster100,
+    shamsehRing1: KashiPalette.lajvard500,
   );
 
   static const dark = KashiColors(
@@ -81,6 +91,10 @@ class KashiColors extends ThemeExtension<KashiColors> {
     textMuted: Color(0xFFA39B8F),
     line: KashiPalette.neutralDarkLine,
     farsiAccent: KashiPalette.aqua300,
+    tileEmpty: KashiPalette.neutralDarkLine,
+    // Lajvard disappears on the dark ground; the prototype lifts ring 1 to
+    // azure in dark mode.
+    shamsehRing1: KashiPalette.azure500,
   );
 
   @override
@@ -93,6 +107,8 @@ class KashiColors extends ThemeExtension<KashiColors> {
     Color? textMuted,
     Color? line,
     Color? farsiAccent,
+    Color? tileEmpty,
+    Color? shamsehRing1,
   }) =>
       KashiColors(
         ground: ground ?? this.ground,
@@ -103,6 +119,8 @@ class KashiColors extends ThemeExtension<KashiColors> {
         textMuted: textMuted ?? this.textMuted,
         line: line ?? this.line,
         farsiAccent: farsiAccent ?? this.farsiAccent,
+        tileEmpty: tileEmpty ?? this.tileEmpty,
+        shamsehRing1: shamsehRing1 ?? this.shamsehRing1,
       );
 
   @override
@@ -117,6 +135,8 @@ class KashiColors extends ThemeExtension<KashiColors> {
       textMuted: Color.lerp(textMuted, other.textMuted, t)!,
       line: Color.lerp(line, other.line, t)!,
       farsiAccent: Color.lerp(farsiAccent, other.farsiAccent, t)!,
+      tileEmpty: Color.lerp(tileEmpty, other.tileEmpty, t)!,
+      shamsehRing1: Color.lerp(shamsehRing1, other.shamsehRing1, t)!,
     );
   }
 }
