@@ -84,4 +84,29 @@ void main() {
     expect(handled, isTrue, reason: 'Back must not leave the app here');
     expect(find.text('home body'), findsOneWidget);
   });
+
+  testWidgets('onSelected runs every time a tab is chosen', (tester) async {
+    var progressSelections = 0;
+    await tester.pumpWidget(MaterialApp(
+      theme: PahlevaniTheme.light(),
+      home: AppShell(tabs: [
+        ShellTab(label: 'Home', builder: (_) => const Text('home body')),
+        ShellTab(
+          label: 'Progress',
+          builder: (_) => const Text('progress body'),
+          onSelected: () => progressSelections++,
+        ),
+      ]),
+    ));
+
+    await tester.tap(find.text('Progress'));
+    await tester.pump();
+    await tester.tap(find.text('Home'));
+    await tester.pump();
+    await tester.tap(find.text('Progress'));
+    await tester.pump();
+
+    expect(progressSelections, 2,
+        reason: 'reload when shown, e.g. after finishing a session');
+  });
 }

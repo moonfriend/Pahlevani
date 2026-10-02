@@ -5,10 +5,14 @@ import '../../widgets/kashi/kashi_tab_bar.dart';
 
 /// One tab of the [AppShell].
 class ShellTab {
-  const ShellTab({required this.label, required this.builder});
+  const ShellTab({required this.label, required this.builder, this.onSelected});
 
   final String label;
   final WidgetBuilder builder;
+
+  /// Runs whenever the user switches to this tab — e.g. to refresh data a
+  /// kept-alive tab shows.
+  final VoidCallback? onSelected;
 }
 
 /// The Kashi app shell: tabs (Home · Library · Progress · Profile) over the
@@ -30,10 +34,13 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   final Set<int> _visited = {0};
 
-  void _select(int index) => setState(() {
-        _index = index;
-        _visited.add(index);
-      });
+  void _select(int index) {
+    if (index != _index) widget.tabs[index].onSelected?.call();
+    setState(() {
+      _index = index;
+      _visited.add(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

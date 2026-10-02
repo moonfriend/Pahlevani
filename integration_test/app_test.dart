@@ -26,11 +26,16 @@ import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
+import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
+import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
+import 'package:pahlevani/presentation/pages/library/library_page.dart';
 import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
+import 'package:pahlevani/presentation/pages/profile/profile_page.dart';
+import 'package:pahlevani/presentation/pages/progress/progress_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/splash/splash_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,6 +110,12 @@ void main() {
         () => FakeLearntExercisesRepository());
     getIt.registerLazySingleton<TrainingHistoryRepository>(
         () => FakeTrainingHistoryRepository());
+    // The Progress and Profile tabs read these.
+    getIt.registerLazySingleton<TrainingHistoryCubit>(() =>
+        TrainingHistoryCubit(
+            historyRepository: getIt<TrainingHistoryRepository>()));
+    getIt.registerLazySingleton<AudioCatalogCubit>(
+        () => AudioCatalogCubit(repository: getIt<AudioCatalogRepository>()));
   });
 
   tearDownAll(() async => getIt.reset());
@@ -135,6 +146,32 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(FirstRunCubit.splashSeenKey), isTrue,
         reason: 'the next launch must skip the splash');
+  });
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+
+  testWidgets('the tab bar reaches Library, Progress and Profile, then Home',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LibraryPage), findsOneWidget);
+
+    await tester.tap(find.text('Progress'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProgressPage), findsOneWidget);
+    expect(find.text('Your shamseh'), findsOneWidget);
+
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+    expect(find.text('Beginner Warm-up'), findsOneWidget,
+        reason: 'Home is still the session list');
   });
 
   // ── 1: Sessions list ────────────────────────────────────────────────────────

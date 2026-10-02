@@ -20,7 +20,8 @@ import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
+import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
+import 'package:pahlevani/presentation/pages/shell/main_tabs.dart';
 import 'package:pahlevani/presentation/widgets/first_run_gate.dart';
 import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -158,8 +159,8 @@ class PahlevaniApp extends StatelessWidget {
           darkTheme: PahlevaniTheme.dark(),
           // Version gate stays outermost: an outdated app is blocked before
           // the first-open splash.
-          home: const VersionGate(
-            child: FirstRunGate(child: TrainingSessionPage()),
+          home: VersionGate(
+            child: FirstRunGate(child: AppShell(tabs: mainTabs())),
           ),
         ),
       ),
