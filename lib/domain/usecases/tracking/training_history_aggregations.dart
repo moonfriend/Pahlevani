@@ -67,3 +67,57 @@ List<MovementStat> computeMovementStats(List<SessionCompletionRecord> records) {
   stats.sort((a, b) => b.total.compareTo(a.total));
   return stats;
 }
+
+/// Recent rep counts for one tracked movement — the "logged moves" rows on
+/// Progress (latest value plus a short bar history).
+class MovementTrend extends Equatable {
+  final MovementKey key;
+  final String displayName;
+
+  /// Oldest → newest.
+  final List<int> counts;
+
+  const MovementTrend({
+    required this.key,
+    required this.displayName,
+    required this.counts,
+  });
+
+  int get latest => counts.last;
+
+  @override
+  List<Object?> get props => [key, displayName, counts];
+}
+
+/// One [MovementTrend] per tracked movement in [records], keeping the last
+/// [limit] counts in completion order. Most recently logged movement first;
+/// the display name is the latest one recorded.
+List<MovementTrend> recentMovementCounts(List<SessionCompletionRecord> records,
+    {int limit = 6}) {
+  final ordered = [...records]
+    ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+  final counts = <MovementKey, List<int>>{};
+  final names = <MovementKey, String>{};
+  final lastSeen = <MovementKey, DateTime>{};
+
+  for (final record in ordered) {
+    for (final entry in record.movementCounts) {
+      counts.putIfAbsent(entry.key, () => []).add(entry.count);
+      names[entry.key] = entry.displayName;
+      lastSeen[entry.key] = record.completedAt;
+    }
+  }
+
+  final keys = counts.keys.toList()
+    ..sort((a, b) => lastSeen[b]!.compareTo(lastSeen[a]!));
+  return [
+    for (final key in keys)
+      MovementTrend(
+        key: key,
+        displayName: names[key]!,
+        counts: counts[key]!.length > limit
+            ? counts[key]!.sublist(counts[key]!.length - limit)
+            : counts[key]!,
+      ),
+  ];
+}
