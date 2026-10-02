@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_colors.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_typography.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 
 void main() {
@@ -81,5 +82,20 @@ void main() {
         expect(data.lengthInBytes, greaterThan(0), reason: path);
       }
     });
+  });
+
+  test('every Kashi text style falls back to Vazirmatn for Farsi glyphs', () {
+    for (final style in [
+      KashiTextStyles.heading,
+      KashiTextStyles.title,
+      KashiTextStyles.number,
+      KashiTextStyles.label,
+      KashiTextStyles.body,
+      KashiTextStyles.ui,
+      KashiTextStyles.buttonLabel,
+    ]) {
+      expect(style.fontFamilyFallback, contains(KashiFonts.farsi));
+    }
+    expect(KashiTextStyles.farsi.fontFamily, KashiFonts.farsi);
   });
 }

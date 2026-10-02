@@ -15,9 +15,16 @@ abstract final class KashiFonts {
 
 /// Kashi text styles. Colours are left unset so callers apply a
 /// [KashiColors] role — the same style serves light, dark and scene screens.
+///
+/// Every style falls back to Vazirmatn, so Farsi words inside English UI
+/// (e.g. "فارسی", move names) render in the bundled Farsi face instead of
+/// whatever the platform happens to have.
 abstract final class KashiTextStyles {
+  static const _farsiFallback = [KashiFonts.farsi];
+
   /// Screen headline (phone 22–32px; the splash uses 27).
   static const heading = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.heading,
     fontWeight: FontWeight.w700,
     fontSize: 27,
@@ -26,6 +33,7 @@ abstract final class KashiTextStyles {
 
   /// Page title (Library, Calendar, Progress…).
   static const title = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.heading,
     fontWeight: FontWeight.w700,
     fontSize: 24,
@@ -34,6 +42,7 @@ abstract final class KashiTextStyles {
 
   /// Counts and rep values.
   static const number = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.heading,
     fontWeight: FontWeight.w700,
     fontSize: 26,
@@ -42,6 +51,7 @@ abstract final class KashiTextStyles {
 
   /// Uppercase section label (11px, w800, .14em tracking).
   static const label = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.ui,
     fontWeight: FontWeight.w800,
     fontSize: 11,
@@ -50,6 +60,7 @@ abstract final class KashiTextStyles {
 
   /// Body copy.
   static const body = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.ui,
     fontWeight: FontWeight.w400,
     fontSize: 14.5,
@@ -58,6 +69,7 @@ abstract final class KashiTextStyles {
 
   /// Small UI text: list titles, captions.
   static const ui = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.ui,
     fontWeight: FontWeight.w700,
     fontSize: 14,
@@ -72,6 +84,7 @@ abstract final class KashiTextStyles {
 
   /// Label on an action button.
   static const buttonLabel = TextStyle(
+    fontFamilyFallback: _farsiFallback,
     fontFamily: KashiFonts.ui,
     fontWeight: FontWeight.w800,
     fontSize: 16,

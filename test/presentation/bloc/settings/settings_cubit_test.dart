@@ -119,4 +119,26 @@ void main() {
       expect(cubit.state.listDensity, ListDensity.banner);
     });
   });
+
+  group('setThemeMode()', () {
+    test('emits and persists System, so it survives a restart', () async {
+      final cubit = SettingsCubit();
+      addTearDown(cubit.close);
+      await cubit.setThemeMode(ThemeMode.system);
+      expect(cubit.state.themeMode, ThemeMode.system);
+
+      final restarted = SettingsCubit();
+      addTearDown(restarted.close);
+      await restarted.load();
+      expect(restarted.state.themeMode, ThemeMode.system);
+    });
+
+    test('keeps the list density untouched', () async {
+      final cubit = SettingsCubit();
+      addTearDown(cubit.close);
+      await cubit.setListDensity(ListDensity.compact);
+      await cubit.setThemeMode(ThemeMode.light);
+      expect(cubit.state.listDensity, ListDensity.compact);
+    });
+  });
 }
