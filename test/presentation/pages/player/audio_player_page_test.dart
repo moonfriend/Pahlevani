@@ -18,6 +18,7 @@ import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -919,5 +920,100 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  // ── Edit from the player ───────────────────────────────────────────────────
+
+  group('Edit from the player', () {
+    TrainingSessionPlayerCubit playerCubit(WidgetTester tester) => tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+
+    // As in the app, the session list is loaded (the editor reads the
+    // session's moves from it) and shares the repository the player loads
+    // from, so a saved copy is visible to a freshly opened player.
+    Future<void> openPlayer(WidgetTester tester) async {
+      final sessionCubit = TrainingSessionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        downloadRepository: getIt<DownloadRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
+      );
+      await sessionCubit.fetchTrainingSessions();
+      addTearDown(sessionCubit.close);
+      await tester.pumpWidget(BlocProvider.value(
+        value: sessionCubit,
+        child: MaterialApp(
+          theme: PahlevaniTheme.dark(),
+          home: AudioPlayerPage(
+              trainingSession: testSession1, mode: PlayerMode.athlete),
+        ),
+      ));
+      await _pumpAndLoad(tester);
+    }
+
+    testWidgets('tapping Edit pauses playback before opening the editor',
+        (tester) async {
+      await openPlayer(tester);
+      expect(playerCubit(tester).state.isPlaying, isTrue);
+      final cubit = playerCubit(tester);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrainingSessionPage), findsOneWidget);
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'audio and the demo video must stop while editing');
+    });
+
+    testWidgets('leaving Edit without saving keeps the player paused',
+        (tester) async {
+      await openPlayer(tester);
+      final cubit = playerCubit(tester);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(EditTrainingSessionPage), findsNothing);
+      expect(identical(playerCubit(tester), cubit), isTrue,
+          reason: 'cancelling must not restart the player');
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets(
+        'saving restarts a fresh, paused player for the saved copy of the '
+        'session', (tester) async {
+      await openPlayer(tester);
+      final oldCubit = playerCubit(tester);
+      final originalReps = oldCubit.state.tracks.first.effectiveRepetitions;
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+').first); // first move: one more rep
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      // Editor closes, the copy is saved, the old player closes, the new one
+      // loads — several async hops. Closing the old player waits on real
+      // async work (not fake time), hence runAsync alongside the pumps.
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final newCubit = playerCubit(tester);
+      expect(identical(newCubit, oldCubit), isFalse,
+          reason: 'the player must start from a clean slate');
+      expect(oldCubit.isClosed, isTrue);
+      expect(newCubit.state.tracks.first.effectiveRepetitions, originalReps + 1,
+          reason: 'a server session is saved as a copy; the player must '
+              'play that copy (with the edit), not the original');
+      expect(newCubit.state.playingIndex, 0);
+      expect(newCubit.state.isPlaying, isFalse,
+          reason: 'after Save the player waits for the user to press play');
+    });
   });
 }

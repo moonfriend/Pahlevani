@@ -146,6 +146,10 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final PlayerNotificationService _notification;
   final PlayerMode _mode;
 
+  /// Whether [loadTracks] starts playing the first track by itself. False
+  /// when the player is restarted after an edit, so it waits for the user.
+  final bool _autoStart;
+
   final List<ItemDetail> _itemDetails = [];
 
   // Snapshotted once per loadTracks() call — Learning Mode's "skip the
@@ -193,6 +197,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     required AudioCatalogRepository audioCatalogRepository,
     required LearntExercisesRepository learntExercisesRepository,
     required PlayerNotificationService notificationService,
+    bool autoStart = true,
   })  : _trainingSession = trainingSession,
         _mode = mode,
         _audioService = audioPlayerService,
@@ -201,6 +206,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         _audioCatalogRepo = audioCatalogRepository,
         _learntExercisesRepo = learntExercisesRepository,
         _notification = notificationService,
+        _autoStart = autoStart,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _initListeners();
@@ -404,7 +410,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           isLoading: false,
           errorMessage: null,
         ));
-        await _loadSourceAtIndex(0, shouldPlay: _shouldAutoPlay(0));
+        await _loadSourceAtIndex(0,
+            shouldPlay: _autoStart && _shouldAutoPlay(0));
       }
     } catch (e) {
       emit(state.copyWith(
