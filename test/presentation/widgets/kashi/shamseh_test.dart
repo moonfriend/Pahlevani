@@ -46,23 +46,67 @@ void main() {
   });
 
   group('shamsehSlotColor — tile k fills slot k and never resets', () {
-    const c = KashiColors.light;
+    final p = ShamsehPalette.of(KashiColors.light);
+
+    test('the theme palette uses the Kashi roles', () {
+      expect(p.centre, KashiColors.light.reward);
+      expect(p.ring1, KashiColors.light.shamsehRing1);
+      expect(p.ring2, KashiColors.light.tile);
+      expect(p.empty, KashiColors.light.tileEmpty);
+    });
 
     test('earned slots: centre yellow, ring 1, then ring 2 turquoise', () {
-      expect(shamsehSlotColor(0, tilesLaid: 25, colors: c), c.reward);
-      expect(shamsehSlotColor(1, tilesLaid: 25, colors: c), c.shamsehRing1);
-      expect(shamsehSlotColor(8, tilesLaid: 25, colors: c), c.shamsehRing1);
-      expect(shamsehSlotColor(9, tilesLaid: 25, colors: c), c.tile);
-      expect(shamsehSlotColor(24, tilesLaid: 25, colors: c), c.tile);
+      expect(shamsehSlotColor(0, tilesLaid: 25, palette: p), p.centre);
+      expect(shamsehSlotColor(1, tilesLaid: 25, palette: p), p.ring1);
+      expect(shamsehSlotColor(8, tilesLaid: 25, palette: p), p.ring1);
+      expect(shamsehSlotColor(9, tilesLaid: 25, palette: p), p.ring2);
+      expect(shamsehSlotColor(24, tilesLaid: 25, palette: p), p.ring2);
     });
 
     test('slots beyond the tiles laid are empty', () {
-      expect(shamsehSlotColor(11, tilesLaid: 11, colors: c), c.tileEmpty);
-      expect(shamsehSlotColor(0, tilesLaid: 0, colors: c), c.tileEmpty);
+      expect(shamsehSlotColor(11, tilesLaid: 11, palette: p), p.empty);
+      expect(shamsehSlotColor(0, tilesLaid: 0, palette: p), p.empty);
     });
 
     test('more than 25 tiles keeps the rosette full', () {
-      expect(shamsehSlotColor(24, tilesLaid: 300, colors: c), c.tile);
+      expect(shamsehSlotColor(24, tilesLaid: 300, palette: p), p.ring2);
+    });
+
+    test('the landing tile (today\'s) is yellow wherever it sits', () {
+      expect(shamsehSlotColor(11, tilesLaid: 12, palette: p, landingIndex: 11),
+          p.centre);
+    });
+
+    test('the scene palette (Complete screen) is fixed', () {
+      const scene = ShamsehPalette.scene;
+      expect(scene.ring1, const Color(0xFF5170FF));
+      expect(scene.ring2, const Color(0xFF2BA3A0));
+      expect(scene.empty, const Color(0xFF1C3F94));
+    });
+  });
+
+  group('landingTransform — the pvland keyframes', () {
+    test('starts high, large, turned and invisible', () {
+      final t = landingTransform(0);
+      expect(t.dy, -70);
+      expect(t.scale, 2.4);
+      expect(t.degrees, -40);
+      expect(t.opacity, 0);
+    });
+
+    test('overshoots to .92 at 80%, settled at the end', () {
+      expect(landingTransform(.8).scale, closeTo(.92, 1e-9));
+      expect(landingTransform(.8).dy, closeTo(0, 1e-9));
+      final end = landingTransform(1);
+      expect(end.scale, 1);
+      expect(end.dy, 0);
+      expect(end.degrees, 0);
+      expect(end.opacity, 1);
+    });
+
+    test('fully opaque from 55%', () {
+      expect(landingTransform(.55).opacity, 1);
+      expect(landingTransform(.3).opacity, closeTo(.3 / .55, 1e-9));
     });
   });
 
