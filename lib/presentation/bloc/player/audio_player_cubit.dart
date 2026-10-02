@@ -188,6 +188,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   /// ourselves, until the engine confirms it is back before the target.
   bool _awaitingLoopRestart = false;
 
+  /// Bumped by every track load. A load that awaits (resolving/downloading
+  /// the file, loading the engine) and finds a newer load has started since
+  /// gives up silently — otherwise rapid next/prev taps let an overtaken,
+  /// slower load start playing the wrong track under the visible one.
+  int _loadGeneration = 0;
+
   TrainingSessionPlayerCubit({
     required TrainingSession trainingSession,
     required PlayerMode mode,
@@ -589,6 +595,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
+    final generation = ++_loadGeneration;
+    bool superseded() => isClosed || generation != _loadGeneration;
     // Before the first await: from here on, readings belong to the old clip.
     _resetMoveTimeline();
     // Resolve to a local path before handing it to the audio engine — playing
@@ -597,6 +605,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     final sourcePath = track.audioFilePath.startsWith('/')
         ? track.audioFilePath
         : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
+    if (superseded()) return;
 
     try {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
@@ -625,7 +634,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _audioService.play(sourcePath);
       } else {
         await _audioService.stop();
+        if (superseded()) return;
         await _audioService.setSource(sourcePath);
+        if (superseded()) return;
         emit(state.copyWith(
           isPlaying: false,
           isLoading: false,
@@ -634,6 +645,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         ));
       }
 
+      if (superseded()) return;
       // Update the OS notification (lock screen / dropdown card).
       _notification.update(
         trackTitle: track.displayName,
@@ -650,6 +662,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
           .catchError((_) => false));
     } catch (e) {
+      if (superseded()) return;
       emit(state.copyWith(
           errorMessage: 'Error loading track: ${track.displayName}'));
       await _audioService.stop();

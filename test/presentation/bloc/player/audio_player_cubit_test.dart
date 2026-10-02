@@ -112,6 +112,10 @@ class _FakeDownloadRepo implements DownloadRepository {
   final List<int> resolvedItemIds = [];
   String Function(ItemDetail item)? resolvedPathBuilder;
 
+  // Per-item gates: resolving that item's audio waits until its completer
+  // is completed — simulates a slow download for one specific track.
+  final Map<int, Completer<void>> resolveGates = {};
+
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
   @override
@@ -167,6 +171,7 @@ class _FakeDownloadRepo implements DownloadRepository {
   Future<String> resolvePlayableAudioPath(ItemDetail item) async {
     resolveCallCount++;
     resolvedItemIds.add(item.item.id);
+    await resolveGates[item.item.id]?.future;
     return resolvedPathBuilder?.call(item) ?? '/cached/${item.item.id}.mp3';
   }
 }
@@ -1979,6 +1984,78 @@ void main() {
       await settle();
 
       expect(cubit.state.logicalDuration, const Duration(seconds: 30));
+    });
+  });
+
+  // ---------- superseded track loads ----------
+  group('superseded track loads', () {
+    test('a slow load overtaken by a newer one never plays (rapid next taps)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+          _item(sessionId: 1, exerciseId: 12, position: 2),
+        ],
+        [_exercise(10), _exercise(11), _exercise(12)],
+      );
+      final audio = FakeAudioPlayerService();
+      final downloads = _FakeDownloadRepo();
+      final slowMove2 = Completer<void>();
+      downloads.resolveGates[10001] = slowMove2; // move 2 downloads slowly
+      final cubit =
+          _makeCubit(snap, audioService: audio, downloadRepo: downloads);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // move 1 playing
+
+      cubit.next(); // move 2: stuck downloading
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      cubit.next(); // move 3: loads and plays
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(audio.lastPlayedPath, '/cached/10002.mp3');
+
+      slowMove2.complete(); // move 2's download finally finishes
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 2);
+      expect(audio.lastPlayedPath, '/cached/10002.mp3',
+          reason: 'the overtaken load for move 2 must not start playing');
+    });
+
+    test("an overtaken load can't seed the new move's timeline", () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+          _item(sessionId: 1, exerciseId: 12, position: 2),
+        ],
+        [_exercise(10), _exercise(11), _exercise(12)],
+      );
+      final audio = FakeAudioPlayerService();
+      final downloads = _FakeDownloadRepo();
+      final slowMove2 = Completer<void>();
+      downloads.resolveGates[10001] = slowMove2;
+      final cubit =
+          _makeCubit(snap, audioService: audio, downloadRepo: downloads);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      audio.emitDuration(const Duration(seconds: 10)); // move 3's clip
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _feedPositions(audio, [4000]);
+
+      slowMove2.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _feedPositions(audio, [4200]);
+
+      expect(cubit.state.logicalPosition, const Duration(milliseconds: 4200),
+          reason: "move 3's timeline must not be reset by move 2's late load");
     });
   });
 
