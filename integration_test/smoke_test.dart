@@ -21,12 +21,11 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    // In-memory preferences: never touch the real store (on Linux that is the
+    // developer's own app data). Splash already seen — start from Home.
+    SharedPreferences.setMockInitialValues({FirstRunCubit.splashSeenKey: true});
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     await DependencyInjection().ensureInitialized();
-
-    // Boot past the first-open splash: these tests start from Home.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(FirstRunCubit.splashSeenKey, true);
   });
 
   Future<void> screenshot(WidgetTester tester, String name) async {

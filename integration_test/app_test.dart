@@ -17,6 +17,8 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
+import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
@@ -26,7 +28,10 @@ import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
 import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
+import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/splash/splash_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/fakes/fake_audio_catalog_repository.dart';
@@ -34,9 +39,13 @@ import '../test/fakes/fake_audio_player_service.dart';
 import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
+import '../test/fakes/fake_learnt_exercises_repository.dart';
+import '../test/fakes/fake_training_history_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
 import '../test/fakes/fake_version_gate_repository.dart';
 import '../test/fakes/test_seed_data.dart';
+
+const Map<String, Object> _returningUser = {FirstRunCubit.splashSeenKey: true};
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -51,9 +60,10 @@ void main() {
     // Wipe any prior registrations (e.g. from a previous run in the same process).
     await getIt.reset();
 
-    // Boot past the first-open splash: these tests start from Home.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(FirstRunCubit.splashSeenKey, true);
+    // In-memory preferences: never touch the real store (on Linux that is the
+    // developer's own app data). Splash already seen — these tests start
+    // from Home; the first-open test below clears it for itself.
+    SharedPreferences.setMockInitialValues(_returningUser);
 
     fakeSessionRepo = FakeTrainingSessionRepository(buildTestSnapshot());
     fakeDownloadRepo = FakeDownloadRepository();
@@ -88,9 +98,38 @@ void main() {
     // implementation is the correct desktop/test fallback.
     getIt.registerSingleton<PlayerNotificationService>(
         NoOpNotificationService());
+    // The player reads the Learnt flags on open and records a completion to
+    // training history at the end of a session.
+    getIt.registerLazySingleton<LearntExercisesRepository>(
+        () => FakeLearntExercisesRepository());
+    getIt.registerLazySingleton<TrainingHistoryRepository>(
+        () => FakeTrainingHistoryRepository());
   });
 
   tearDownAll(() async => getIt.reset());
+
+  // ── 0: First open ───────────────────────────────────────────────────────────
+
+  testWidgets('first open shows the splash; Begin leads to the sessions list',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    addTearDown(() => SharedPreferences.setMockInitialValues(_returningUser));
+
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SplashPage), findsOneWidget);
+    expect(find.text('Beginner Warm-up'), findsNothing);
+
+    await tester.tap(find.text('Begin'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SplashPage), findsNothing);
+    expect(find.text('Beginner Warm-up'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(FirstRunCubit.splashSeenKey), isTrue,
+        reason: 'the next launch must skip the splash');
+  });
 
   // ── 1: Sessions list ────────────────────────────────────────────────────────
 
@@ -112,13 +151,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    // The outer GestureDetector for the first card is the first one inside ListView.
-    final listView = find.byType(ListView);
-    final cards =
-        find.descendant(of: listView, matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
     // First exercise of session 1 is 'Shena'.
@@ -191,10 +224,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Shena is the current track (appears in stage + transport + list).
     expect(find.text('Shena'), findsWidgets);
@@ -217,10 +247,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Tap prev (up-arrow) — disabled on first track, so nothing should change.
     await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
@@ -237,10 +264,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Advance to last track (track 2 of 2).
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
@@ -281,10 +305,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     final transportIcon =
         find.byWidgetPredicate((w) => w is Icon && w.size == 30);
@@ -312,16 +333,19 @@ void main() {
   // ── Optional login — UI-only walkthrough (no network) ───────────────────────
 
   testWidgets(
-      'login icon opens the auth page; fields, toggle and back all work',
+      'Sign in (header menu) opens the auth page; fields, sign-up link and back all work',
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    // Anonymous state — outline icon, session list still fully usable.
-    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+    // Anonymous state — session list fully usable, and the header menu
+    // offers "Sign in" with the outline (signed-out) icon.
     expect(find.text('Beginner Warm-up'), findsOneWidget);
+    await openHeaderMenu(tester);
+    expect(find.widgetWithIcon(ListTile, Icons.person_outline_rounded),
+        findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.person_outline_rounded));
+    await tester.tap(find.widgetWithText(ListTile, 'Sign in'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sign in'), findsWidgets);
@@ -332,7 +356,8 @@ void main() {
     expect(tester.widget<FilledButton>(submitFinder).onPressed, isNull,
         reason: 'must not be submittable with empty fields');
 
-    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'a@b.com');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Username'), 'student1');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret123');
     await tester.pump();
@@ -340,19 +365,26 @@ void main() {
     expect(tester.widget<FilledButton>(submitFinder).onPressed, isNotNull,
         reason: 'must become submittable once both fields are filled');
 
-    // Toggle to sign-up mode — label and toggle text swap.
-    await tester.tap(find.text("Don't have an account? Create one"));
+    // New accounts are created on a separate invite-code page, linked from
+    // the bottom of the sign-in page.
+    await tester.tap(find.text('Have an invite code? Create an account'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
+    expect(find.byType(InviteCodeSignUpPage), findsOneWidget);
 
     // Back out WITHOUT submitting — no network call, nothing to clean up.
-    await tester.pageBack();
+    await tester.pageBack(); // invite-code page → sign-in page
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthPage), findsOneWidget);
+    await tester.pageBack(); // sign-in page → sessions list
     await tester.pumpAndSettle();
 
     expect(find.text('Beginner Warm-up'), findsOneWidget,
         reason: 'session list must be intact after returning');
-    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget,
+    await openHeaderMenu(tester);
+    expect(find.widgetWithText(ListTile, 'Sign in'), findsOneWidget,
         reason: 'still anonymous — no submit happened');
+    expect(find.widgetWithIcon(ListTile, Icons.person_outline_rounded),
+        findsOneWidget);
   });
 }
 
@@ -362,4 +394,27 @@ Future<void> pumpPlayer(WidgetTester tester) async {
   await tester.pump(); // schedule loadTracks
   await tester.pump(); // complete async work
   await tester.pump(const Duration(milliseconds: 400)); // navigation animation
+}
+
+// Taps the first session card and answers the mode dialog with Athlete mode
+// ("Play straight through") — the plain playback these player tests cover.
+Future<void> openFirstSessionInAthleteMode(WidgetTester tester) async {
+  // The outer GestureDetector for the first card is the first one inside ListView.
+  final cards = find.descendant(
+      of: find.byType(ListView), matching: find.byType(GestureDetector));
+  await tester.tap(cards.first);
+  await tester.pumpAndSettle();
+
+  expect(find.text('Choose a mode'), findsOneWidget,
+      reason: 'opening a session must ask for a playback mode first');
+  await tester.tap(find.text('Athlete mode'));
+  // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
+  await pumpPlayer(tester);
+}
+
+// Opens the header's "⋮" menu (history, Morshed, refresh, theme, account).
+// Session cards use Icons.more_vert; the header uses the rounded variant.
+Future<void> openHeaderMenu(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.more_vert_rounded));
+  await tester.pumpAndSettle();
 }
