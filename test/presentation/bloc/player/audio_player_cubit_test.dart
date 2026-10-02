@@ -1487,6 +1487,76 @@ void main() {
       expect(cubit.state.isPlaying, isTrue);
     });
 
+    test('pause command while already paused stays paused (not a toggle)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.pause();
+
+      notification.emit(NotificationCommand.pause);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'a lock-screen pause must never resume playback');
+    });
+
+    test('play command while already playing keeps playing (not a toggle)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // playing
+
+      notification.emit(NotificationCommand.play);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isTrue,
+          reason: 'a lock-screen play must never pause playback');
+    });
+
+    test('seek command moves the move timeline like the seek bar does',
+        () async {
+      // 2 reps of a 1-rep, 10s clip → a 20s move.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0, reps: 2)],
+        [_exercise(1, reps: 1)],
+      );
+      final notification = FakePlayerNotificationService();
+      final audio = FakeAudioPlayerService();
+      final cubit = TrainingSessionPlayerCubit(
+        trainingSession: snap.sessionsById.values.first,
+        mode: PlayerMode.athlete,
+        audioPlayerService: audio,
+        downloadRepository: _FakeDownloadRepo(),
+        sessionRepository: _FakeSessionRepo(snap),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
+        notificationService: notification,
+      );
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      notification.emit(const NotificationCommand.seek(Duration(seconds: 12)));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(audio.seekedTo, const Duration(seconds: 2),
+          reason: '12s into the move = 2s into the second loop of the clip');
+      expect(cubit.state.logicalPosition, const Duration(seconds: 12));
+    });
+
     test('notification updated with track title and isPlaying=true on load',
         () async {
       final snap = _snapshotWithItems(

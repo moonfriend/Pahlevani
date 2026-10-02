@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 
 /// Audio handler wired to the OS media session (lock screen / notification card).
@@ -12,11 +11,15 @@ import 'package:pahlevani/domain/services/player_notification_service.dart';
 ///   1. **Cubit path** — [JustAudioPlayerService] calls [player] methods directly
 ///      then calls [syncPlaybackState] so the notification stays in sync.
 ///   2. **Notification path** — the OS calls the [BaseAudioHandler] overrides
-///      ([play], [pause], [skipToNext], [skipToPrevious]).  These actually
-///      control the player AND emit a [NotificationCommand] so the cubit can
-///      update its own state.
+///      ([play], [pause], [seek], [skipToNext], [skipToPrevious]). These ONLY
+///      forward a [NotificationCommand]; the cubit (the single authority over
+///      playback) acts on it through path 1.
 ///
-/// Keeping these paths distinct avoids circular call loops.
+/// The notification path must not drive the engine itself: when it did, the
+/// app and the OS diverged — just_audio's play() future completes only when
+/// playback next stops, so a lock-screen play reached the cubit late, and a
+/// lock-screen seek moved the audio without the cubit's timeline or the video
+/// knowing.
 class PahlevaniAudioHandler extends BaseAudioHandler
     with SeekHandler
     implements PlayerNotificationService {
@@ -78,26 +81,11 @@ class PahlevaniAudioHandler extends BaseAudioHandler
   // ── BaseAudioHandler — OS / notification button presses ────────────────────
 
   @override
-  Future<void> play() async {
-    AppLogger.d(
-        '[player-diag] PahlevaniAudioHandler.play() (OS/notification path) entered');
-    await _player.play();
-    syncPlaybackState(playing: true);
-    _commandController.add(NotificationCommand.play);
-    AppLogger.d(
-        '[player-diag] PahlevaniAudioHandler.play() returned, command forwarded');
-  }
+  Future<void> play() async => _commandController.add(NotificationCommand.play);
 
   @override
-  Future<void> pause() async {
-    AppLogger.d(
-        '[player-diag] PahlevaniAudioHandler.pause() (OS/notification path) entered');
-    await _player.pause();
-    syncPlaybackState(playing: false);
-    _commandController.add(NotificationCommand.pause);
-    AppLogger.d(
-        '[player-diag] PahlevaniAudioHandler.pause() returned, command forwarded');
-  }
+  Future<void> pause() async =>
+      _commandController.add(NotificationCommand.pause);
 
   @override
   Future<void> skipToNext() async {
@@ -110,10 +98,8 @@ class PahlevaniAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> seek(Duration position) async {
-    await _player.seek(position);
-    syncPlaybackState();
-  }
+  Future<void> seek(Duration position) async =>
+      _commandController.add(NotificationCommand.seek(position));
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 

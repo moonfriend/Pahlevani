@@ -272,13 +272,22 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     unawaited(_notificationSub?.cancel());
     _notificationSub = _notification.commands.listen((cmd) {
       switch (cmd) {
-        case NotificationCommand.skipNext:
+        case SkipNextCommand():
           next();
-        case NotificationCommand.skipPrev:
+        case SkipPrevCommand():
           unawaited(prev());
-        case NotificationCommand.play:
-        case NotificationCommand.pause:
-          togglePlay();
+        // Explicit intents, never togglePlay(): the OS shows its own idea of
+        // the state, and a toggle would invert ours whenever they differ.
+        case PlayCommand():
+          if (state.isFinished) {
+            replay();
+          } else if (!state.isPlaying) {
+            unawaited(play());
+          }
+        case PauseCommand():
+          pause();
+        case SeekCommand(:final position):
+          unawaited(seekTo(position));
       }
     });
 
