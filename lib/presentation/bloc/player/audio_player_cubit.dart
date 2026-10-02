@@ -15,6 +15,7 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 
 /// Substitutes a resolved recording's audio-shaped fields onto [base] —
@@ -161,12 +162,27 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
+  /// Length of the current audio clip, and of the whole move (the clip's
+  /// length scaled from its own reps to the prescribed reps).
   Duration? _originalDuration;
   Duration? _targetDuration;
 
-  Timer? _logicalTimer;
-  Duration _logicalElapsed = Duration.zero;
-  Duration? _logicalTargetDuration;
+  /// The move's single timeline, derived from engine positions — see
+  /// [PlaybackClock] for why this replaced a fixed-interval tick counter.
+  final _clock = PlaybackClock();
+
+  /// False from the moment a new track starts loading until its source has
+  /// been handed to the engine, so late readings from the previous clip
+  /// can't seed the new move's timeline.
+  bool _sourceDispatched = false;
+
+  /// Set once the current move has asked to advance, so further readings
+  /// past the target can't advance it twice.
+  bool _advanceRequested = false;
+
+  /// Zoorkhaneh with fewer reps than the clip: set after we restart the clip
+  /// ourselves, until the engine confirms it is back before the target.
+  bool _awaitingLoopRestart = false;
 
   TrainingSessionPlayerCubit({
     required TrainingSession trainingSession,
@@ -191,19 +207,10 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   void _initListeners() {
-    _positionSubscription = _audioService.onPositionChanged.listen((position) {
-      emit(state.copyWith(position: position));
-      _handleDynamicDuration(position);
-    });
-
-    _durationSubscription = _audioService.onDurationChanged.listen((duration) {
-      if (duration.inMilliseconds <= 0) return;
-      _originalDuration = duration;
-      _calculateTargetDuration();
-      emit(state.copyWith(duration: _targetDuration ?? duration));
-      _logicalTimer?.cancel();
-      _startLogicalTimer();
-    });
+    _positionSubscription =
+        _audioService.onPositionChanged.listen(_onEnginePosition);
+    _durationSubscription =
+        _audioService.onDurationChanged.listen(_onEngineDuration);
 
     // NOTE: we deliberately do NOT subscribe to _audioService.onPlayingChanged.
     // The cubit is the single source of truth for isPlaying — it is mutated
@@ -418,7 +425,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       _loadSourceAtIndex(nextIndex, shouldPlay: _shouldAutoPlay(nextIndex));
     } else {
       _audioService.stop();
-      _stopLogicalTimer();
       emit(state.copyWith(isPlaying: false, isFinished: true));
     }
   }
@@ -567,6 +573,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
+    // Before the first await: from here on, readings belong to the old clip.
+    _resetMoveTimeline();
     // Resolve to a local path before handing it to the audio engine — playing
     // a remote URL directly would stream/download the file, and the
     // background lookahead cache would then download it again separately.
@@ -574,13 +582,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         ? track.audioFilePath
         : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
 
-    _originalDuration = null;
-    _targetDuration = null;
-    _stopLogicalTimer();
-    _logicalElapsed = Duration.zero;
-
     try {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
+      // Set before handing the source over: the engine reports the new
+      // clip's duration while play()/setSource() is still in progress.
+      _sourceDispatched = true;
 
       if (shouldPlay) {
         // The cubit is the authority: declare the intent (isPlaying: true)
@@ -637,7 +643,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> stop() async {
     await _audioService.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
-    _stopLogicalTimer();
   }
 
   Future<void> play() async {
@@ -645,9 +650,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       // Declare intent before commanding the engine — same pattern as
       // _loadSourceAtIndex. The UI updates immediately; the engine catches up.
       emit(state.copyWith(isPlaying: true));
-      if (_logicalTimer == null || !_logicalTimer!.isActive) {
-        _startLogicalTimer();
-      }
       await _audioService.resume();
     }
   }
@@ -682,97 +684,108 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   Future<void> seekTo(Duration position) async {
-    if (_originalDuration == null || _logicalTargetDuration == null) return;
+    final target = _targetDuration;
+    if (!_clock.isStarted || target == null) return;
     final clamped = Duration(
-      milliseconds: position.inMilliseconds
-          .clamp(0, _logicalTargetDuration!.inMilliseconds),
+      milliseconds: position.inMilliseconds.clamp(0, target.inMilliseconds),
     );
-    _logicalTimer?.cancel();
-    _logicalElapsed = clamped;
-    final seekMs = clamped.inMilliseconds % _originalDuration!.inMilliseconds;
-    await _audioService.seek(Duration(milliseconds: seekMs));
+    // The clock re-bases itself first, so the engine's jump to the new spot
+    // is never mistaken for a loop.
+    final enginePosition = _clock.seekTo(clamped);
+    _awaitingLoopRestart = false;
+    await _audioService.seek(enginePosition);
     emit(state.copyWith(
       logicalPosition: clamped,
       videoResyncGeneration: state.videoResyncGeneration + 1,
-      videoResyncPositionMs: seekMs,
+      videoResyncPositionMs: enginePosition.inMilliseconds,
     ));
-    if (state.isPlaying) _startLogicalTimer();
   }
 
+  /// Move length = clip length scaled from the clip's own reps to the
+  /// prescribed reps (e.g. a 10s, 1-rep clip prescribed ×3 → 30s).
   void _calculateTargetDuration() {
     final track = state.currentTrack;
-    if (track == null || _originalDuration == null) return;
+    final clip = _originalDuration;
+    if (track == null || clip == null) return;
     final defaultReps = track.defaultRepetitions ?? 1;
-    final effectiveReps = track.effectiveRepetitions;
-    final ms = (_originalDuration!.inMilliseconds / defaultReps * effectiveReps)
+    if (defaultReps <= 0) {
+      _targetDuration = clip;
+      return;
+    }
+    final ms = (clip.inMilliseconds / defaultReps * track.effectiveRepetitions)
         .round();
     _targetDuration = Duration(milliseconds: ms);
   }
 
-  void _handleDynamicDuration(Duration position) {
-    if (_targetDuration == null || !state.isPlaying) return;
-    if (position >= _targetDuration!) _audioService.seek(Duration.zero);
+  /// Forgets the previous move's timing; positions are ignored until the
+  /// next source is dispatched (see [_sourceDispatched]).
+  void _resetMoveTimeline() {
+    _sourceDispatched = false;
+    _advanceRequested = false;
+    _awaitingLoopRestart = false;
+    _originalDuration = null;
+    _targetDuration = null;
+    _clock.reset();
+    emit(state.copyWith(
+        logicalPosition: Duration.zero, logicalDuration: Duration.zero));
   }
 
-  void _startLogicalTimer() {
-    // Defensive cancel: callers (e.g. seekTo, called rapid-fire during a
-    // slider drag) may race, leaving a previous timer's cancellation
-    // overtaken by a newer call before it ever scheduled a replacement.
-    // Without this, multiple Timer.periodic instances can end up ticking
-    // concurrently — multiplying the effective tick rate (the "progress
-    // bar moves very fast and the track ends immediately" symptom) — and
-    // orphaned ones keep ticking forever after the page closes, since
-    // close() can only cancel whichever single timer _logicalTimer
-    // currently references.
-    _logicalTimer?.cancel();
-    if (!state.isPlaying) return;
-    final track = state.currentTrack;
-    if (track == null || _originalDuration == null) return;
-    final originalMs = _originalDuration!.inMilliseconds;
-    if (originalMs <= 0) return;
-    final defaultReps = track.defaultRepetitions ?? 1;
-    if (defaultReps <= 0) return;
-    final effectiveReps = track.effectiveRepetitions;
-    final targetMs = (originalMs / defaultReps * effectiveReps).round();
-    _logicalTargetDuration = Duration(milliseconds: targetMs);
+  void _onEngineDuration(Duration duration) {
+    if (!_sourceDispatched || duration <= Duration.zero) return;
+    _originalDuration = duration;
+    _calculateTargetDuration();
+    // Engines may re-report the same clip's duration mid-move; only the
+    // first report starts the timeline, so progress isn't wiped.
+    if (!_clock.isStarted) _clock.start(duration);
     emit(state.copyWith(
-        logicalPosition: _logicalElapsed,
-        logicalDuration: _logicalTargetDuration));
-    _logicalTimer =
-        Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-      if (isClosed) {
-        timer.cancel();
-        return;
-      }
-      if (!state.isPlaying) return;
-      _logicalElapsed += const Duration(milliseconds: 200);
-      // Zoorkhaneh mode never auto-advances — the clip keeps looping
-      // (see _handleDynamicDuration) and _logicalElapsed keeps climbing past
-      // the target forever, which _RepCounter reads as an uncapped rep
-      // count. Only a manual next() (button, track tap, lock screen) moves
-      // the session forward in this mode.
-      if (_logicalElapsed >= _logicalTargetDuration! &&
-          _mode != PlayerMode.zoorkhaneh) {
-        timer.cancel();
-        next();
-        return;
-      }
-      emit(state.copyWith(logicalPosition: _logicalElapsed));
-    });
+      duration: _targetDuration ?? duration,
+      logicalPosition: _clock.logicalPosition,
+      logicalDuration: _targetDuration,
+    ));
   }
 
-  void _stopLogicalTimer() {
-    _logicalTimer?.cancel();
-    emit(state.copyWith(
-        logicalPosition: _logicalElapsed,
-        logicalDuration: _logicalTargetDuration ?? Duration.zero));
+  /// The single place where the move's progress — and its end — is decided.
+  void _onEnginePosition(Duration position) {
+    if (!_sourceDispatched) return;
+    final target = _targetDuration;
+    final clip = _originalDuration;
+    if (!_clock.isStarted || target == null || clip == null) {
+      emit(state.copyWith(position: position));
+      return;
+    }
+
+    // Zoorkhaneh, prescribed reps fewer than the clip's: we loop the first
+    // `target` of the clip ourselves. Ignore readings until our seek(0) lands.
+    final loopsShortClip = _mode == PlayerMode.zoorkhaneh && target < clip;
+    if (loopsShortClip && _awaitingLoopRestart) {
+      if (position >= target) return;
+      _awaitingLoopRestart = false;
+    }
+
+    var logical = _clock.onEnginePosition(position);
+    final restartShortClip =
+        loopsShortClip && state.isPlaying && position >= target;
+    if (restartShortClip) {
+      _clock.restartLoop(target);
+      _awaitingLoopRestart = true;
+      logical = _clock.logicalPosition;
+    }
+    emit(state.copyWith(position: position, logicalPosition: logical));
+    if (restartShortClip) unawaited(_audioService.seek(Duration.zero));
+
+    // Zoorkhaneh never auto-advances: the timeline climbs past the target
+    // forever (the rep counter reads it as an uncapped count) until a manual
+    // next().
+    if (!state.isPlaying || _mode == PlayerMode.zoorkhaneh) return;
+
+    if (logical >= target && !_advanceRequested) {
+      _advanceRequested = true;
+      next();
+    }
   }
 
   @override
   Future<void> close() async {
-    // Cancel timer first (sync) before any awaits so the fake timer system in
-    // tests sees no pending timers when _verifyInvariants runs.
-    _logicalTimer?.cancel();
     await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();

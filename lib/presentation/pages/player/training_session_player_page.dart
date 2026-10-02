@@ -648,8 +648,8 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       // never on a timer, so this doesn't reintroduce the continuous-reseek
       // jank risk noted above computeVideoSyncPlan. Only consume the
       // generation once actually applied — if the controller isn't ready
-      // (guarded above), the next rebuild (already happening every ~200ms
-      // via the audio timer) retries rather than silently dropping it.
+      // (guarded above), the next rebuild (already happening on every audio
+      // position update) retries rather than silently dropping it.
       _lastAppliedResyncGeneration = widget.resyncGeneration;
       final targetMs = computeVideoResyncTargetMs(widget.resyncPositionMs,
           widget.startOffsetMs, _controller.value.duration.inMilliseconds);

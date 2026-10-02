@@ -224,6 +224,16 @@ TrainingSessionPlayerCubit _makeCubit(
   );
 }
 
+/// Feeds engine position readings (ms) one at a time, letting each reach the
+/// cubit — the player's timeline is driven by these, not by wall-clock time.
+Future<void> _feedPositions(
+    FakeAudioPlayerService audio, List<int> positionsMs) async {
+  for (final p in positionsMs) {
+    audio.emitPosition(Duration(milliseconds: p));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -1709,7 +1719,7 @@ void main() {
 
       await cubit.loadTracks();
       audioService.emitDuration(const Duration(milliseconds: 300));
-      await Future<void>.delayed(const Duration(milliseconds: 900));
+      await _feedPositions(audioService, [200, 290, 10, 250]); // looped → 550ms
 
       expect(cubit.state.playingIndex, 0,
           reason: 'zoorkhaneh mode must not auto-advance mid-loop');
@@ -1733,16 +1743,174 @@ void main() {
 
       await cubit.loadTracks();
       audioService.emitDuration(const Duration(milliseconds: 300));
-      await Future<void>.delayed(const Duration(milliseconds: 900));
+      await _feedPositions(audioService, [200, 290, 10, 250]);
 
       cubit.next();
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(cubit.state.playingIndex, 1);
     });
+
+    test(
+        'fewer reps than the clip: loops the shortened clip and keeps counting',
+        () async {
+      // 2 reps of a 4-rep, 10s clip → each loop is the first 5s of the clip.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0, reps: 2)],
+        [_exercise(10, reps: 4)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(seconds: 10));
+      await _feedPositions(audioService, [4000, 5050]);
+
+      expect(audioService.seekedTo, Duration.zero,
+          reason: 'the clip is restarted at the 5s target');
+      expect(cubit.state.logicalPosition, const Duration(seconds: 5));
+
+      // A late reading from before the restart landed is ignored; then the
+      // restarted clip continues the timeline.
+      await _feedPositions(audioService, [5100, 300]);
+      expect(cubit.state.logicalPosition, const Duration(milliseconds: 5300));
+      expect(cubit.state.playingIndex, 0);
+    });
   });
 
   // ---------- AudioPlayerState.copyWith / withError ----------
+
+  // ---------- single clock: the move timeline comes from the audio engine ----------
+  group('engine-derived move timeline', () {
+    const clip = Duration(seconds: 10);
+    Duration ms(int v) => Duration(milliseconds: v);
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 20));
+
+    // Feeds engine readings one by one, letting each reach the cubit.
+    Future<void> feed(FakeAudioPlayerService audio, List<int> positions) async {
+      for (final p in positions) {
+        audio.emitPosition(ms(p));
+        await settle();
+      }
+    }
+
+    // [itemCount] items, each prescribing [reps] of an exercise whose clip
+    // holds [clipReps] reps.
+    TrainingSessionPlayerCubit build(FakeAudioPlayerService audio,
+        {required int reps, required int clipReps, int itemCount = 2}) {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          for (var i = 0; i < itemCount; i++)
+            _item(sessionId: 1, exerciseId: 10, position: i, reps: reps),
+        ],
+        [_exercise(10, reps: clipReps)],
+      );
+      return _makeCubit(snap, audioService: audio);
+    }
+
+    test('advances when the logical timeline reaches the target across a loop',
+        () async {
+      // 2 reps of a 1-rep, 10s clip → the move lasts 20s (clip plays twice).
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      await feed(audio, [5000, 9900, 100, 9900]); // loop → logical 19900
+      expect(cubit.state.playingIndex, 0);
+      expect(cubit.state.logicalPosition, ms(19900));
+
+      await feed(audio, [50]); // second wrap → logical 20050 ≥ 20s
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test(
+        'reps fewer than the clip: advances at the target without restarting '
+        'the clip', () async {
+      // 2 reps of a 4-rep, 10s clip → the move lasts 5s.
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 4);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      await feed(audio, [4000, 5100]);
+
+      expect(cubit.state.playingIndex, 1);
+      expect(audio.seekedTo, isNull,
+          reason: 'the clip must not be seeked back to 0 before advancing');
+    });
+
+    test('does not advance while the engine reports no progress', () async {
+      // Paused or buffering: no position readings arrive. Wall-clock time
+      // passing must not move the move's timeline.
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 1, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(ms(300));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(cubit.state.playingIndex, 0);
+      expect(cubit.state.logicalPosition, Duration.zero);
+    });
+
+    test('several readings past the target advance only once', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 1, clipReps: 1, itemCount: 3);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      audio
+        ..emitPosition(ms(10000))
+        ..emitPosition(ms(10050))
+        ..emitPosition(ms(10100));
+      await settle();
+
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test("a late reading from the previous move doesn't leak into the next",
+        () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+      await feed(audio, [9000]);
+
+      cubit.next();
+      await feed(audio, [9500]); // stale: still the old clip's playhead
+      audio.emitDuration(clip);
+      await settle();
+      await feed(audio, [100]);
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.logicalPosition, ms(100));
+    });
+
+    test('the move length is known as soon as the clip loads', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 3, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      expect(cubit.state.logicalDuration, const Duration(seconds: 30));
+    });
+  });
 
   group('AudioPlayerState.withError', () {
     test('preserves tracks and playingIndex, clears isPlaying', () {

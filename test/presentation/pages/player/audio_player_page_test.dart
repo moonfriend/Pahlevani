@@ -493,9 +493,9 @@ void main() {
     // Rep counter uses RichText; findRichText: true is required.
     expect(find.textContaining('Rep', findRichText: true), findsWidgets);
 
-    // emitDuration starts _logicalTimer in the cubit. Cancel it by closing the
-    // cubit synchronously (via widget disposal) BEFORE _verifyInvariants runs —
-    // addTearDown callbacks fire after invariant checks, so they're too late.
+    // Close the cubit synchronously (via widget disposal) BEFORE
+    // _verifyInvariants runs — addTearDown callbacks fire after invariant
+    // checks, so they're too late.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
@@ -523,14 +523,15 @@ void main() {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // testExercise1 has repetitionsDefault=3; a 3s duration gives exactly
-    // 1s (5 logical-timer ticks) per rep — enough headroom to land cleanly
-    // on rep 2 without the boundary rounding into rep 1 or rep 3.
+    // testExercise1 has repetitionsDefault=3; a 3s clip gives 1s per rep.
+    // The counter follows the audio engine's position, so drive it with a
+    // reading mid-way through rep 2.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
     expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
 
-    await tester.pump(const Duration(milliseconds: 1100));
+    capturedAudio.emitPosition(const Duration(milliseconds: 1500));
+    await tester.pump();
     expect(find.textContaining('Rep 2', findRichText: true), findsWidgets);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -844,10 +845,14 @@ void main() {
     expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
 
     // A single-item session in any other mode would have auto-completed
-    // (isFinished: true) once the 3s nominal target passed. Pump well past
-    // that point — zoorkhaneh mode must still be looping, uncapped rep
+    // (isFinished: true) once the 3s nominal target passed. Play well past
+    // that point — the engine loops the clip once (2.9s → 0.1s), giving a
+    // 5.6s timeline — zoorkhaneh mode must still be looping, uncapped rep
     // count climbing past the nominal total of 3, with no "of Total" shown.
-    await tester.pump(const Duration(milliseconds: 5300));
+    for (final ms in [1000, 2900, 100, 2600]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
 
     final cubit = tester
         .element(find
