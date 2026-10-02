@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
+import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
 import 'package:pahlevani/presentation/pages/splash/splash_page.dart';
 import 'package:pahlevani/presentation/widgets/first_run_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,7 +34,8 @@ void main() {
     expect(find.byKey(_homeKey), findsNothing);
   });
 
-  testWidgets('first open: splash, then Begin → home and the flag is saved',
+  testWidgets(
+      'first open: splash → Begin → onboarding → Skip → home, flag saved',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final cubit = await _pump(tester);
@@ -44,13 +46,40 @@ void main() {
     expect(find.byKey(_homeKey), findsNothing);
 
     await tester.tap(find.text('Begin'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OnboardingPage), findsOneWidget);
+    expect(find.byKey(_homeKey), findsNothing,
+        reason: 'first open is not finished until onboarding is');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(FirstRunCubit.splashSeenKey), isNull);
+
+    await tester.tap(find.text('Skip'));
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pump();
 
-    expect(find.byType(SplashPage), findsNothing);
+    expect(find.byType(OnboardingPage), findsNothing);
     expect(find.byKey(_homeKey), findsOneWidget);
-    final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(FirstRunCubit.splashSeenKey), isTrue);
+  });
+
+  testWidgets('the last onboarding card\'s Begin also finishes first open',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final cubit = await _pump(tester);
+    await tester.runAsync(cubit.load);
+    await tester.pump();
+
+    await tester.tap(find.text('Begin'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('Begin'));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(find.byKey(_homeKey), findsOneWidget);
   });
 
   testWidgets('returning user goes straight to home', (tester) async {

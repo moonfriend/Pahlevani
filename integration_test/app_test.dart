@@ -30,6 +30,7 @@ import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
+import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:pahlevani/presentation/pages/splash/splash_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,7 +111,7 @@ void main() {
 
   // ── 0: First open ───────────────────────────────────────────────────────────
 
-  testWidgets('first open shows the splash; Begin leads to the sessions list',
+  testWidgets('first open: splash, onboarding, then the sessions list',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     addTearDown(() => SharedPreferences.setMockInitialValues(_returningUser));
@@ -123,8 +124,13 @@ void main() {
 
     await tester.tap(find.text('Begin'));
     await tester.pumpAndSettle();
+    expect(find.byType(OnboardingPage), findsOneWidget);
+
+    await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
 
     expect(find.byType(SplashPage), findsNothing);
+    expect(find.byType(OnboardingPage), findsNothing);
     expect(find.text('Beginner Warm-up'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(FirstRunCubit.splashSeenKey), isTrue,

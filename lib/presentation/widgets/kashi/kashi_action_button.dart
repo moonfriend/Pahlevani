@@ -13,6 +13,7 @@ class KashiActionButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.expand = true,
   });
 
   final String label;
@@ -20,13 +21,16 @@ class KashiActionButton extends StatelessWidget {
   /// `null` disables the button.
   final VoidCallback? onPressed;
 
+  /// Full width (the default) or hugging the label with 30px side padding.
+  final bool expand;
+
   static const double height = 56;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
     return SizedBox(
-      width: double.infinity,
+      width: expand ? double.infinity : null,
       height: height,
       child: FilledButton(
         onPressed: onPressed,
@@ -34,6 +38,7 @@ class KashiActionButton extends StatelessWidget {
           backgroundColor: colors.action,
           foregroundColor: colors.onAction,
           shape: const RoundedRectangleBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 30),
           textStyle: KashiTextStyles.buttonLabel,
         ),
         child: Text(label),

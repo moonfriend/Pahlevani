@@ -53,4 +53,22 @@ void main() {
     expect(size.height, 56);
     expect(size.width, 360);
   });
+
+  testWidgets('compact form hugs its label', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 740));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      theme: PahlevaniTheme.light(),
+      home: Scaffold(
+        body: Center(
+          child:
+              KashiActionButton(label: 'Next', onPressed: () {}, expand: false),
+        ),
+      ),
+    ));
+
+    final size = tester.getSize(find.byType(KashiActionButton));
+    expect(size.height, 56);
+    expect(size.width, lessThan(200));
+  });
 }
