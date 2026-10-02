@@ -49,35 +49,52 @@ final Path _innerStar = Path()
 /// A wall of Kashi day tiles — the splash pattern, and what a perfect month
 /// looks like on the calendar.
 ///
-/// Each tile is a turquoise square under a lajvard khatam; [trained] tiles
-/// add the yellow inner star.
+/// Each [tileSize] tile is a turquoise square under a lajvard khatam;
+/// [trained] tiles add the yellow inner star. Tiles repeat every [pitch]
+/// over a lajvard ground, which shows as grout between them (the design's
+/// 40px tile on a 60px repeat).
 class KashiTileWall extends StatelessWidget {
-  const KashiTileWall({super.key, this.tileSize = 60, this.trained = true});
+  const KashiTileWall({
+    super.key,
+    this.tileSize = 40,
+    this.pitch = 60,
+    this.trained = true,
+  });
 
   final double tileSize;
+  final double pitch;
   final bool trained;
 
   @override
   Widget build(BuildContext context) => RepaintBoundary(
         child: CustomPaint(
           size: Size.infinite,
-          painter: KashiTileWallPainter(tileSize: tileSize, trained: trained),
+          painter: KashiTileWallPainter(
+            tileSize: tileSize,
+            pitch: pitch,
+            trained: trained,
+          ),
         ),
       );
 }
 
-/// Paints [KashiTileWall]: tiles laid from the top-start corner, the last
-/// row/column cut off by the bounds.
+/// Paints [KashiTileWall]: the lajvard ground, then tiles laid from the
+/// top-start corner, the last row/column cut off by the bounds.
 class KashiTileWallPainter extends CustomPainter {
-  const KashiTileWallPainter({required this.tileSize, required this.trained});
+  const KashiTileWallPainter({
+    required this.tileSize,
+    required this.pitch,
+    required this.trained,
+  });
 
   final double tileSize;
+  final double pitch;
   final bool trained;
 
   /// Columns and rows needed to cover [size], partial tiles included.
-  static (int, int) tilesFor(Size size, double tileSize) => (
-        (size.width / tileSize).ceil(),
-        (size.height / tileSize).ceil(),
+  static (int, int) tilesFor(Size size, double pitch) => (
+        (size.width / pitch).ceil(),
+        (size.height / pitch).ceil(),
       );
 
   @override
@@ -87,16 +104,18 @@ class KashiTileWallPainter extends CustomPainter {
     final khatam = _khatam.transform(scaling);
     final innerStar = _innerStar.transform(scaling);
 
+    final grout = Paint()..color = KashiPalette.lajvard500;
     final ground = Paint()..color = KashiPalette.turquoise500;
     final khatamPaint = Paint()..color = KashiPalette.lajvard500;
     final starPaint = Paint()..color = KashiPalette.yellow400;
 
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final (cols, rows) = tilesFor(size, tileSize);
+    canvas.drawRect(Offset.zero & size, grout);
+    final (cols, rows) = tilesFor(size, pitch);
     for (var row = 0; row < rows; row++) {
       for (var col = 0; col < cols; col++) {
-        final origin = Offset(col * tileSize, row * tileSize);
+        final origin = Offset(col * pitch, row * pitch);
         canvas.drawRect(origin & Size.square(tileSize), ground);
         canvas.drawPath(khatam.shift(origin), khatamPaint);
         if (trained) canvas.drawPath(innerStar.shift(origin), starPaint);
@@ -107,5 +126,7 @@ class KashiTileWallPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(KashiTileWallPainter oldDelegate) =>
-      oldDelegate.tileSize != tileSize || oldDelegate.trained != trained;
+      oldDelegate.tileSize != tileSize ||
+      oldDelegate.pitch != pitch ||
+      oldDelegate.trained != trained;
 }
