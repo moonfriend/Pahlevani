@@ -5,37 +5,24 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
+import '../../../domain/entities/onboarding/onboarding_card.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/khatam_window.dart';
 import '../../widgets/kashi/shamseh.dart';
 
-/// One onboarding card's copy (from the handoff prototype).
-typedef _Card = ({String title, String body});
-
-const List<_Card> _cards = [
-  (
-    title: 'Train with your morshed',
-    body: 'Each session is a video led by the morshed’s voice and the beat '
-        'of the zarb.',
-  ),
-  (
-    title: 'Count what matters',
-    body: 'Your trainers mark the moves worth counting. Log your reps as you '
-        'go.',
-  ),
-  (
-    title: 'Lay a tile every session',
-    body: 'Your shamseh grows ring by ring. It never resets, so a missed week '
-        'costs you nothing.',
-  ),
-];
-
-/// Three cards that explain the morshed, rep counting and the shamseh — no
-/// sign-up and no fitness questions. Skip leaves at any point; the last
-/// card's Begin finishes.
+/// The first-open cards (morshed, counting, shamseh by default) — no sign-up
+/// and no fitness questions. The cards come from the admin panel, so there
+/// can be any number of them. Skip leaves at any point; the last card's
+/// Begin finishes.
 class OnboardingPage extends StatefulWidget {
-  const OnboardingPage({super.key, required this.onFinished});
+  const OnboardingPage({
+    super.key,
+    required this.cards,
+    required this.onFinished,
+  });
 
+  /// At least one card (the cubit falls back to the built-in ones).
+  final List<OnboardingCard> cards;
   final VoidCallback onFinished;
 
   @override
@@ -46,14 +33,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _pages = PageController();
   int _index = 0;
 
-  /// The design picks a figure per session; the second card shows the
-  /// other one. (The prototype's still frames are placeholders and not
-  /// shipped.)
-  late final _figures = math.Random().nextBool()
-      ? const [KashiAssets.pahlevanMale, KashiAssets.pahlevanFemale]
-      : const [KashiAssets.pahlevanFemale, KashiAssets.pahlevanMale];
+  /// The design picks a figure per session; `figureAlt` cards show the
+  /// other one.
+  late final _figureFirst = math.Random().nextBool();
 
-  bool get _isLast => _index == _cards.length - 1;
+  List<OnboardingCard> get _cards => widget.cards;
+  bool get _isLast => _index >= _cards.length - 1;
 
   @override
   void dispose() {
@@ -68,6 +53,40 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
     _pages.nextPage(
         duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
+  }
+
+  Widget _builtin(BuiltinOnboardingImage image) {
+    String figure(bool first) =>
+        first ? KashiAssets.pahlevanMale : KashiAssets.pahlevanFemale;
+    return switch (image) {
+      BuiltinOnboardingImage.shamseh => Center(
+          child: LayoutBuilder(
+            builder: (context, c) =>
+                Shamseh(size: c.maxWidth * .8, tilesLaid: 11),
+          ),
+        ),
+      BuiltinOnboardingImage.figure => Transform.scale(
+          scale: 1.15,
+          child: Image.asset(figure(_figureFirst), fit: BoxFit.cover)),
+      BuiltinOnboardingImage.figureAlt => Transform.scale(
+          scale: 1.15,
+          child: Image.asset(figure(!_figureFirst), fit: BoxFit.cover)),
+    };
+  }
+
+  /// The uploaded image when there is one and it loads; otherwise the
+  /// built-in picture (also covers an offline first open).
+  Widget _picture(OnboardingCard card) {
+    final url = card.imageUrl;
+    if (url == null) return _builtin(card.builtinImage);
+    return Transform.scale(
+      scale: 1.15,
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => _builtin(card.builtinImage),
+      ),
+    );
   }
 
   @override
@@ -104,18 +123,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       onPageChanged: (i) => setState(() => _index = i),
                       itemBuilder: (context, i) => _OnboardingCard(
                         card: _cards[i],
-                        picture: i == 2
-                            ? Center(
-                                child: LayoutBuilder(
-                                  builder: (context, c) => Shamseh(
-                                      size: c.maxWidth * .8, tilesLaid: 11),
-                                ),
-                              )
-                            : Transform.scale(
-                                scale: 1.15,
-                                child:
-                                    Image.asset(_figures[i], fit: BoxFit.cover),
-                              ),
+                        picture: _picture(_cards[i]),
                       ),
                     ),
                   ),
@@ -157,7 +165,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
 class _OnboardingCard extends StatelessWidget {
   const _OnboardingCard({required this.card, required this.picture});
 
-  final _Card card;
+  final OnboardingCard card;
   final Widget picture;
 
   static const _windowSize = 264.0;

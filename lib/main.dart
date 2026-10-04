@@ -16,7 +16,9 @@ import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
+import 'package:pahlevani/domain/repositories/onboarding_repository.dart';
 import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
+import 'package:pahlevani/presentation/bloc/onboarding/onboarding_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
@@ -132,6 +134,11 @@ class PahlevaniApp extends StatelessWidget {
         BlocProvider<FirstRunCubit>(
           create: (_) => FirstRunCubit()..load(),
           lazy: false,
+        ),
+        // Created (and fetching) only if the first-open flow runs.
+        BlocProvider<OnboardingCubit>(
+          create: (_) =>
+              OnboardingCubit(repository: getIt<OnboardingRepository>()),
         ),
         BlocProvider<TrainingSessionCubit>(
           create: (_) => getIt<TrainingSessionCubit>()..initialize(),

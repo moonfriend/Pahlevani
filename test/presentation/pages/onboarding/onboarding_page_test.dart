@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/onboarding/onboarding_card.dart';
 import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/khatam_window.dart';
 
@@ -10,12 +11,13 @@ Future<void> _pump(
   VoidCallback? onFinished,
   Size size = const Size(360, 740),
   ThemeData? theme,
+  List<OnboardingCard> cards = defaultOnboardingCards,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
-    home: OnboardingPage(onFinished: onFinished ?? () {}),
+    home: OnboardingPage(cards: cards, onFinished: onFinished ?? () {}),
   ));
 }
 
@@ -83,4 +85,43 @@ void main() {
       expect(scaffold.backgroundColor, KashiColors.dark.ground);
     });
   }
+
+  group('cards come from the admin panel', () {
+    testWidgets('shows however many cards there are; the last says Begin',
+        (tester) async {
+      var finished = 0;
+      await _pump(tester, onFinished: () => finished++, cards: const [
+        OnboardingCard(title: 'First', body: 'one'),
+        OnboardingCard(title: 'Second', body: 'two'),
+      ]);
+
+      expect(find.byKey(const ValueKey('onboarding-pill-2')), findsNothing);
+      expect(find.text('First'), findsOneWidget);
+      await _next(tester);
+      expect(find.text('Second'), findsOneWidget);
+      await tester.tap(find.text('Begin'));
+      expect(finished, 1);
+    });
+
+    testWidgets('a single card says Begin straight away', (tester) async {
+      await _pump(tester,
+          cards: const [OnboardingCard(title: 'Only', body: '')]);
+      expect(find.text('Begin'), findsOneWidget);
+      expect(find.text('Next'), findsNothing);
+    });
+
+    testWidgets('an uploaded image loads from its URL with a built-in fallback',
+        (tester) async {
+      const url = 'https://pub.r2.dev/images/onboarding/a.webp';
+      await _pump(tester, cards: const [
+        OnboardingCard(title: 'Pic', body: '', imageUrl: url),
+      ]);
+
+      final image = tester.widget<Image>(
+          find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage));
+      expect((image.image as NetworkImage).url, url);
+      expect(image.errorBuilder, isNotNull,
+          reason: 'offline first open falls back to the built-in picture');
+    });
+  });
 }

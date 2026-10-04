@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/theme/kashi/kashi_colors.dart';
 import '../bloc/first_run/first_run_cubit.dart';
+import '../../domain/entities/onboarding/onboarding_card.dart';
 import '../bloc/first_run/first_run_state.dart';
+import '../bloc/onboarding/onboarding_cubit.dart';
 import '../pages/onboarding/onboarding_page.dart';
 import '../pages/splash/splash_page.dart';
 
@@ -48,10 +50,21 @@ class _FirstOpenFlowState extends State<_FirstOpenFlow> {
   bool _onboarding = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Fetch the admin's cards while the splash is up; the page shows cached
+    // or built-in cards until (and unless) they arrive.
+    context.read<OnboardingCubit>().load();
+  }
+
+  @override
   Widget build(BuildContext context) => AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
         child: _onboarding
-            ? OnboardingPage(onFinished: widget.onFinished)
+            ? BlocBuilder<OnboardingCubit, List<OnboardingCard>>(
+                builder: (context, cards) =>
+                    OnboardingPage(cards: cards, onFinished: widget.onFinished),
+              )
             : SplashPage(onBegin: () => setState(() => _onboarding = true)),
       );
 }

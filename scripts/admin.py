@@ -3203,9 +3203,10 @@ def tab_onboarding():
     st.header("Onboarding")
     st.caption(
         "The cards a new user sees on first open, after the splash. The app "
-        "fetches the **active** cards (in this order) on every launch and "
-        "caches them — changes need no app update. People who already passed "
-        "onboarding don't see it again."
+        "fetches the **active** cards (in this order) while the splash shows "
+        "and caches them — changes need no app update. Offline, it shows the "
+        "last cards it fetched, or its built-in ones. People who already "
+        "passed onboarding don't see it again."
     )
 
     if st.button("↺ Reload", key="rel_onb"):

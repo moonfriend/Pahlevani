@@ -18,6 +18,7 @@ import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
+import 'package:pahlevani/domain/repositories/onboarding_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
@@ -46,6 +47,7 @@ import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
 import '../test/fakes/fake_learnt_exercises_repository.dart';
+import '../test/fakes/fake_onboarding_repository.dart';
 import '../test/fakes/fake_training_history_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
 import '../test/fakes/fake_version_gate_repository.dart';
@@ -110,6 +112,9 @@ void main() {
         () => FakeLearntExercisesRepository());
     getIt.registerLazySingleton<TrainingHistoryRepository>(
         () => FakeTrainingHistoryRepository());
+    // First open fetches the admin's onboarding cards.
+    getIt.registerLazySingleton<OnboardingRepository>(
+        () => FakeOnboardingRepository());
     // The Progress and Profile tabs read these.
     getIt.registerLazySingleton<TrainingHistoryCubit>(() =>
         TrainingHistoryCubit(
