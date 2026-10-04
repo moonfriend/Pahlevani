@@ -39,6 +39,14 @@ from supabase import create_client, Client
 from check_session_audio_coverage import run_coverage_check
 from media_assets import MediaAsset, record_media_asset
 from morshed_admin import set_default_morshed
+from onboarding_cards import (
+    BUILTIN_IMAGE_LABELS,
+    BUILTIN_IMAGES,
+    OnboardingCard,
+    move_patches,
+    next_position,
+    r2_key_for,
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 # Every value below comes from the process environment only — see the module
@@ -184,6 +192,15 @@ def load_release_gate() -> dict | None:
     return rows[0] if rows else None
 
 @st.cache_data(ttl=30)
+def load_onboarding_cards() -> list[dict]:
+    """Every onboarding card, inactive ones included (the service-role key
+    bypasses the active-only RLS policy the app reads through)."""
+    return (
+        get_client().table("onboarding_cards")
+        .select("*").order("position").order("id").execute().data
+    )
+
+@st.cache_data(ttl=30)
 def load_profiles() -> list[dict]:
     """All signed-up users. Service-role key bypasses RLS, so this sees
     every row regardless of the profiles_select_own/profiles_select_trainer_all
@@ -310,6 +327,7 @@ def bust_cache():
     load_fitness_test_axes.clear()
     load_fitness_test_subtests.clear()
     load_fitness_test_levels.clear()
+    load_onboarding_cards.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -3119,6 +3137,170 @@ def tab_fitness_test_criteria():
                 st.rerun()
     else:
         st.caption("All 7 levels defined for this subtest.")
+# Tab: Onboarding
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MIME_BY_EXT = {".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg", ".webp": "image/webp"}
+
+
+def _onboarding_fields(prefix: str, card: OnboardingCard | None) -> dict:
+    """Shared inputs for the add and edit forms. Returns the raw values;
+    the caller validates them by building an OnboardingCard."""
+    c1, c2 = st.columns(2)
+    with c1:
+        title_en = st.text_input("Title (English) *", value=card.title_en if card else "",
+                                 key=f"{prefix}_title_en")
+        body_en = st.text_area("Body (English)", value=card.body_en if card else "",
+                               height=90, key=f"{prefix}_body_en")
+    with c2:
+        title_fa = st.text_input("Title (Farsi)", value=(card.title_fa or "") if card else "",
+                                 key=f"{prefix}_title_fa")
+        body_fa = st.text_area("Body (Farsi)", value=(card.body_fa or "") if card else "",
+                               height=90, key=f"{prefix}_body_fa")
+    st.caption("Farsi is stored now and shown once the app's Farsi mode exists.")
+    builtin = st.selectbox(
+        "Built-in picture (used when no image is uploaded, and offline)",
+        BUILTIN_IMAGES,
+        index=BUILTIN_IMAGES.index(card.builtin_image) if card else 0,
+        format_func=lambda v: BUILTIN_IMAGE_LABELS[v],
+        key=f"{prefix}_builtin",
+    )
+    upload = st.file_uploader("Upload an image (optional — PNG, JPG or WebP)",
+                              type=["png", "jpg", "jpeg", "webp"],
+                              key=f"{prefix}_upload")
+    remove_image = False
+    if card and card.image_url:
+        remove_image = st.checkbox("Remove the uploaded image (use the built-in picture)",
+                                   key=f"{prefix}_remove_image")
+    active = st.toggle("Active (shown in the app)", value=card.is_active if card else True,
+                       key=f"{prefix}_active")
+    return {"title_en": title_en, "body_en": body_en, "title_fa": title_fa,
+            "body_fa": body_fa, "builtin_image": builtin, "is_active": active,
+            "upload": upload, "remove_image": remove_image}
+
+
+def _resolve_image_url(fields: dict, current: str | None) -> str | None:
+    """Uploads a new image to R2 if one was chosen; otherwise keeps or clears
+    the current URL."""
+    upload = fields["upload"]
+    if upload is not None:
+        data = upload.getvalue()
+        key = r2_key_for(fields["title_en"] or "card", upload.name, data)
+        mime = _MIME_BY_EXT[Path(upload.name).suffix.lower()]
+        return upload_bytes_to_r2(data, key, mime)
+    return None if fields["remove_image"] else current
+
+
+def _onboarding_preview(card: OnboardingCard) -> None:
+    if card.image_url:
+        st.image(card.image_url, width=160)
+    else:
+        st.caption(f"🖼️ Built-in: {BUILTIN_IMAGE_LABELS[card.builtin_image]}")
+
+
+def tab_onboarding():
+    st.header("Onboarding")
+    st.caption(
+        "The cards a new user sees on first open, after the splash. The app "
+        "fetches the **active** cards (in this order) on every launch and "
+        "caches them — changes need no app update. People who already passed "
+        "onboarding don't see it again."
+    )
+
+    if st.button("↺ Reload", key="rel_onb"):
+        load_onboarding_cards.clear()
+
+    try:
+        rows = load_onboarding_cards()
+    except Exception as exc:  # postgrest raises when the table is missing
+        st.error(
+            "⚠️ Couldn't read `onboarding_cards`. If the table doesn't exist yet, run "
+            "`supabase/migrations/0040_onboarding_cards.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    cards = [OnboardingCard.from_row(r) for r in rows]
+    active = [c for c in cards if c.is_active]
+    m1, m2 = st.columns(2)
+    m1.metric("Active cards", len(active))
+    m2.metric("Inactive", len(cards) - len(active))
+    if not active:
+        st.warning("No active cards — the app will show its built-in cards.")
+
+    client = get_client()
+
+    for i, card in enumerate(cards):
+        status = "🟢" if card.is_active else "⚪"
+        with st.expander(f"{status} {i + 1}. {card.title_en}", expanded=False):
+            col_preview, col_actions = st.columns([3, 1])
+            with col_preview:
+                _onboarding_preview(card)
+            with col_actions:
+                up, down = st.columns(2)
+                for col, label, direction in ((up, "⬆️", -1), (down, "⬇️", +1)):
+                    patches = move_patches(cards, i, direction)
+                    if col.button(label, key=f"onb_move_{card.id}_{direction}",
+                                  disabled=not patches):
+                        for card_id, position in patches:
+                            client.table("onboarding_cards").update(
+                                {"position": position, "updated_at": "now()"}
+                            ).eq("id", card_id).execute()
+                        load_onboarding_cards.clear()
+                        st.rerun()
+
+            with st.form(f"onb_edit_{card.id}"):
+                fields = _onboarding_fields(f"onb_{card.id}", card)
+                if st.form_submit_button("💾 Save card", type="primary"):
+                    try:
+                        updated = card.with_changes(
+                            title_en=fields["title_en"], body_en=fields["body_en"],
+                            title_fa=fields["title_fa"], body_fa=fields["body_fa"],
+                            builtin_image=fields["builtin_image"],
+                            is_active=fields["is_active"],
+                            image_url=_resolve_image_url(fields, card.image_url),
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        client.table("onboarding_cards").update(
+                            {**updated.to_row(), "updated_at": "now()"}
+                        ).eq("id", card.id).execute()
+                        st.success("✅ Saved.")
+                        load_onboarding_cards.clear()
+                        st.rerun()
+
+            confirm = st.checkbox("I want to delete this card",
+                                  key=f"onb_del_confirm_{card.id}")
+            if st.button("🗑️ Delete card", key=f"onb_del_{card.id}",
+                         disabled=not confirm):
+                client.table("onboarding_cards").delete().eq("id", card.id).execute()
+                st.success("Deleted.")
+                load_onboarding_cards.clear()
+                st.rerun()
+
+    st.divider()
+    st.subheader("Add a card")
+    with st.form("onb_add", clear_on_submit=True):
+        fields = _onboarding_fields("onb_new", None)
+        if st.form_submit_button("➕ Add card", type="primary"):
+            try:
+                new_card = OnboardingCard(
+                    title_en=fields["title_en"], body_en=fields["body_en"],
+                    title_fa=fields["title_fa"], body_fa=fields["body_fa"],
+                    builtin_image=fields["builtin_image"],
+                    is_active=fields["is_active"],
+                    position=next_position(cards),
+                    image_url=_resolve_image_url(fields, None),
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                client.table("onboarding_cards").insert(new_card.to_row()).execute()
+                st.success(f"✅ Added “{new_card.title_en}” at the end.")
+                load_onboarding_cards.clear()
+                st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3144,7 +3326,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
         "🗺️  Path",
@@ -3157,6 +3339,7 @@ def main():
         "👤  Users",
         "🧰  Utility",
         "🏋️  Fitness Test",
+        "👋  Onboarding",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
@@ -3170,6 +3353,7 @@ def main():
     with t10: tab_users()
     with t11: tab_utility()
     with t12: tab_fitness_test_criteria()
+    with t13: tab_onboarding()
 
 
 if __name__ == "__main__":
