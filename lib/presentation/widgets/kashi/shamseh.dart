@@ -63,6 +63,14 @@ class ShamsehPalette {
     empty: KashiPalette.lajvard500,
   );
 
+  /// On Home's turquoise shamseh tile — the same in both themes.
+  static const homeTile = ShamsehPalette(
+    centre: KashiPalette.yellow400,
+    ring1: KashiPalette.lajvard500,
+    ring2: KashiPalette.plaster100,
+    empty: Color(0xFF4DB8B4),
+  );
+
   final Color centre;
   final Color ring1;
   final Color ring2;

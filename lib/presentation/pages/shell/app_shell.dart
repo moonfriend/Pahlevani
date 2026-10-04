@@ -26,13 +26,21 @@ class AppShell extends StatefulWidget {
 
   final List<ShellTab> tabs;
 
+  /// The enclosing shell, so a tab can switch tabs (e.g. Home's shamseh
+  /// tile opens Progress).
+  static AppShellState of(BuildContext context) =>
+      context.findAncestorStateOfType<AppShellState>()!;
+
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class AppShellState extends State<AppShell> {
   int _index = 0;
   final Set<int> _visited = {0};
+
+  /// Switches to tab [index].
+  void select(int index) => _select(index);
 
   void _select(int index) {
     if (index != _index) widget.tabs[index].onSelected?.call();

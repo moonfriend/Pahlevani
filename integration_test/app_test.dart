@@ -33,6 +33,7 @@ import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
+import 'package:pahlevani/presentation/pages/home/home_page.dart';
 import 'package:pahlevani/presentation/pages/library/library_page.dart';
 import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
 import 'package:pahlevani/presentation/pages/profile/profile_page.dart';
@@ -127,8 +128,7 @@ void main() {
 
   // ── 0: First open ───────────────────────────────────────────────────────────
 
-  testWidgets('first open: splash, onboarding, then the sessions list',
-      (tester) async {
+  testWidgets('first open: splash, onboarding, then Home', (tester) async {
     SharedPreferences.setMockInitialValues({});
     addTearDown(() => SharedPreferences.setMockInitialValues(_returningUser));
 
@@ -147,7 +147,8 @@ void main() {
 
     expect(find.byType(SplashPage), findsNothing);
     expect(find.byType(OnboardingPage), findsNothing);
-    expect(find.text('Beginner Warm-up'), findsOneWidget);
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(find.text('TODAY · SUGGESTED'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(FirstRunCubit.splashSeenKey), isTrue,
         reason: 'the next launch must skip the splash');
@@ -175,8 +176,40 @@ void main() {
 
     await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
-    expect(find.text('Beginner Warm-up'), findsOneWidget,
-        reason: 'Home is still the session list');
+    expect(find.byType(HomePage), findsOneWidget);
+  });
+
+  // ── Home ──────────────────────────────────────────────────────────────────
+
+  testWidgets('Home suggests the first session; Start → mode → player',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('TODAY · SUGGESTED'), findsOneWidget);
+    expect(find.text('Beginner Warm-up'), findsOneWidget);
+
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a mode'), findsOneWidget);
+    await tester.tap(find.text('Athlete mode'));
+    await pumpPlayer(tester);
+
+    expect(find.byType(AudioPlayerPage), findsOneWidget);
+    expect(find.text('Shena'), findsWidgets);
+  });
+
+  testWidgets('All sessions opens the full list and Back returns Home',
+      (tester) async {
+    await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
+    await tester.pumpAndSettle();
+
+    await openAllSessions(tester);
+    expect(find.text('Advanced Drill'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(HomePage), findsOneWidget);
   });
 
   // ── 1: Sessions list ────────────────────────────────────────────────────────
@@ -185,6 +218,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     expect(find.text('Beginner Warm-up'), findsOneWidget);
     expect(find.text('Advanced Drill'), findsOneWidget);
@@ -198,6 +232,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     await openFirstSessionInAthleteMode(tester);
 
@@ -212,6 +247,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     // First more_vert icon belongs to 'Beginner Warm-up' (server session, id=1).
     await tester.tap(find.byIcon(Icons.more_vert).first);
@@ -232,6 +268,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     // Last more_vert icon belongs to 'Advanced Drill' (isUserCreated: true, id=2).
     await tester.tap(find.byIcon(Icons.more_vert).last);
@@ -246,6 +283,7 @@ void main() {
   testWidgets('confirming delete removes session from list', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     // Open overflow for 'Advanced Drill' (user-created).
     await tester.tap(find.byIcon(Icons.more_vert).last);
@@ -270,6 +308,7 @@ void main() {
   testWidgets('tapping next advances to second track', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
     await openFirstSessionInAthleteMode(tester);
@@ -294,6 +333,7 @@ void main() {
   testWidgets('prev button is no-op on first track', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     await openFirstSessionInAthleteMode(tester);
 
@@ -311,6 +351,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     await openFirstSessionInAthleteMode(tester);
 
@@ -352,6 +393,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     await openFirstSessionInAthleteMode(tester);
 
@@ -385,6 +427,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
+    await openAllSessions(tester);
 
     // Anonymous state — session list fully usable, and the header menu
     // offers "Sign in" with the outline (signed-out) icon.
@@ -464,5 +507,18 @@ Future<void> openFirstSessionInAthleteMode(WidgetTester tester) async {
 // Session cards use Icons.more_vert; the header uses the rounded variant.
 Future<void> openHeaderMenu(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.more_vert_rounded));
+  await tester.pumpAndSettle();
+}
+
+// Opens the full session list from Home's "All sessions" row.
+Future<void> openAllSessions(WidgetTester tester) async {
+  await tester.scrollUntilVisible(find.text('All sessions'), 120,
+      scrollable: find
+          .descendant(
+              of: find.byType(HomePage), matching: find.byType(Scrollable))
+          .first);
+  await tester.ensureVisible(find.text('All sessions'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('All sessions'));
   await tester.pumpAndSettle();
 }

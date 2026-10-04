@@ -109,4 +109,26 @@ void main() {
     expect(progressSelections, 2,
         reason: 'reload when shown, e.g. after finishing a session');
   });
+
+  testWidgets('a tab can switch to another tab through AppShell.of',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: PahlevaniTheme.light(),
+      home: AppShell(tabs: [
+        ShellTab(
+          label: 'Home',
+          builder: (context) => TextButton(
+            onPressed: () => AppShell.of(context).select(1),
+            child: const Text('go to progress'),
+          ),
+        ),
+        ShellTab(
+            label: 'Progress', builder: (_) => const Text('progress body')),
+      ]),
+    ));
+
+    await tester.tap(find.text('go to progress'));
+    await tester.pump();
+    expect(find.text('progress body'), findsOneWidget);
+  });
 }
