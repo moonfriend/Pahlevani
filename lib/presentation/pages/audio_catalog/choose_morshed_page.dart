@@ -1,3 +1,6 @@
+import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
+import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
@@ -94,9 +97,21 @@ class _MorshedTile extends StatelessWidget {
       title: Text(morshed.name),
       trailing:
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
-      onTap: () {
-        context.read<AudioCatalogCubit>().selectMorshed(morshed.id);
-        if (morshed.name != _kVideoReferenceMorshedName) {
+      onTap: () async {
+        await context.read<AudioCatalogCubit>().selectMorshed(morshed.id);
+        // Switching Morshed downloads their whole recording set, so every
+        // session plays offline with them (no streaming). Web has no local
+        // storage — the browser streams there.
+        if (!selected && !kIsWeb && context.mounted) {
+          await showMediaDownloadDialog(
+            context,
+            target: MorshedPackDownloadTarget(morshed.id),
+            title: "Download ${morshed.name}'s recordings",
+            message: 'To train with ${morshed.name}, all of their recordings '
+                'are kept on this device.',
+          );
+        }
+        if (context.mounted && morshed.name != _kVideoReferenceMorshedName) {
           _showVideoSyncWarning(context, morshed);
         }
       },
