@@ -66,8 +66,14 @@ class FakeDownloadRepository implements DownloadRepository {
           int sessionId, List<ItemDetail> items) async =>
       false;
 
+  /// Sessions are downloaded before they play, so by default every track's
+  /// audio is on the device; tests about missing media override this.
+  String? Function(ItemDetail item) localAudioPathBuilder =
+      (item) => '/cached/${item.item.id}.mp3';
+
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(ItemDetail item) async =>
+      localAudioPathBuilder(item);
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;

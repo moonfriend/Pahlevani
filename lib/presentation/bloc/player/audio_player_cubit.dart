@@ -70,6 +70,11 @@ class AudioPlayerState {
   /// engine's own event timing.
   final int videoResyncPositionMs;
 
+  /// Some of the session's audio isn't on the device. Sessions are
+  /// downloaded completely before they play (no streaming), so the page
+  /// offers the download instead of playing. Never set on web.
+  final bool needsDownload;
+
   TrainingItemWithAudio? get currentTrack =>
       tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
           ? tracks[playingIndex]
@@ -96,6 +101,7 @@ class AudioPlayerState {
     this.isFinished = false,
     this.videoResyncGeneration = 0,
     this.videoResyncPositionMs = 0,
+    this.needsDownload = false,
   });
 
   AudioPlayerState copyWith({
@@ -111,6 +117,7 @@ class AudioPlayerState {
     bool? isFinished,
     int? videoResyncGeneration,
     int? videoResyncPositionMs,
+    bool? needsDownload,
   }) =>
       AudioPlayerState(
         playingIndex: playingIndex ?? this.playingIndex,
@@ -127,6 +134,7 @@ class AudioPlayerState {
             videoResyncGeneration ?? this.videoResyncGeneration,
         videoResyncPositionMs:
             videoResyncPositionMs ?? this.videoResyncPositionMs,
+        needsDownload: needsDownload ?? this.needsDownload,
       );
 
   AudioPlayerState withError(String message) => AudioPlayerState(
@@ -322,6 +330,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         morsheds: await _audioCatalogRepo.getMorsheds(),
       );
 
+      var audioMissing = false;
       for (final item in items) {
         final rawExercise = snap.exercisesById[item.exerciseId];
         if (rawExercise == null) continue;
@@ -355,8 +364,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final itemDetail = ItemDetail(item: item, exercise: exercise);
         _itemDetails.add(itemDetail);
 
-        final localAudio = await _downloadRepo.getLocalAudioPath(itemDetail);
-        final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
+        // Native: the downloaded file only — never the remote URL. Web has
+        // no local storage, so the browser streams the remote URL there.
+        final remoteAudio = exercise.audioFileUrl ?? '';
+        final String audioPath;
+        if (kIsWeb) {
+          audioPath = remoteAudio;
+        } else {
+          audioPath = await _downloadRepo.getLocalAudioPath(itemDetail) ?? '';
+          if (audioPath.isEmpty && remoteAudio.isNotEmpty) audioMissing = true;
+        }
 
         var resolvedMedia = exercise.media;
         // Explicit readiness flag — the single source of truth for "can the
@@ -430,7 +447,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           duration: Duration.zero,
           isLoading: false,
           errorMessage: null,
+          needsDownload: audioMissing,
         ));
+        if (audioMissing) return; // the page offers the download instead
         await _loadSourceAtIndex(0,
             shouldPlay: _autoStart && _shouldAutoPlay(0));
       }
@@ -605,13 +624,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     bool superseded() => isClosed || generation != _loadGeneration;
     // Before the first await: from here on, readings belong to the old clip.
     _resetMoveTimeline();
-    // Resolve to a local path before handing it to the audio engine — playing
-    // a remote URL directly would stream/download the file, and the
-    // background lookahead cache would then download it again separately.
-    final sourcePath = track.audioFilePath.startsWith('/')
-        ? track.audioFilePath
-        : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
-    if (superseded()) return;
+    // Already the downloaded file (or, on web, the remote URL) — resolved
+    // once in loadTracks; nothing is downloaded or streamed here.
+    final sourcePath = track.audioFilePath;
 
     try {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');

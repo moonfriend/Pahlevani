@@ -144,8 +144,14 @@ class _FakeDownloadRepo implements DownloadRepository {
   Future<bool> isTrainingSessionDownloaded(
           int id, List<ItemDetail> items) async =>
       false;
+  // Sessions are downloaded before they play, so by default every track's
+  // audio is on the device; tests about missing media override this.
+  String? Function(ItemDetail item) localAudioPathBuilder =
+      (item) => '/cached/${item.item.id}.mp3';
+
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(ItemDetail item) async =>
+      localAudioPathBuilder(item);
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
 
@@ -417,13 +423,21 @@ void main() {
               repetitionsDefault: 1),
         ],
       );
-      final cubit = _makeCubit(snap, audioCatalogRepo: catalog);
+      // Only the default Morshed's recording is on the device: playing it
+      // proves that's the one resolved.
+      final downloads = _FakeDownloadRepo()
+        ..localAudioPathBuilder = (item) =>
+            item.exercise.audioFileUrl == 'https://cdn/default.mp3'
+                ? '/local/default.mp3'
+                : null;
+      final cubit =
+          _makeCubit(snap, audioCatalogRepo: catalog, downloadRepo: downloads);
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
 
-      expect(
-          cubit.state.tracks.single.audioFilePath, 'https://cdn/default.mp3');
+      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state.tracks.single.audioFilePath, '/local/default.mp3');
     });
 
     group('media resolution', () {
@@ -1192,71 +1206,61 @@ void main() {
   // background cacheAudio() download of the same file. The fix routes
   // playback through resolvePlayableAudioPath() so only one fetch happens.
 
-  group('audio egress (resolve-before-play)', () {
-    test('never hands the raw remote URL to the audio engine', () async {
-      final session = _session(1);
-      final exercise = _exercise(10, url: 'https://cdn.example.com/raw.mp3');
-      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
-      final snap = _snapshotWithItems(session, items, [exercise]);
+  group('local-only playback (no streaming)', () {
+    DomainSnapshot twoTracks() => _snapshotWithItems(
+          _session(1),
+          [
+            _item(sessionId: 1, exerciseId: 10, position: 0),
+            _item(sessionId: 1, exerciseId: 11, position: 1),
+          ],
+          [_exercise(10), _exercise(11)],
+        );
+
+    test('plays the downloaded file, never the remote URL', () async {
       final audioService = FakeAudioPlayerService();
       final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap,
+      final cubit = _makeCubit(twoTracks(),
           audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
 
-      expect(audioService.lastPlayedPath, isNot(exercise.audioFileUrl));
-      expect(downloadRepo.resolveCallCount, greaterThan(0));
+      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(downloadRepo.resolveCallCount, 0,
+          reason: 'nothing is downloaded or streamed while playing');
+      expect(cubit.state.needsDownload, isFalse);
     });
 
-    test('setIndexAndPlay resolves through the repository, not the raw URL',
-        () async {
-      final session = _session(1);
-      final items = [
-        _item(sessionId: 1, exerciseId: 10, position: 0),
-        _item(sessionId: 1, exerciseId: 11, position: 1),
-      ];
-      final snap =
-          _snapshotWithItems(session, items, [_exercise(10), _exercise(11)]);
+    test('each track plays its own downloaded file', () async {
       final audioService = FakeAudioPlayerService();
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap,
-          audioService: audioService, downloadRepo: downloadRepo);
+      final cubit = _makeCubit(twoTracks(), audioService: audioService);
       addTearDown(cubit.close);
-
       await cubit.loadTracks();
-      final resolvedForTrack0 = audioService.lastPlayedPath;
-      await Future<void>.delayed(Duration.zero);
+
       cubit.setIndexAndPlay(1);
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(resolvedForTrack0, isNot(_exercise(10).audioFileUrl));
-      expect(audioService.lastPlayedPath, isNot(_exercise(11).audioFileUrl));
-      expect(downloadRepo.resolvedItemIds, containsAll([10000, 10001]));
+      expect(audioService.lastPlayedPath, '/cached/10001.mp3');
     });
 
-    test('a track whose path is already local is never passed to resolve',
+    test('audio not on the device → needs download; nothing plays or streams',
         () async {
-      // audioFilePath only ever becomes local via getLocalAudioPath, which
-      // this fake hardcodes to null — so this documents the guard exists in
-      // _loadSourceAtIndex (`track.audioFilePath.startsWith('/')`) without
-      // needing a more elaborate fixture: resolve is called exactly once,
-      // for the one (non-local) track that was loaded.
-      final session = _session(1);
-      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
-      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+      final audioService = FakeAudioPlayerService();
+      final downloadRepo = _FakeDownloadRepo()
+        ..localAudioPathBuilder =
+            (item) => item.item.id == 10001 ? null : '/cached/10000.mp3';
+      final cubit = _makeCubit(twoTracks(),
+          audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
 
-      expect(downloadRepo.resolveCallCount, 1);
+      expect(cubit.state.needsDownload, isTrue);
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+      expect(downloadRepo.resolveCallCount, 0);
     });
   });
-
-  // ---------- image caching path ----------
 
   group('image caching', () {
     test('caches image when track has photo media', () async {
