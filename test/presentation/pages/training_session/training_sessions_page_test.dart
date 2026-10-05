@@ -1,3 +1,6 @@
+import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
+import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
+import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:flutter/material.dart';
@@ -76,6 +79,9 @@ class _StubRepository implements TrainingSessionRepository {
 }
 
 class _StubDownloadRepository implements DownloadRepository {
+  _StubDownloadRepository({this.statuses = const {}});
+  final Map<int, DownloadStatus> statuses;
+
   @override
   Future<void> markTrainingSessionDownloaded(int sessionId) async {}
 
@@ -92,7 +98,8 @@ class _StubDownloadRepository implements DownloadRepository {
           bytesTotal: 0));
 
   @override
-  Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
+  Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async =>
+      statuses;
 
   @override
   Stream<double> downloadTrainingSession(SessionDetail session) =>
@@ -394,22 +401,35 @@ void main() {
         FakePlayerNotificationService());
     getIt.registerSingleton<TrainingHistoryRepository>(
         FakeTrainingHistoryRepository());
+    getIt.registerSingleton<MediaSizeRepository>(_NoSizes());
+    getIt.registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+  }
+
+  // The mode-selection tests are about an already-downloaded session — an
+  // undownloaded one asks to download first (see the download gate tests).
+  Future<TrainingSessionCubit> downloadedSessionCubit() async {
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(statuses: {
+        for (final id in _snapshot.sessionsById.keys)
+          id: DownloadStatus.downloaded
+      }),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    await cubit.loadInitialStatuses();
+    await cubit.fetchTrainingSessions();
+    return cubit;
   }
 
   testWidgets(
       'tapping a session card shows Athlete/Learning/Zoorkhaneh options',
       (tester) async {
     registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
+    final cubit = await downloadedSessionCubit();
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
     addTearDown(settingsCubit.close);
 
-    await cubit.fetchTrainingSessions();
     await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
     await tester.pump();
 
@@ -423,16 +443,11 @@ void main() {
 
   testWidgets('choosing a mode opens the player', (tester) async {
     registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
+    final cubit = await downloadedSessionCubit();
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
     addTearDown(settingsCubit.close);
 
-    await cubit.fetchTrainingSessions();
     await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
     await tester.pump();
 
@@ -447,16 +462,11 @@ void main() {
   testWidgets('dismissing the mode dialog does not open the player',
       (tester) async {
     registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
+    final cubit = await downloadedSessionCubit();
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
     addTearDown(settingsCubit.close);
 
-    await cubit.fetchTrainingSessions();
     await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
     await tester.pump();
 
@@ -471,4 +481,86 @@ void main() {
     expect(find.byType(AudioPlayerPage), findsNothing);
     expect(find.text('Session A'), findsOneWidget);
   });
+
+  // ── Download before play ───────────────────────────────────────────────────
+
+  group('download gate', () {
+    Future<void> openList(WidgetTester tester) async {
+      registerPlayerFakes();
+      final cubit = TrainingSessionCubit(
+        sessionRepository: _StubRepository(_snapshot),
+        downloadRepository: _StubDownloadRepository(),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
+      );
+      final settingsCubit = SettingsCubit();
+      addTearDown(cubit.close);
+      addTearDown(settingsCubit.close);
+      await cubit.fetchTrainingSessions();
+      await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+      await tester.pump();
+    }
+
+    const question =
+        'Are you ready to download all the data of this training session?';
+
+    testWidgets('tapping an undownloaded session asks to download it first',
+        (tester) async {
+      await openList(tester);
+      await tester.tap(find.text('Session A'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsOneWidget);
+      expect(find.text('Athlete mode'), findsNothing);
+    });
+
+    testWidgets('"Not now" stays on the list (no streaming playback)',
+        (tester) async {
+      await openList(tester);
+      await tester.tap(find.text('Session A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Athlete mode'), findsNothing);
+      expect(find.byType(AudioPlayerPage), findsNothing);
+    });
+
+    testWidgets(
+        'once everything is on the device, it continues to the mode '
+        'choice', (tester) async {
+      // The test session has no media and the fake catalog no recordings, so
+      // nothing is missing — the dialog offers Continue. (The download
+      // itself is covered by media_download_dialog_test.)
+      await openList(tester);
+      await tester.tap(find.text('Session A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(question), findsNothing);
+      expect(find.text('Athlete mode'), findsOneWidget);
+    });
+
+    testWidgets("the card's download ring opens the download dialog",
+        (tester) async {
+      await openList(tester);
+      await tester.tap(find.byType(DownloadRing).first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Audio only'), findsOneWidget);
+    });
+  });
+}
+
+class _NoSizes implements MediaSizeRepository {
+  @override
+  Future<Map<String, int>> sizesFor(Set<String> urls) async => {};
+}
+
+class _MemoryPrefs implements DownloadPreferencesRepository {
+  DownloadTier? tier;
+  @override
+  Future<DownloadTier?> getPreferredTier() async => tier;
+  @override
+  Future<void> setPreferredTier(DownloadTier t) async => tier = t;
 }

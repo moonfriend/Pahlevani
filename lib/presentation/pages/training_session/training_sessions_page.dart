@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
+import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
@@ -126,7 +128,44 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     unawaited(cubit.refreshAudioSelection());
   }
 
+  static const _downloadQuestion =
+      'Are you ready to download all the data of this training session?';
+
+  DownloadStatus _statusOf(int sessionId) {
+    final s = context.read<TrainingSessionCubit>().state;
+    final uiModel = switch (s) {
+      TrainingSessionLoaded() => s.uiModel,
+      TrainingSessionLoading() => s.uiModel,
+      TrainingSessionDownloading() => s.uiModel,
+      TrainingSessionError() => s.uiModel,
+      _ => null,
+    };
+    return uiModel?.downloadStatuses[sessionId] ?? DownloadStatus.notDownloaded;
+  }
+
+  /// Downloads [session]'s media via the download dialog (tier, size,
+  /// progress). True once it's all on the device.
+  Future<bool> _downloadSession(TrainingSession session,
+      {String? message}) async {
+    final done = await showMediaDownloadDialog(
+      context,
+      target: SessionDownloadTarget(session.id),
+      title: session.title,
+      message: message,
+    );
+    if (done && mounted) {
+      await context.read<TrainingSessionCubit>().loadInitialStatuses();
+    }
+    return done;
+  }
+
   Future<void> _openPlayer(TrainingSession session) async {
+    // Media is downloaded completely before a session is first played — no
+    // streaming. (Web has no local storage; the browser streams there.)
+    if (!kIsWeb && _statusOf(session.id) != DownloadStatus.downloaded) {
+      final ready = await _downloadSession(session, message: _downloadQuestion);
+      if (!ready || !mounted) return;
+    }
     final mode = await showPlayerModeDialog(context);
     if (mode == null || !mounted) return;
     await Navigator.push(
@@ -194,7 +233,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   void _showOverflowSheet(
       BuildContext context, TrainingSession session, DownloadStatus dlStatus) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cubit = context.read<TrainingSessionCubit>();
     final authState = context.read<AuthCubit>().state;
     final isTrainer =
         authState is AuthAuthenticated && authState.user.isTrainer;
@@ -242,7 +280,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                       fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
               onTap: () {
                 Navigator.pop(context);
-                cubit.downloadTrainingSession(session.id);
+                _downloadSession(session);
               },
             ),
           if (session.isUserCreated)
@@ -342,9 +380,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                         onOpen: _openPlayer,
                         onMenu: (s) => _showOverflowSheet(context, s,
                             dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
-                        onDownload: (s) => context
-                            .read<TrainingSessionCubit>()
-                            .downloadTrainingSession(s.id),
+                        onDownload: (s) => _downloadSession(s),
                       ),
                     ),
                   ),
