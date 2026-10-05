@@ -45,7 +45,8 @@ abstract class TrainingSessionLocalDataSource {
 
   /// Downloads a file from a URL to a specific local path, reporting progress.
   Future<void> downloadFile(
-      String url, String savePath, Function(int, int) onReceiveProgress);
+      String url, String savePath, Function(int, int) onReceiveProgress,
+      {CancelToken? cancelToken});
 
   /// gets all Training Sessions from the local storage
   Future<List<Map<String, dynamic>>> getTrainingSessionsTable();
@@ -117,61 +118,52 @@ class TrainingSessionLocalDataSourceImpl
     }
   }
 
+  /// Downloads [url] to [savePath], or throws.
+  ///
+  /// The media cache treats any file at [savePath] as complete and never
+  /// fetches it again, so nothing may appear there unless it is the whole,
+  /// genuine file:
+  ///   • only a 2xx response is accepted — an error page (R2 answers a missing
+  ///     key with a non-empty XML body) must never be saved as media;
+  ///   • bytes go to `<savePath>.part` and are renamed into place only once
+  ///     complete — a crash or kill mid-download leaves just the `.part`;
+  ///   • [cancelToken] stops the transfer (the `.part` is removed).
   @override
   Future<void> downloadFile(
-      String url, String savePath, Function(int, int) onReceiveProgress) async {
+      String url, String savePath, Function(int, int) onReceiveProgress,
+      {CancelToken? cancelToken}) async {
+    final partPath = '$savePath.part';
     try {
-      // Create parent directory if it doesn't exist
-      final file = File(savePath);
-      if (!await file.parent.exists()) {
-        await file.parent.create(recursive: true);
-      }
+      await File(savePath).parent.create(recursive: true);
+      dio.options.connectTimeout ??= const Duration(seconds: 30);
 
-      // Configure Dio for better download handling
-      final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 30);
-      dio.options.receiveTimeout = const Duration(seconds: 30);
-      dio.options.headers = {
-        'Accept': '*/*',
-        'User-Agent': 'Pahlevani/1.0',
-      };
-
-      // Download with progress tracking
       await dio.download(
         url,
-        savePath,
+        partPath,
         onReceiveProgress: (received, total) {
-          if (total != -1) {
-            // -1 means total size is unknown
-            onReceiveProgress(received, total);
-          }
+          if (total != -1) onReceiveProgress(received, total); // -1: unknown
         },
-        deleteOnError: true, // Delete partial file if download fails
+        cancelToken: cancelToken,
+        deleteOnError: true,
         options: Options(
           responseType: ResponseType.bytes,
           followRedirects: true,
-          validateStatus: (status) => status! < 500,
+          receiveTimeout: const Duration(seconds: 30),
+          headers: const {'Accept': '*/*', 'User-Agent': 'Pahlevani/1.0'},
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
         ),
       );
 
-      // Verify the downloaded file
-      final downloadedFile = File(savePath);
-      if (!await downloadedFile.exists()) {
-        throw Exception('Downloaded file not found at $savePath');
+      final part = File(partPath);
+      if (!await part.exists() || await part.length() == 0) {
+        throw Exception('Downloaded file is empty: $url');
       }
-
-      final fileSize = await downloadedFile.length();
-      if (fileSize == 0) {
-        await downloadedFile.delete();
-        throw Exception('Downloaded file is empty');
-      }
+      await part.rename(savePath);
     } catch (e) {
-      // Clean up partial file
       try {
-        final partialFile = File(savePath);
-        if (await partialFile.exists()) {
-          await partialFile.delete();
-        }
+        final part = File(partPath);
+        if (await part.exists()) await part.delete();
       } catch (_) {}
       rethrow;
     }
