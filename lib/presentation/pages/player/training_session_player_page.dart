@@ -615,9 +615,8 @@ class _ExerciseVideo extends StatefulWidget {
 
   /// Shown (via buildMediaImage) in place of this widget's own content for
   /// as long as its controller isn't ready yet — the same poster _Stage
-  /// would otherwise be showing one layer up, so cache-complete swap-in and
-  /// first-ever mount both hand off from poster to live video with no
-  /// blank/static frame in between.
+  /// would otherwise be showing one layer up, so mounting hands off from
+  /// poster to live video with no blank/static frame in between.
   final String? posterSrc;
   final int? startOffsetMs;
 
@@ -681,43 +680,27 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
         setState(() => _ready = true);
         final durationMs = _controller.value.duration.inMilliseconds;
 
-        // Two mounting scenarios, routed by whether the audio is genuinely
-        // at the very start of its loop right now:
-        //  - resyncPositionMs == 0: a true cold start (fresh track load, or
-        //    a video that was already cached before the track began) —
-        //    apply the anchor-based seek-or-delay plan exactly as before,
-        //    including the negative-offset "wait at frame 0" behavior a
-        //    live exercise (Shena Sar Navazi) actually relies on today.
-        //  - resyncPositionMs != 0: a late mount — a background download
-        //    just finished mid-playback, so the audio is already partway
-        //    through its loop. There is no "wait for playback to start"
-        //    concept here; just seek to wherever the audio already is and
-        //    play immediately, via the same math discrete resyncs use.
-        if (widget.resyncPositionMs == 0) {
-          final plan = computeVideoSyncPlan(widget.startOffsetMs, durationMs);
-          AppLogger.d('video sync (cold start): startOffsetMs='
-              '${widget.startOffsetMs} videoDurationMs=$durationMs '
-              '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
-          if (plan.seekToMs != null) {
-            await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
-            if (!mounted) return;
-          }
-          if (plan.delayMs != null) {
-            unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
-              if (!mounted) return;
-              _syncPending = false;
-              if (widget.isPlaying) unawaited(_controller.play());
-            }));
-            return;
-          }
-        } else {
-          final targetMs = computeVideoResyncTargetMs(
-              widget.resyncPositionMs, widget.startOffsetMs, durationMs);
-          AppLogger.d('video sync (late mount): audioPositionMs='
-              '${widget.resyncPositionMs} startOffsetMs=${widget.startOffsetMs} '
-              'videoDurationMs=$durationMs -> seekToMs=$targetMs');
-          await _controller.seekTo(Duration(milliseconds: targetMs));
+        // Videos are on the device before the session plays, so the widget
+        // only mounts when a track starts (audio at the start of its loop):
+        // apply the anchor-based seek-or-delay plan, including the
+        // negative-offset "wait at frame 0" behavior a live exercise
+        // (Shena Sar Navazi) relies on. Later repositioning is a discrete
+        // resync in didUpdateWidget.
+        final plan = computeVideoSyncPlan(widget.startOffsetMs, durationMs);
+        AppLogger.d('video sync (cold start): startOffsetMs='
+            '${widget.startOffsetMs} videoDurationMs=$durationMs '
+            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
+        if (plan.seekToMs != null) {
+          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
           if (!mounted) return;
+        }
+        if (plan.delayMs != null) {
+          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
+            if (!mounted) return;
+            _syncPending = false;
+            if (widget.isPlaying) unawaited(_controller.play());
+          }));
+          return;
         }
         _syncPending = false;
         if (widget.isPlaying) unawaited(_controller.play());

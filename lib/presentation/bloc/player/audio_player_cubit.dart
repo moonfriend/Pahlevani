@@ -55,12 +55,10 @@ class AudioPlayerState {
   final bool isFinished;
 
   /// Bumped every time audio position is authoritatively (re)established — a
-  /// fresh source load, a mid-track seek, or a background video download
-  /// finishing for the currently-visible track — never a normal playback
-  /// tick. _ExerciseVideo watches this to apply exactly one discrete resync
-  /// seek; see computeVideoResyncTargetMs. For a genuinely fresh mount
-  /// (position 0), _ExerciseVideo instead uses the anchor-based
-  /// computeVideoSyncPlan — see its initState for the exact routing.
+  /// fresh source load or a mid-track seek — never a normal playback tick.
+  /// _ExerciseVideo watches this to apply exactly one discrete resync seek;
+  /// see computeVideoResyncTargetMs. A freshly mounted video (track start)
+  /// uses the anchor-based computeVideoSyncPlan instead.
   final int videoResyncGeneration;
 
   /// The audio-loop-relative position (ms) at the moment
@@ -166,10 +164,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   // toggle made mid-session (via the ⓘ page) takes effect the next time this
   // session is opened, not retroactively for tracks already in this run.
   Set<int> _learntExerciseIds = {};
-
-  // Tracks which track indices have already been scheduled for background
-  // caching this session — prevents concurrent redundant downloads.
-  final _cachedIndices = <int>{};
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
@@ -280,7 +274,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
-    _cachedIndices.clear();
 
     // Subscribe (or re-subscribe) to notification commands so lock-screen /
     // dropdown controls are forwarded to this cubit.
@@ -534,88 +527,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     }
   }
 
-  // Each index is scheduled at most once per loadTracks() call.
-  // _cachedIndices.add() returns false if already present → skip.
-  void _cacheInBackground(int index) {
-    if (index < 0 ||
-        index >= state.tracks.length ||
-        index >= _itemDetails.length) {
-      return;
-    }
-    if (!_cachedIndices.add(index)) return;
-
-    final track = state.tracks[index];
-    final detail = _itemDetails[index];
-
-    if (!track.audioFilePath.startsWith('/')) {
-      _downloadRepo.cacheAudio(detail);
-    }
-    if (track.media.type == 'photo' &&
-        track.media.src != null &&
-        !track.media.src!.startsWith('/')) {
-      _downloadRepo.cacheImage(track.media.src!);
-    } else if (track.media.type == 'video' &&
-        track.media.src != null &&
-        !track.media.src!.startsWith('/')) {
-      // Independent of the big "Download session" flow, which only tracks
-      // audio completeness (checkAllCachedAndMark) — a session already
-      // marked downloaded before this exercise had a video would otherwise
-      // never get a chance to fetch it. This lookahead runs on every
-      // playthrough regardless of that flag.
-      //
-      // Live swap-in: once the download actually finishes, patch this
-      // track's media so the stage picks up the now-local, playable video
-      // without the user needing to leave and reopen the player. A failed
-      // or never-finishing download (localPath == null) is a silent no-op —
-      // playback and the poster-image fallback are entirely unaffected.
-      final originalSrc = track.media.src!;
-      unawaited(_downloadRepo.cacheVideo(originalSrc).then((localPath) {
-        if (localPath == null) return;
-        _applyResolvedVideo(index, originalSrc, localPath);
-      }));
-    }
-  }
-
-  /// Applies a background-cached video's local path to `tracks[index]`, but
-  /// only if that slot still holds the same media it did when caching
-  /// started — a reload (e.g. an edit save) between then and now may have
-  /// replaced it with different content, and a late-arriving result must
-  /// not clobber that.
-  void _applyResolvedVideo(int index, String originalSrc, String localPath) {
-    if (isClosed || index < 0 || index >= state.tracks.length) return;
-    final current = state.tracks[index];
-    if (current.media.src != originalSrc) return;
-
-    final updatedTracks = [...state.tracks];
-    updatedTracks[index] = current.copyWith(
-      media: ExerciseMedia(
-        type: 'video',
-        src: localPath,
-        poster: current.media.poster,
-        videoAnchorMs: current.media.videoAnchorMs,
-      ),
-      videoReady: true,
-    );
-
-    // Only the currently-visible track needs a resync bump — lookahead
-    // tracks (index+1..+3) get their media patched silently here and will
-    // get a fresh, correct resync of their own the moment the user actually
-    // navigates to them (_loadSourceAtIndex always bumps the generation).
-    // For the visible track, capture the real, current audio-loop position
-    // so the freshly-mounted video seeks to where the audio actually is
-    // instead of assuming it just started at 0 — see
-    // _ExerciseVideoState.initState in training_session_player_page.dart.
-    if (index == state.playingIndex) {
-      emit(state.copyWith(
-        tracks: updatedTracks,
-        videoResyncGeneration: state.videoResyncGeneration + 1,
-        videoResyncPositionMs: state.position.inMilliseconds,
-      ));
-    } else {
-      emit(state.copyWith(tracks: updatedTracks));
-    }
-  }
-
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
     if (index < 0 || index >= state.tracks.length) return;
 
@@ -674,14 +585,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         isPlaying: shouldPlay,
         duration: state.duration == Duration.zero ? null : state.duration,
       );
-
-      _cacheInBackground(index);
-      _cacheInBackground(index + 1);
-      _cacheInBackground(index + 2);
-      _cacheInBackground(index + 3);
-      unawaited(_downloadRepo
-          .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
-          .catchError((_) => false));
     } catch (e) {
       if (superseded()) return;
       emit(state.copyWith(
