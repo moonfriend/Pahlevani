@@ -17,7 +17,7 @@ set -e
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
 
 echo "→ Checking Dart formatting..."
-dart format --set-exit-if-changed . || {
+dart format --output=none --set-exit-if-changed . || {
   echo ""
   echo "  Format check failed. Run: dart format ."
   echo "  Then re-stage your changes and commit again."
