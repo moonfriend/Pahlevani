@@ -1,3 +1,5 @@
+import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -366,6 +368,45 @@ void main() {
 
       expect(cubit.state.tracks[0].title, ex1.name);
       expect(cubit.state.tracks[1].title, ex2.name);
+    });
+
+    test(
+        'no Morshed chosen → plays the default Morshed\'s recording, not just '
+        'the first one found', () async {
+      const exercise = Exercise(
+          id: 10, name: 'Shena', repetitionsDefault: 1, movementTypeId: 5);
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0, reps: 1)],
+        [exercise],
+      );
+      final catalog = FakeAudioCatalogRepository(
+        morsheds: const [
+          Morshed(id: 1, name: 'First'),
+          Morshed(id: 2, name: 'Default', isDefault: true),
+        ],
+        tracks: const [
+          MovementAudioTrack(
+              id: 1,
+              movementTypeId: 5,
+              morshedId: 1,
+              audioUrl: 'https://cdn/first.mp3',
+              repetitionsDefault: 1),
+          MovementAudioTrack(
+              id: 2,
+              movementTypeId: 5,
+              morshedId: 2,
+              audioUrl: 'https://cdn/default.mp3',
+              repetitionsDefault: 1),
+        ],
+      );
+      final cubit = _makeCubit(snap, audioCatalogRepo: catalog);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(
+          cubit.state.tracks.single.audioFilePath, 'https://cdn/default.mp3');
     });
 
     group('media resolution', () {

@@ -10,6 +10,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -48,7 +49,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   Future<void> _refreshAudioCatalog() async {
     try {
       _audioTracks = await _audioCatalogRepository.getMovementAudioTracks();
-      _selectedMorshedId = await _audioCatalogRepository.getSelectedMorshedId();
+      // Same rule as the player and downloads: choice, else the default.
+      _selectedMorshedId = effectiveMorshedId(
+        selectedId: await _audioCatalogRepository.getSelectedMorshedId(),
+        morsheds: await _audioCatalogRepository.getMorsheds(),
+      );
     } catch (_) {
       // Leave previous values in place — duration estimates just go stale,
       // this should never take the sessions list down.

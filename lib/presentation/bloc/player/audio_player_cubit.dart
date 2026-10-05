@@ -14,6 +14,7 @@ import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
 import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
@@ -314,7 +315,12 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       // no requirement for the latter, and it would complicate the already
       // subtle position/duration state below for no real benefit).
       final audioTracks = await _audioCatalogRepo.getMovementAudioTracks();
-      final selectedMorshedId = await _audioCatalogRepo.getSelectedMorshedId();
+      // The athlete's choice, else the admin-set default — the same rule
+      // session durations and downloads use (effectiveMorshedId).
+      final morshedId = effectiveMorshedId(
+        selectedId: await _audioCatalogRepo.getSelectedMorshedId(),
+        morsheds: await _audioCatalogRepo.getMorsheds(),
+      );
 
       for (final item in items) {
         final rawExercise = snap.exercisesById[item.exerciseId];
@@ -328,7 +334,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // errorMessage rather than a crash.
         final resolvedTrack = resolveAudioTrack(
           movementTypeId: rawExercise.movementTypeId,
-          chosenMorshedId: selectedMorshedId,
+          chosenMorshedId: morshedId,
           availableTracks: audioTracks,
         );
         final exercise = resolvedTrack == null
@@ -337,7 +343,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         AppLogger.d(
           'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
           'movementTypeId=${rawExercise.movementTypeId} '
-          'chosenMorshedId=$selectedMorshedId '
+          'chosenMorshedId=$morshedId '
           'resolvedTrack=${resolvedTrack == null ? 'null (no curated audio)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
           'finalAudioUrl=${exercise.audioFileUrl}',
         );
