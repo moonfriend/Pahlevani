@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -301,6 +302,33 @@ void main() {
           reason: 'the recording is already on the device');
       expect(await repo.getLocalAudioPath(itemB),
           await repo.getLocalAudioPath(itemA));
+    });
+
+    test(
+        'a second request while the same file is downloading waits for it '
+        '(instead of getting nothing and streaming the remote URL)', () async {
+      final release = Completer<void>();
+      var downloads = 0;
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        downloads++;
+        await release.future; // slow download
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+      const item = ItemDetail(item: testItem1, exercise: testExercise1);
+
+      final first = repo.cacheAudio(item);
+      final second = repo.cacheAudio(item); // e.g. the player, same file
+      final playable = repo.resolvePlayableAudioPath(item);
+      release.complete();
+
+      final paths = await Future.wait([first, second]);
+      expect(paths[0], isNotNull);
+      expect(paths[1], paths[0], reason: 'the second caller must wait');
+      expect(await playable, paths[0],
+          reason: 'never fall back to the remote URL while it is downloading');
+      expect(downloads, 1);
     });
 
     test('downloads file when not already on disk', () async {

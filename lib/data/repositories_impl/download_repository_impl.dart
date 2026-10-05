@@ -16,7 +16,31 @@ class DownloadRepositoryImpl implements DownloadRepository {
 
   // Prevents concurrent downloads of the same file.
   // Checked synchronously (before the first await) so there is no race window.
-  final _inFlight = <String>{};
+  /// One download per cache path at a time; later callers for the same file
+  /// await the running download instead of getting nothing back.
+  final _inFlight = <String, Future<String>>{};
+
+  /// [path] once it is on the device — downloading it via [download] unless
+  /// it already exists, sharing a download that is already running. Throws if
+  /// the download fails (callers log and return null).
+  Future<String> _fetchOnce(String path, Future<void> Function() download) {
+    final running = _inFlight[path];
+    if (running != null) return running;
+    final started = _fetch(path, download);
+    _inFlight[path] = started;
+    return started;
+  }
+
+  Future<String> _fetch(String path, Future<void> Function() download) async {
+    try {
+      if (!await File(path).exists()) await download();
+      return path;
+    } finally {
+      // Only drops the bookkeeping entry — the future itself is the one this
+      // call returns to its awaiting callers.
+      unawaited(_inFlight.remove(path));
+    }
+  }
 
   DownloadRepositoryImpl({required this.localDataSource});
 
@@ -191,19 +215,10 @@ class DownloadRepositoryImpl implements DownloadRepository {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
       await Directory(dir).create(recursive: true);
       final path = '$dir/${_audioFile(item.exercise)}';
-      // Guard: checked synchronously before any await so two concurrent calls
-      // for the same path cannot both pass through.
-      if (_inFlight.contains(path)) return null;
-      _inFlight.add(path);
-      try {
-        if (await File(path).exists()) return path;
-        final url = item.exercise.audioFileUrl;
-        if (url == null || url.isEmpty) return null;
-        await localDataSource.downloadFile(url, path, (_, __) {});
-        return path;
-      } finally {
-        _inFlight.remove(path);
-      }
+      final url = item.exercise.audioFileUrl;
+      if (url == null || url.isEmpty) return null;
+      return await _fetchOnce(
+          path, () => localDataSource.downloadFile(url, path, (_, __) {}));
     } catch (e, st) {
       AppLogger.w('cacheAudio failed for ${item.exercise.name}',
           error: e, stackTrace: st);
@@ -219,17 +234,12 @@ class DownloadRepositoryImpl implements DownloadRepository {
       await Directory(dir).create(recursive: true);
       // Hash keyed on original URL so getLocalImagePath lookup stays stable.
       final path = '$dir/${mediaCacheFileName(url, DownloadFileKind.image)}';
-      if (_inFlight.contains(path)) return null;
-      _inFlight.add(path);
-      try {
-        if (await File(path).exists()) return path;
-        // Download the Supabase-resized version (500×500, quality 80) to save disk space.
-        await localDataSource.downloadFile(
-            supabaseImageTransformUrl(url), path, (_, __) {});
-        return path;
-      } finally {
-        _inFlight.remove(path);
-      }
+      // Download the Supabase-resized version (500×500, quality 80) to save
+      // disk space (R2 URLs pass through unchanged).
+      return await _fetchOnce(
+          path,
+          () => localDataSource.downloadFile(
+              supabaseImageTransformUrl(url), path, (_, __) {}));
     } catch (e, st) {
       AppLogger.w('cacheImage failed for url=$url', error: e, stackTrace: st);
       return null;
@@ -265,18 +275,11 @@ class DownloadRepositoryImpl implements DownloadRepository {
       // Hash keyed on original URL so getLocalVideoPath lookup stays stable.
       final path =
           '$dir/${mediaCacheFileName(url, DownloadFileKind.followAlongVideo)}';
-      if (_inFlight.contains(path)) return null;
-      _inFlight.add(path);
-      try {
-        if (await File(path).exists()) return path;
-        // No transform API for R2 (unlike Supabase image transforms) — the
-        // admin upload tool already compresses to delivery size, so the
-        // stored URL is downloaded as-is.
-        await localDataSource.downloadFile(url, path, (_, __) {});
-        return path;
-      } finally {
-        _inFlight.remove(path);
-      }
+      // No transform API for R2 (unlike Supabase image transforms) — the
+      // admin upload tool already compresses to delivery size, so the stored
+      // URL is downloaded as-is.
+      return await _fetchOnce(
+          path, () => localDataSource.downloadFile(url, path, (_, __) {}));
     } catch (e, st) {
       AppLogger.w('cacheVideo failed for url=$url', error: e, stackTrace: st);
       return null;
