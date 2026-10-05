@@ -7,13 +7,19 @@ class _FakeAudioCatalogRemoteDataSource
     implements AudioCatalogRemoteDataSource {
   List<Map<String, dynamic>> morshedRows = [];
   List<Map<String, dynamic>> trackRows = [];
+  bool offline = false;
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMorshedTable() async => morshedRows;
+  Future<List<Map<String, dynamic>>> fetchMorshedTable() async {
+    if (offline) throw Exception('SocketException: no network');
+    return morshedRows;
+  }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchMovementAudioTrackTable() async =>
-      trackRows;
+  Future<List<Map<String, dynamic>>> fetchMovementAudioTrackTable() async {
+    if (offline) throw Exception('SocketException: no network');
+    return trackRows;
+  }
 }
 
 void main() {
@@ -74,6 +80,41 @@ void main() {
       await repo.setSelectedMorshedId(7);
       await repo.setSelectedMorshedId(null);
       expect(await repo.getSelectedMorshedId(), isNull);
+    });
+  });
+
+  // A downloaded session must play offline — the player resolves recordings
+  // from this catalog on every load.
+  group('offline', () {
+    test('returns the last fetched catalog when the network fails', () async {
+      remote.morshedRows = [
+        {'id': 2, 'name': 'Sirvan', 'is_default': true},
+      ];
+      remote.trackRows = [
+        {
+          'id': 1,
+          'movement_type_id': 4,
+          'morshed_id': 2,
+          'audio_url': 'https://x/y.mp3',
+        },
+      ];
+      await repo.getMorsheds();
+      await repo.getMovementAudioTracks();
+
+      remote.offline = true;
+      final fresh = AudioCatalogRepositoryImpl(remoteDataSource: remote);
+
+      final morsheds = await fresh.getMorsheds();
+      expect(morsheds.single.name, 'Sirvan');
+      expect(morsheds.single.isDefault, isTrue);
+      expect((await fresh.getMovementAudioTracks()).single.audioUrl,
+          'https://x/y.mp3');
+    });
+
+    test('offline with nothing cached still fails loudly', () async {
+      remote.offline = true;
+      expect(repo.getMorsheds(), throwsException);
+      expect(repo.getMovementAudioTracks(), throwsException);
     });
   });
 }

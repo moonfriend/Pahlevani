@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:pahlevani/data/datasources/audio_catalog/audio_catalog_remote_datasource.dart';
 import 'package:pahlevani/data/dtos/morshed_row.dart';
 import 'package:pahlevani/data/dtos/movement_audio_track_row.dart';
@@ -11,18 +13,22 @@ class AudioCatalogRepositoryImpl implements AudioCatalogRepository {
   final AudioCatalogRemoteDataSource remoteDataSource;
 
   static const _keySelectedMorshedId = 'audio_catalog.selectedMorshedId';
+  static const _keyMorshedRows = 'audio_catalog.cache.morshedRows';
+  static const _keyTrackRows = 'audio_catalog.cache.trackRows';
 
   AudioCatalogRepositoryImpl({required this.remoteDataSource});
 
   @override
   Future<List<Morshed>> getMorsheds() async {
-    final rows = await remoteDataSource.fetchMorshedTable();
+    final rows = await _fetchWithOfflineCopy(
+        remoteDataSource.fetchMorshedTable, _keyMorshedRows);
     return rows.map((r) => mapMorshed(MorshedRow.fromJson(r))).toList();
   }
 
   @override
   Future<List<MovementAudioTrack>> getMovementAudioTracks() async {
-    final rows = await remoteDataSource.fetchMovementAudioTrackTable();
+    final rows = await _fetchWithOfflineCopy(
+        remoteDataSource.fetchMovementAudioTrackTable, _keyTrackRows);
     return rows
         .map((r) => mapMovementAudioTrack(MovementAudioTrackRow.fromJson(r)))
         .toList();
@@ -41,6 +47,26 @@ class AudioCatalogRepositoryImpl implements AudioCatalogRepository {
       await prefs.remove(_keySelectedMorshedId);
     } else {
       await prefs.setInt(_keySelectedMorshedId, morshedId);
+    }
+  }
+
+  /// Fetches remote rows and keeps the last successful result locally, so a
+  /// downloaded session still resolves its recordings offline (the player
+  /// reads this catalog on every load). With no network and no saved copy,
+  /// the original error propagates — no silent empty catalog.
+  Future<List<Map<String, dynamic>>> _fetchWithOfflineCopy(
+    Future<List<Map<String, dynamic>>> Function() fetch,
+    String cacheKey,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final rows = await fetch();
+      await prefs.setString(cacheKey, jsonEncode(rows));
+      return rows;
+    } catch (_) {
+      final saved = prefs.getString(cacheKey);
+      if (saved == null) rethrow;
+      return (jsonDecode(saved) as List).cast<Map<String, dynamic>>();
     }
   }
 }
