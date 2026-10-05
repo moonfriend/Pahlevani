@@ -77,6 +77,9 @@ class _StubRepository implements TrainingSessionRepository {
 
 class _StubDownloadRepository implements DownloadRepository {
   @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  @override
   Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
 
   @override

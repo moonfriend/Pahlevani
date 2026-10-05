@@ -140,4 +140,17 @@ void main() {
         filesDone: 1, filesTotal: 4, bytesDone: 0, bytesTotal: 0);
     expect(p.fraction, 0.25);
   });
+
+  test('markTrainingSessionDownloaded shows the session as downloaded',
+      () async {
+    var saved = <String>[];
+    when(() => local.getDownloadedTrainingSessionIds())
+        .thenAnswer((_) async => List.of(saved));
+    when(() => local.saveDownloadedTrainingSessionIds(any())).thenAnswer(
+        (inv) async => saved = inv.positionalArguments[0] as List<String>);
+
+    await repo.markTrainingSessionDownloaded(7);
+
+    expect(saved, ['7']);
+  });
 }

@@ -84,6 +84,9 @@ class _SpyRepository implements TrainingSessionRepository {
 
 class _DownloadRepoWithStream implements DownloadRepository {
   @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  @override
   Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
 
   @override
@@ -146,6 +149,9 @@ class _DownloadRepoWithStream implements DownloadRepository {
 }
 
 class _FakeDownloadRepository implements DownloadRepository {
+  @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
   @override
   Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
 

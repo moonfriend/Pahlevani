@@ -67,4 +67,8 @@ abstract class DownloadRepository {
   /// stops the running transfer; finished files are kept.
   Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
       {Map<String, int> knownSizes = const {}});
+
+  /// Records that a session's media is fully on the device (the list's
+  /// "downloaded" badge).
+  Future<void> markTrainingSessionDownloaded(int sessionId);
 }

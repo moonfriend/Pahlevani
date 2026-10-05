@@ -48,6 +48,10 @@ class DownloadRepositoryImpl implements DownloadRepository {
   DownloadRepositoryImpl({required this.localDataSource});
 
   @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) =>
+      _saveDownloadStatus(sessionId, DownloadStatus.downloaded);
+
+  @override
   Future<Set<String>> localUrlsIn(DownloadPlan plan) async {
     final dir = await localDataSource.getMediaCacheDirectoryPath();
     final local = <String>{};

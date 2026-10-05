@@ -110,6 +110,9 @@ class _MutableSessionRepo implements TrainingSessionRepository {
 
 class _FakeDownloadRepo implements DownloadRepository {
   @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  @override
   Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
 
   @override

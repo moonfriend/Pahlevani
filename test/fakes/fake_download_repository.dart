@@ -9,17 +9,34 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 /// Reusable fake for [DownloadRepository].
 /// Download progress is controlled from tests via [emitProgress] / [completeDownload].
 class FakeDownloadRepository implements DownloadRepository {
+  /// URLs that count as already on the device.
+  Set<String> localUrls = {};
+
+  /// When set, downloadPlan streams from this controller (tests drive
+  /// progress, completion and errors); otherwise it completes immediately.
+  StreamController<DownloadProgress>? planController;
+  final List<DownloadPlan> downloadedPlans = [];
+  final List<int> markedDownloaded = [];
+
   @override
-  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async =>
+      plan.urls.intersection(localUrls);
 
   @override
   Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
-          {Map<String, int> knownSizes = const {}}) =>
-      Stream.value(DownloadProgress(
-          filesDone: plan.files.length,
-          filesTotal: plan.files.length,
-          bytesDone: 0,
-          bytesTotal: 0));
+      {Map<String, int> knownSizes = const {}}) {
+    downloadedPlans.add(plan);
+    return planController?.stream ??
+        Stream.value(DownloadProgress(
+            filesDone: plan.files.length,
+            filesTotal: plan.files.length,
+            bytesDone: 0,
+            bytesTotal: 0));
+  }
+
+  @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async =>
+      markedDownloaded.add(sessionId);
 
   Map<int, DownloadStatus> initialStatuses;
   bool downloadCalled = false;
