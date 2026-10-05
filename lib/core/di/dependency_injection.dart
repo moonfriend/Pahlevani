@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 
+import '../../data/repositories_impl/download_preferences_repository_impl.dart';
+import '../../domain/repositories/download_preferences_repository.dart';
 import '../../data/datasources/media/media_size_remote_datasource.dart';
 import '../../data/repositories_impl/media_size_repository_impl.dart';
 import '../../domain/repositories/media_size_repository.dart';
@@ -132,6 +134,8 @@ class DependencyInjection {
         () => AudioCatalogRemoteDataSourceImpl());
     getIt.registerLazySingleton<MediaSizeRepository>(
         () => MediaSizeRepositoryImpl(remote: MediaSizeRemoteDataSourceImpl()));
+    getIt.registerLazySingleton<DownloadPreferencesRepository>(
+        () => DownloadPreferencesRepositoryImpl());
     getIt.registerLazySingleton<AudioCatalogRepository>(
       () => AudioCatalogRepositoryImpl(
         remoteDataSource: getIt<AudioCatalogRemoteDataSource>(),
