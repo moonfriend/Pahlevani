@@ -21,13 +21,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   final TrainingSessionRepository _sessionRepository;
   final DownloadRepository _downloadRepository;
   final AudioCatalogRepository _audioCatalogRepository;
-  StreamSubscription? _downloadSubscription;
 
   // Store current data locally in cubit to avoid passing it around in states excessively
   // todo: design issue: data should go in the state
   DomainSnapshot _currentTSSnapshot = NullDomainSnapshot();
   Map<int, DownloadStatus> _currentDownloadStatus = {};
-  final Map<int, double> _currentDownloadProgress = {};
 
   // Cached alongside _currentTSSnapshot so buildTrainingSessionsUiModel() can
   // stay synchronous — refreshed on initialize() and whenever the athlete's
@@ -125,68 +123,6 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         message: "Failed to load training_sessions: ${e.toString()}",
         uiModel: buildTrainingSessionsUiModel(),
       ));
-    }
-  }
-
-  /// Initiates download for a specific training session.
-  Future<void> downloadTrainingSession(int sessionId) async {
-    final detail = getSessionDetail(sessionId);
-    if (detail == null) {
-      emit(TrainingSessionError(
-        message: 'Session $sessionId not found in snapshot.',
-        uiModel: buildTrainingSessionsUiModel(),
-      ));
-      return;
-    }
-
-    if (_currentDownloadStatus[sessionId] == DownloadStatus.downloading) return;
-
-    await _downloadSubscription?.cancel();
-    _currentDownloadStatus[sessionId] = DownloadStatus.downloading;
-    _currentDownloadProgress[sessionId] = 0.0;
-    emit(TrainingSessionDownloading(
-      uiModel: buildTrainingSessionsUiModel(),
-      downloadProgress: Map.of(_currentDownloadProgress),
-      downloadingTrainingSessionId: sessionId,
-    ));
-
-    try {
-      final stream = _downloadRepository.downloadTrainingSession(detail);
-      _downloadSubscription = stream.listen(
-        (progress) {
-          _currentDownloadProgress[sessionId] = progress;
-          emit(TrainingSessionDownloading(
-            uiModel: buildTrainingSessionsUiModel(),
-            downloadProgress: Map.of(_currentDownloadProgress),
-            downloadingTrainingSessionId: sessionId,
-          ));
-        },
-        onError: (error) {
-          _currentDownloadStatus[sessionId] = DownloadStatus.error;
-          _currentDownloadProgress.remove(sessionId);
-          emit(TrainingSessionError(
-            message: 'Download failed: $error',
-            uiModel: buildTrainingSessionsUiModel(),
-          ));
-        },
-        onDone: () {
-          _downloadRepository
-              .isTrainingSessionDownloaded(sessionId, detail.items)
-              .then((ok) {
-            _currentDownloadStatus[sessionId] =
-                ok ? DownloadStatus.downloaded : DownloadStatus.error;
-            _currentDownloadProgress.remove(sessionId);
-            emit(
-                TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
-          });
-        },
-      );
-    } catch (e) {
-      _currentDownloadStatus[sessionId] = DownloadStatus.error;
-      _currentDownloadProgress.remove(sessionId);
-      emit(TrainingSessionError(
-          message: 'Failed to start download: $e',
-          uiModel: buildTrainingSessionsUiModel()));
     }
   }
 
@@ -339,11 +275,5 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         uiModel: buildTrainingSessionsUiModel(),
       ));
     }
-  }
-
-  @override
-  Future<void> close() {
-    _downloadSubscription?.cancel();
-    return super.close();
   }
 }

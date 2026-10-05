@@ -136,7 +136,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     final uiModel = switch (s) {
       TrainingSessionLoaded() => s.uiModel,
       TrainingSessionLoading() => s.uiModel,
-      TrainingSessionDownloading() => s.uiModel,
       TrainingSessionError() => s.uiModel,
       _ => null,
     };
@@ -336,7 +335,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         final uiModel = switch (state) {
           TrainingSessionLoaded() => state.uiModel,
           TrainingSessionLoading() => state.uiModel,
-          TrainingSessionDownloading() => state.uiModel,
           TrainingSessionError() => state.uiModel,
           _ => null,
         };
@@ -344,9 +342,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             state is TrainingSessionLoading || state is TrainingSessionInitial;
         final sessions = uiModel?.trainingSessions ?? [];
         final dlStatuses = uiModel?.downloadStatuses ?? {};
-        final dlProgress = state is TrainingSessionDownloading
-            ? state.downloadProgress
-            : <int, double>{};
         final itemCounts = uiModel?.sessionItemCounts ?? {};
         final durations = uiModel?.sessionDurations ?? {};
 
@@ -374,7 +369,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                       child: _SessionList(
                         sessions: sessions,
                         dlStatuses: dlStatuses,
-                        dlProgress: dlProgress,
                         itemCounts: itemCounts,
                         durations: durations,
                         onOpen: _openPlayer,
@@ -684,7 +678,6 @@ class _SessionList extends StatelessWidget {
   const _SessionList({
     required this.sessions,
     required this.dlStatuses,
-    required this.dlProgress,
     required this.itemCounts,
     required this.durations,
     required this.onOpen,
@@ -694,7 +687,6 @@ class _SessionList extends StatelessWidget {
 
   final List<TrainingSession> sessions;
   final Map<int, DownloadStatus> dlStatuses;
-  final Map<int, double> dlProgress;
   final Map<int, int> itemCounts;
   final Map<int, int> durations;
   final ValueChanged<TrainingSession> onOpen;
@@ -725,7 +717,6 @@ class _SessionList extends StatelessWidget {
         }
         final session = sessions[index - 1];
         final status = dlStatuses[session.id] ?? DownloadStatus.notDownloaded;
-        final progress = dlProgress[session.id] ?? 0.0;
         final count = itemCounts[session.id] ?? 0;
         final dur = durations[session.id];
         final accent = colors.accentFor(session.id);
@@ -735,7 +726,6 @@ class _SessionList extends StatelessWidget {
             session: session,
             accent: accent,
             dlStatus: status,
-            dlProgress: progress,
             itemCount: count,
             duration: dur,
             onTap: () => onOpen(session),
@@ -747,7 +737,6 @@ class _SessionList extends StatelessWidget {
           session: session,
           accent: accent,
           dlStatus: status,
-          dlProgress: progress,
           itemCount: count,
           duration: dur,
           onTap: () => onOpen(session),
@@ -767,7 +756,6 @@ class _BannerCard extends StatelessWidget {
     required this.session,
     required this.accent,
     required this.dlStatus,
-    required this.dlProgress,
     required this.itemCount,
     required this.duration,
     required this.onTap,
@@ -778,7 +766,6 @@ class _BannerCard extends StatelessWidget {
   final TrainingSession session;
   final SessionAccent accent;
   final DownloadStatus dlStatus;
-  final double dlProgress;
   final int itemCount;
   final int? duration;
   final VoidCallback onTap;
@@ -885,7 +872,6 @@ class _BannerCard extends StatelessWidget {
                         if (!kIsWeb)
                           DownloadRing(
                             status: dlStatus,
-                            progress: dlProgress,
                             accentFg: accent.fg,
                             accentBg: accent.bg,
                             onTap: onDownload,
@@ -918,7 +904,6 @@ class _CompactCard extends StatelessWidget {
     required this.session,
     required this.accent,
     required this.dlStatus,
-    required this.dlProgress,
     required this.itemCount,
     required this.duration,
     required this.onTap,
@@ -929,7 +914,6 @@ class _CompactCard extends StatelessWidget {
   final TrainingSession session;
   final SessionAccent accent;
   final DownloadStatus dlStatus;
-  final double dlProgress;
   final int itemCount;
   final int? duration;
   final VoidCallback onTap;
@@ -1022,7 +1006,6 @@ class _CompactCard extends StatelessWidget {
                 if (!kIsWeb)
                   DownloadRing(
                     status: dlStatus,
-                    progress: dlProgress,
                     accentFg: accent.fg,
                     accentBg: accent.bg,
                     onTap: onDownload,

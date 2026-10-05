@@ -102,40 +102,13 @@ class _StubDownloadRepository implements DownloadRepository {
       statuses;
 
   @override
-  Stream<double> downloadTrainingSession(SessionDetail session) =>
-      const Stream.empty();
-
-  @override
-  Future<bool> isTrainingSessionDownloaded(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
-
-  @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => null;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;
 
   @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async =>
-      item.exercise.audioFileUrl ?? '';
-
-  @override
-  Future<String?> cacheImage(String url) async => null;
-
-  @override
   Future<String?> getLocalVideoPath(String videoUrl) async => null;
-
-  @override
-  Future<String?> cacheVideo(String url) async => null;
-
-  @override
-  Future<bool> checkAllCachedAndMark(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

@@ -82,26 +82,8 @@ class _FakeDownloadRepo implements DownloadRepository {
           bytesDone: 0,
           bytesTotal: 0));
 
-  // Instrumentation for resolvePlayableAudioPath — lets tests assert it's
-  // called exactly once per track and that its result (not the raw remote
-  // URL) is what reaches the audio engine.
-  int resolveCallCount = 0;
-  final List<int> resolvedItemIds = [];
-  String Function(ItemDetail item)? resolvedPathBuilder;
-
-  // Per-item gates: resolving that item's audio waits until its completer
-  // is completed — simulates a slow download for one specific track.
-  final Map<int, Completer<void>> resolveGates = {};
-
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
-  @override
-  Stream<double> downloadTrainingSession(SessionDetail s) =>
-      const Stream.empty();
-  @override
-  Future<bool> isTrainingSessionDownloaded(
-          int id, List<ItemDetail> items) async =>
-      false;
   // Sessions are downloaded before they play, so by default every track's
   // audio is on the device; tests about missing media override this.
   String? Function(ItemDetail item) localAudioPathBuilder =
@@ -113,50 +95,13 @@ class _FakeDownloadRepo implements DownloadRepository {
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
 
-  final List<String> cacheImageCalls = [];
-  final List<String> cacheVideoCalls = [];
-
-  // Null by default (matches the real repo's "download failed/still in
-  // flight" outcome) — a test opts in to a successful cache by setting this.
-  String? Function(String url)? cacheVideoResultBuilder;
-
-  // When set, cacheVideo() resolves via this instead of the builder above —
-  // lets a test control precisely *when* a cache result lands (e.g. after a
-  // reload has already happened), not just whether it succeeds.
-  Completer<String?>? cacheVideoCompleter;
-
   @override
   Future<String?> getLocalImagePath(String imageUrl) async =>
       localImagePathBuilder?.call(imageUrl);
-  @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-  @override
-  Future<String?> cacheImage(String url) async {
-    cacheImageCalls.add(url);
-    return null;
-  }
 
   @override
   Future<String?> getLocalVideoPath(String videoUrl) async =>
       localVideoPathBuilder?.call(videoUrl);
-  @override
-  Future<String?> cacheVideo(String url) async {
-    cacheVideoCalls.add(url);
-    if (cacheVideoCompleter != null) return cacheVideoCompleter!.future;
-    return cacheVideoResultBuilder?.call(url);
-  }
-
-  @override
-  Future<bool> checkAllCachedAndMark(int sid, List<ItemDetail> items) async =>
-      false;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async {
-    resolveCallCount++;
-    resolvedItemIds.add(item.item.id);
-    await resolveGates[item.item.id]?.future;
-    return resolvedPathBuilder?.call(item) ?? '/cached/${item.item.id}.mp3';
-  }
 }
 
 // ── Builder helpers ────────────────────────────────────────────────────────────
@@ -1157,12 +1102,10 @@ void main() {
     });
   });
 
-  // ---------- audio egress: resolve-before-play ----------
+  // ---------- local-only playback ----------
   //
-  // Regression coverage for the double-fetch bug: playing a track that isn't
-  // cached yet used to stream the raw remote URL *and* separately trigger a
-  // background cacheAudio() download of the same file. The fix routes
-  // playback through resolvePlayableAudioPath() so only one fetch happens.
+  // Sessions are downloaded before they play: the player only ever hands the
+  // engine a file already on the device, never a remote URL.
 
   group('local-only playback (no streaming)', () {
     DomainSnapshot twoTracks() => _snapshotWithItems(
@@ -1184,8 +1127,6 @@ void main() {
       await cubit.loadTracks();
 
       expect(audioService.lastPlayedPath, '/cached/10000.mp3');
-      expect(downloadRepo.resolveCallCount, 0,
-          reason: 'nothing is downloaded or streamed while playing');
       expect(cubit.state.needsDownload, isFalse);
     });
 
@@ -1216,48 +1157,7 @@ void main() {
       expect(cubit.state.needsDownload, isTrue);
       expect(cubit.state.isPlaying, isFalse);
       expect(audioService.playCallCount, 0);
-      expect(downloadRepo.resolveCallCount, 0);
     });
-  });
-
-  // Sessions are downloaded completely before they play: nothing is fetched
-  // while playing (the old 4-track lookahead cache and the live video
-  // swap-in are gone).
-  test('playing never fetches media — no lookahead caching', () async {
-    const photoMove = Exercise(
-      id: 10,
-      name: 'Photo',
-      audioFileUrl: 'https://audio/10.mp3',
-      media: ExerciseMedia(type: 'photo', src: 'https://cdn/10.jpg'),
-    );
-    const videoMove = Exercise(
-      id: 11,
-      name: 'Video',
-      audioFileUrl: 'https://audio/11.mp3',
-      media: ExerciseMedia(
-          type: 'video',
-          src: 'https://cdn/11.mp4',
-          poster: 'https://cdn/11.jpg'),
-    );
-    final snap = _snapshotWithItems(
-      _session(1),
-      [
-        _item(sessionId: 1, exerciseId: 10, position: 0),
-        _item(sessionId: 1, exerciseId: 11, position: 1),
-      ],
-      [photoMove, videoMove],
-    );
-    final downloads = _FakeDownloadRepo();
-    final cubit = _makeCubit(snap, downloadRepo: downloads);
-    addTearDown(cubit.close);
-
-    await cubit.loadTracks();
-    cubit.next();
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-
-    expect(downloads.cacheImageCalls, isEmpty);
-    expect(downloads.cacheVideoCalls, isEmpty);
-    expect(downloads.resolveCallCount, 0);
   });
 
   test('a video not on the device shows its poster (e.g. audio-only tier)',
@@ -1886,19 +1786,19 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      downloads.resolveGates[10001] = slowMove2; // move 2 downloads slowly
+      audio.playGates['/cached/10001.mp3'] = slowMove2; // move 2 starts slowly
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);
       await cubit.loadTracks(); // move 1 playing
 
-      cubit.next(); // move 2: stuck downloading
+      cubit.next(); // move 2: engine still starting
       await Future<void>.delayed(const Duration(milliseconds: 20));
       cubit.next(); // move 3: loads and plays
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(audio.lastPlayedPath, '/cached/10002.mp3');
 
-      slowMove2.complete(); // move 2's download finally finishes
+      slowMove2.complete(); // move 2's start finally returns
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(cubit.state.playingIndex, 2);
@@ -1919,7 +1819,7 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      downloads.resolveGates[10001] = slowMove2;
+      audio.playGates['/cached/10001.mp3'] = slowMove2;
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);

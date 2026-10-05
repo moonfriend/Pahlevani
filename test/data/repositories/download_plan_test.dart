@@ -111,6 +111,21 @@ void main() {
     expect(downloaded, ['https://cdn/v.mp4'], reason: 'a and b are kept');
   });
 
+  test(
+      'images come resized, videos as-is, and both land where the player '
+      'looks them up', () async {
+    const img = DownloadFile(
+        'https://abcdef.supabase.co/storage/v1/object/public/movement-media/kick.jpg',
+        DownloadFileKind.image);
+    await repo.downloadPlan(const DownloadPlan([img, v])).drain<void>();
+
+    expect(downloaded.first, contains('/storage/v1/render/image/public/'));
+    expect(downloaded.first, contains('width=500'));
+    expect(downloaded.last, 'https://cdn/v.mp4');
+    expect(await repo.getLocalImagePath(img.url), pathOf(img));
+    expect(await repo.getLocalVideoPath(v.url), pathOf(v));
+  });
+
   test('cancelling stops the transfer and starts no further files', () async {
     final started = Completer<void>();
     final release = Completer<void>();

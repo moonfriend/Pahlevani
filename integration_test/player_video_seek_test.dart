@@ -54,8 +54,6 @@ class _LocalFixtureDownloadRepository extends FakeDownloadRepository {
   @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => _tonePath;
   @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async => _tonePath;
-  @override
   Future<String?> getLocalVideoPath(String videoUrl) async => _clipPath;
 }
 
