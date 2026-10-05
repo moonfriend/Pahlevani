@@ -18,6 +18,7 @@ scripts/tests/test_media_assets.py.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 # Every column in the schema that holds a public media URL. The integrity
 # check scans exactly these; a test pins the list so a new media column can't
@@ -34,6 +35,9 @@ REFERENCE_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 TABLE = "media_asset"
+
+# Supabase/PostgREST returns at most this many rows per request.
+_PAGE = 1000
 
 
 class MediaAssetError(RuntimeError):
@@ -73,6 +77,52 @@ def record_media_asset(db, asset: MediaAsset) -> None:
         ) from e
 
 
+def _select_all(db, table: str, columns: str) -> list[dict]:
+    """Every row of [table] (paged — a single select is capped at _PAGE)."""
+    rows: list[dict] = []
+    start = 0
+    while True:
+        page = (db.table(table).select(columns)
+                .range(start, start + _PAGE - 1).execute().data) or []
+        rows.extend(page)
+        if len(page) < _PAGE:
+            return rows
+        start += _PAGE
+
+
+def load_recorded_sizes(db) -> dict[str, int]:
+    """url → recorded size for every media_asset row."""
+    return {r["url"]: int(r["size_bytes"])
+            for r in _select_all(db, TABLE, "url,size_bytes")}
+
+
+def mark_verified(db, assets: list[MediaAsset], *, now: datetime) -> None:
+    """Writes [assets] with checked_at = [now]: their sizes were just
+    confirmed against the objects on R2."""
+    for asset in assets:
+        db.table(TABLE).upsert({
+            "url": asset.url,
+            "size_bytes": asset.size_bytes,
+            "checked_at": now.isoformat(),
+        }, on_conflict="url").execute()
+
+
+def remote_size(url: str, http) -> int | None:
+    """Size of the object behind [url] from an HTTP HEAD (Content-Length),
+    or None when it can't be sized (missing object, error, no length)."""
+    try:
+        response = http.head(url, allow_redirects=True, timeout=20)
+    except Exception:  # noqa: BLE001 — any failure means "can't be sized"
+        return None
+    if response.status_code != 200:
+        return None
+    try:
+        size = int(response.headers.get("Content-Length", ""))
+    except ValueError:
+        return None
+    return size if size > 0 else None
+
+
 def _is_media_url(value) -> bool:
     return isinstance(value, str) and value.strip().startswith(
         ("http://", "https://"))
@@ -82,7 +132,7 @@ def collect_referenced_urls(db) -> set[str]:
     """Every distinct media URL referenced anywhere in REFERENCE_COLUMNS."""
     urls: set[str] = set()
     for table, column in REFERENCE_COLUMNS:
-        rows = db.table(table).select(column).execute().data or []
+        rows = _select_all(db, table, column)
         urls.update(r[column].strip() for r in rows if _is_media_url(r.get(column)))
     return urls
 

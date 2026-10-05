@@ -5,13 +5,18 @@ Run:  cd scripts && uv run --with pytest pytest tests -q
 
 import pytest
 
+from datetime import datetime, timezone
+
 from media_assets import (
     MediaAsset,
     MediaAssetError,
     REFERENCE_COLUMNS,
     build_integrity_report,
     collect_referenced_urls,
+    load_recorded_sizes,
+    mark_verified,
     record_media_asset,
+    remote_size,
 )
 
 
@@ -24,9 +29,14 @@ class _FakeQuery:
         self._payload = None
         self._op = None
         self._columns = None
+        self._range = None
 
     def select(self, columns):
         self._op, self._columns = "select", columns
+        return self
+
+    def range(self, start, end):
+        self._range = (start, end)
         return self
 
     def upsert(self, payload, on_conflict=None):
@@ -40,7 +50,11 @@ class _FakeQuery:
             self._db.upserts.setdefault(self._table, []).append(self._payload)
             return _Result([self._payload])
         rows = self._db.rows.get(self._table, [])
-        return _Result([{self._columns: r.get(self._columns)} for r in rows])
+        if self._range is not None:
+            start, end = self._range
+            rows = rows[start:end + 1]
+        cols = [c.strip() for c in self._columns.split(",")]
+        return _Result([{c: r.get(c) for c in cols} for r in rows])
 
 
 class _Result:
@@ -180,3 +194,56 @@ def test_fixes_list_upserts_actual_sizes_for_missing_and_wrong_rows_only():
         MediaAsset("https://cdn/norow", 3),
         MediaAsset("https://cdn/wrong", 2),
     ]
+
+
+# ── paging, verification, remote sizes ────────────────────────────────────────
+
+
+def test_reads_every_row_across_pages():
+    # Supabase returns at most 1000 rows per request.
+    db = FakeDb(rows={
+        "media_asset": [{"url": f"https://cdn/{i}", "size_bytes": i + 1}
+                        for i in range(2500)],
+    })
+    sizes = load_recorded_sizes(db)
+    assert len(sizes) == 2500
+    assert sizes["https://cdn/2499"] == 2500
+
+
+def test_mark_verified_stamps_checked_at():
+    db = FakeDb()
+    now = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+    mark_verified(db, [MediaAsset("https://cdn/a", 5)], now=now)
+    (row,) = db.upserts["media_asset"]
+    assert row == {"url": "https://cdn/a", "size_bytes": 5,
+                   "checked_at": now.isoformat()}
+
+
+class _Resp:
+    def __init__(self, status, headers):
+        self.status_code, self.headers = status, headers
+
+
+class _Http:
+    def __init__(self, resp=None, exc=None):
+        self.resp, self.exc, self.calls = resp, exc, []
+
+    def head(self, url, allow_redirects, timeout):
+        self.calls.append(url)
+        if self.exc:
+            raise self.exc
+        return self.resp
+
+
+def test_remote_size_reads_content_length():
+    assert remote_size("https://cdn/a", _Http(_Resp(200, {"Content-Length": "42"}))) == 42
+
+
+@pytest.mark.parametrize("http", [
+    _Http(_Resp(404, {"Content-Length": "9"})),
+    _Http(_Resp(200, {})),
+    _Http(_Resp(200, {"Content-Length": "0"})),
+    _Http(exc=OSError("network down")),
+])
+def test_remote_size_is_none_when_the_object_cant_be_sized(http):
+    assert remote_size("https://cdn/a", http) is None
