@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
+import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
@@ -1078,4 +1081,76 @@ void main() {
           reason: 'after Save the player waits for the user to press play');
     });
   });
+
+  // ── Media not on the device ────────────────────────────────────────────────
+
+  group('needs download', () {
+    testWidgets(
+        'audio not on the device → explains and offers the download, never '
+        'plays', (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      expect(find.textContaining("isn't on this device"), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Download'), findsOneWidget);
+      final cubit = tester
+          .element(find.byType(
+              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+          .read<TrainingSessionPlayerCubit>();
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets('after downloading, the player loads and plays',
+        (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Download'));
+      await tester.pumpAndSettle();
+      // The download completes; the files are now on the device.
+      downloads.localAudioPathBuilder = (item) => '/cached/${item.item.id}.mp3';
+      await tester.tap(find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('Download ')));
+      // Dialog finishes and closes, then the player reloads (several async
+      // hops; the playing equalizer animates forever, so no pumpAndSettle).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining("isn't on this device"), findsNothing);
+      final cubit = tester
+          .element(find.byType(
+              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+          .read<TrainingSessionPlayerCubit>();
+      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state.tracks, isNotEmpty);
+    });
+  });
+}
+
+class _NoSizes implements MediaSizeRepository {
+  @override
+  Future<Map<String, int>> sizesFor(Set<String> urls) async =>
+      {for (final u in urls) u: 1000000};
+}
+
+class _MemoryPrefs implements DownloadPreferencesRepository {
+  DownloadTier? tier;
+  @override
+  Future<DownloadTier?> getPreferredTier() async => tier;
+  @override
+  Future<void> setPreferredTier(DownloadTier t) async => tier = t;
 }

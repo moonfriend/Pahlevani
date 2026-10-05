@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
+import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
@@ -123,6 +125,19 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     ));
   }
 
+  /// Downloads this session's missing media (download dialog), then reloads
+  /// the player so it plays the local files.
+  Future<void> _download(BuildContext context) async {
+    final done = await showMediaDownloadDialog(
+      context,
+      target: SessionDownloadTarget(_session.id),
+      title: _session.title,
+      message: 'Are you ready to download all the data of this training '
+          'session?',
+    );
+    if (done && mounted) await _cubit.loadTracks();
+  }
+
   /// Replaces the player with a fresh one for [session], paused at the start.
   /// The old player is fully closed first, so it releases the audio engine
   /// (shared app-wide on Android) before the new one loads into it.
@@ -230,6 +245,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           builder: (context, state) {
             if (state.isLoading && state.tracks.isEmpty) {
               return const Center(child: CircularProgressIndicator());
+            }
+            if (state.needsDownload) {
+              return Column(children: [
+                _AppBar(session: _session, onEdit: () => _openEdit(context)),
+                Expanded(
+                    child:
+                        _NeedsDownload(onDownload: () => _download(context))),
+              ]);
             }
             if (state.errorMessage != null && state.tracks.isEmpty) {
               return Center(
@@ -1564,4 +1587,34 @@ String _formatLength(int seconds) {
   final m = seconds ~/ 60;
   final s = seconds % 60;
   return '$m:${s.toString().padLeft(2, '0')}';
+}
+
+/// Shown instead of the player when some of the session's audio isn't on the
+/// device (e.g. a different Morshed was chosen since it was downloaded).
+/// Sessions are never streamed, so the only way forward is to download.
+class _NeedsDownload extends StatelessWidget {
+  const _NeedsDownload({required this.onDownload});
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.download_for_offline_outlined,
+              size: 56, color: cs.primary),
+          const SizedBox(height: 16),
+          const Text(
+            "This session's media isn't on this device yet. Download it to "
+            'train — sessions play from the device, without streaming.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          FilledButton(onPressed: onDownload, child: const Text('Download')),
+        ]),
+      ),
+    );
+  }
 }
