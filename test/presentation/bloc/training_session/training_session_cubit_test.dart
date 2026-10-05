@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
@@ -81,6 +83,18 @@ class _SpyRepository implements TrainingSessionRepository {
 }
 
 class _DownloadRepoWithStream implements DownloadRepository {
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
   final Stream<double> Function(SessionDetail) streamFactory;
   bool downloadCalled = false;
   bool isDownloaded = false;
@@ -132,6 +146,18 @@ class _DownloadRepoWithStream implements DownloadRepository {
 }
 
 class _FakeDownloadRepository implements DownloadRepository {
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
 

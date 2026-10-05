@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -7,6 +9,18 @@ import 'package:pahlevani/presentation/pages/training_session/download_status.da
 /// Reusable fake for [DownloadRepository].
 /// Download progress is controlled from tests via [emitProgress] / [completeDownload].
 class FakeDownloadRepository implements DownloadRepository {
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
   Map<int, DownloadStatus> initialStatuses;
   bool downloadCalled = false;
   int? lastDownloadedSessionId;

@@ -1,3 +1,6 @@
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
+import 'package:dio/dio.dart' show CancelToken;
+import 'dart:math' show min;
 import 'dart:async';
 import 'dart:io';
 
@@ -43,6 +46,96 @@ class DownloadRepositoryImpl implements DownloadRepository {
   }
 
   DownloadRepositoryImpl({required this.localDataSource});
+
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async {
+    final dir = await localDataSource.getMediaCacheDirectoryPath();
+    final local = <String>{};
+    for (final f in plan.files) {
+      if (await File('$dir/${mediaCacheFileName(f.url, f.kind)}').exists()) {
+        local.add(f.url);
+      }
+    }
+    return local;
+  }
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+      {Map<String, int> knownSizes = const {}}) {
+    final token = CancelToken();
+    late final StreamController<DownloadProgress> controller;
+    controller = StreamController<DownloadProgress>(
+      onListen: () => unawaited(_runPlan(plan, knownSizes, controller, token)),
+      onCancel: () {
+        if (!token.isCancelled) token.cancel('download cancelled');
+      },
+    );
+    return controller.stream;
+  }
+
+  Future<void> _runPlan(
+    DownloadPlan plan,
+    Map<String, int> knownSizes,
+    StreamController<DownloadProgress> controller,
+    CancelToken token,
+  ) async {
+    try {
+      final dir = await localDataSource.getMediaCacheDirectoryPath();
+      await Directory(dir).create(recursive: true);
+      final local = await localUrlsIn(plan);
+      final todo = plan.files.where((f) => !local.contains(f.url)).toList();
+
+      // Recorded sizes; a file without one learns it from the server's
+      // Content-Length when its transfer starts.
+      final sizes = <String, int?>{
+        for (final f in todo) f.url: knownSizes[f.url]
+      };
+      int totalBytes() =>
+          sizes.values.whereType<int>().fold(0, (a, b) => a + b);
+      var bytesDone = 0, filesDone = 0;
+      void report(int currentFileBytes) {
+        if (controller.isClosed) return;
+        controller.add(DownloadProgress(
+          filesDone: filesDone,
+          filesTotal: todo.length,
+          bytesDone: bytesDone + currentFileBytes,
+          bytesTotal: totalBytes(),
+        ));
+      }
+
+      report(0);
+      for (final f in todo) {
+        if (token.isCancelled) return;
+        final path = '$dir/${mediaCacheFileName(f.url, f.kind)}';
+        // Images come through the same resize transform cacheImage uses, so
+        // the player's local lookups find them (R2 URLs pass through as-is).
+        final source = f.kind == DownloadFileKind.image
+            ? supabaseImageTransformUrl(f.url)
+            : f.url;
+        var current = 0;
+        await _fetchOnce(
+          path,
+          () => localDataSource.downloadFile(source, path, (received, total) {
+            sizes[f.url] ??= total;
+            // Clamped to the expected size so progress never runs backwards
+            // when a recorded size is a little off.
+            current = min(received, sizes[f.url] ?? received);
+            report(current);
+          }, cancelToken: token),
+        );
+        bytesDone += sizes[f.url] ?? current;
+        filesDone++;
+        report(0);
+      }
+    } catch (e, st) {
+      // A cancellation is the listener's own doing — not an error to report.
+      if (!token.isCancelled && !controller.isClosed) {
+        controller.addError(e, st);
+      }
+    } finally {
+      if (!controller.isClosed) await controller.close();
+    }
+  }
 
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async {

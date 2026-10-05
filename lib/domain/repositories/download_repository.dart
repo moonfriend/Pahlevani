@@ -1,3 +1,5 @@
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -54,4 +56,15 @@ abstract class DownloadRepository {
   /// If all are cached, also marks the session as downloaded in persistent storage
   /// so the badge appears on the sessions list without requiring an explicit download.
   Future<bool> checkAllCachedAndMark(int sessionId, List<ItemDetail> items);
+
+  /// URLs of [plan]'s files that are already on the device.
+  Future<Set<String>> localUrlsIn(DownloadPlan plan);
+
+  /// Downloads [plan]'s missing files one by one, reporting progress (bytes
+  /// from [knownSizes], refined by the server as files start). Files already
+  /// on the device are skipped, so after a failure (stream error) the next
+  /// call carries on with what's still missing. Cancelling the subscription
+  /// stops the running transfer; finished files are kept.
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+      {Map<String, int> knownSizes = const {}});
 }

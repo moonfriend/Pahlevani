@@ -1,3 +1,5 @@
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'dart:async';
@@ -107,6 +109,18 @@ class _MutableSessionRepo implements TrainingSessionRepository {
 }
 
 class _FakeDownloadRepo implements DownloadRepository {
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
   // Instrumentation for resolvePlayableAudioPath — lets tests assert it's
   // called exactly once per track and that its result (not the raw remote
   // URL) is what reaches the audio engine.
