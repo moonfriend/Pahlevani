@@ -117,6 +117,20 @@ void main() {
       });
     });
 
+    test(
+        "no recording for the movement → the exercise's own audio, exactly "
+        'like the player falls back to it', () {
+      const ownAudio =
+          Exercise(id: 7, name: 'Custom', audioFileUrl: 'https://cdn/own.mp3');
+      final plan = buildSessionDownloadPlan(
+          items: [item(0, ownAudio)],
+          tracks: tracks,
+          morshedId: 2,
+          tier: DownloadTier.audio);
+      expect(
+          urls(plan, DownloadFileKind.audio), contains('https://cdn/own.mp3'));
+    });
+
     test('each URL appears once; blank or missing URLs are skipped', () {
       const blankMedia = Exercise(
         id: 4,

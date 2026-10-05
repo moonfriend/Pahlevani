@@ -26,7 +26,10 @@ DownloadPlan buildSessionDownloadPlan({
       chosenMorshedId: morshedId,
       availableTracks: tracks,
     );
-    if (track != null) plan.add(track.audioUrl, DownloadFileKind.audio);
+    // Same fallback as the player: no curated recording for the movement →
+    // the exercise's own audio (if any).
+    plan.add(track?.audioUrl ?? detail.exercise.audioFileUrl,
+        DownloadFileKind.audio);
 
     final media = detail.exercise.media;
     if (media.type == 'photo') plan.add(media.src, DownloadFileKind.image);
