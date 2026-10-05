@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:pahlevani/data/media_cache/media_cache_paths.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/utils/image_transform.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
@@ -72,7 +74,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
       controller.add(0.0);
 
       for (final item in validItems) {
-        final path = '$dir/${_audioFilename(item.exercise)}';
+        final path = '$dir/${_audioFile(item.exercise)}';
         try {
           // Already in the shared cache — possibly fetched for another
           // session that references the same exercise. Skip the network call.
@@ -161,7 +163,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
   Future<String?> getLocalAudioPath(ItemDetail item) async {
     try {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
-      final path = '$dir/${_audioFilename(item.exercise)}';
+      final path = '$dir/${_audioFile(item.exercise)}';
       return await File(path).exists().then((e) => e ? path : null);
     } catch (_) {
       // e.g. path_provider unavailable (Flutter Web has no local filesystem).
@@ -174,7 +176,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
     if (imageUrl.isEmpty) return null;
     try {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
-      final path = '$dir/img_${_urlHash(imageUrl)}';
+      final path =
+          '$dir/${mediaCacheFileName(imageUrl, DownloadFileKind.image)}';
       return await File(path).exists().then((e) => e ? path : null);
     } catch (_) {
       // e.g. path_provider unavailable (Flutter Web has no local filesystem).
@@ -187,7 +190,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
     try {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
       await Directory(dir).create(recursive: true);
-      final path = '$dir/${_audioFilename(item.exercise)}';
+      final path = '$dir/${_audioFile(item.exercise)}';
       // Guard: checked synchronously before any await so two concurrent calls
       // for the same path cannot both pass through.
       if (_inFlight.contains(path)) return null;
@@ -215,7 +218,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
       await Directory(dir).create(recursive: true);
       // Hash keyed on original URL so getLocalImagePath lookup stays stable.
-      final path = '$dir/img_${_urlHash(url)}';
+      final path = '$dir/${mediaCacheFileName(url, DownloadFileKind.image)}';
       if (_inFlight.contains(path)) return null;
       _inFlight.add(path);
       try {
@@ -244,7 +247,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
     if (videoUrl.isEmpty) return null;
     try {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
-      final path = '$dir/vid_${_urlHash(videoUrl)}.mp4';
+      final path =
+          '$dir/${mediaCacheFileName(videoUrl, DownloadFileKind.followAlongVideo)}';
       return await File(path).exists().then((e) => e ? path : null);
     } catch (_) {
       // e.g. path_provider unavailable (Flutter Web has no local filesystem).
@@ -259,7 +263,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
       await Directory(dir).create(recursive: true);
       // Hash keyed on original URL so getLocalVideoPath lookup stays stable.
-      final path = '$dir/vid_${_urlHash(url)}.mp4';
+      final path =
+          '$dir/${mediaCacheFileName(url, DownloadFileKind.followAlongVideo)}';
       if (_inFlight.contains(path)) return null;
       _inFlight.add(path);
       try {
@@ -298,8 +303,7 @@ class DownloadRepositoryImpl implements DownloadRepository {
     if (validItems.isEmpty) return false;
     final dir = await localDataSource.getMediaCacheDirectoryPath();
     final results = await Future.wait(
-      validItems
-          .map((i) => File('$dir/${_audioFilename(i.exercise)}').exists()),
+      validItems.map((i) => File('$dir/${_audioFile(i.exercise)}').exists()),
     );
     return results.every((e) => e);
   }
@@ -319,33 +323,8 @@ class DownloadRepositoryImpl implements DownloadRepository {
     } catch (_) {}
   }
 
-  String _audioFilename(Exercise exercise) {
-    final safeName = exercise.name
-        .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
-        .replaceAll(' ', '_');
-    final url = exercise.audioFileUrl ?? '';
-    String ext = '.mp3';
-    try {
-      final uri = Uri.parse(url);
-      if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
-        final candidate = uri.pathSegments.last
-            .substring(uri.pathSegments.last.lastIndexOf('.'));
-        if (['.mp3', '.m4a', '.wav', '.ogg']
-            .contains(candidate.toLowerCase())) {
-          ext = candidate;
-        }
-      }
-    } catch (_) {}
-    return '${safeName}_${_urlHash(url)}$ext';
-  }
-
-  String _urlHash(String url) => _djb2(url).toRadixString(16).padLeft(8, '0');
-
-  int _djb2(String s) {
-    var hash = 5381;
-    for (final c in s.codeUnits) {
-      hash = ((hash << 5) + hash) ^ c;
-    }
-    return hash.toUnsigned(32);
-  }
+  /// The exercise's (resolved) recording in the cache — keyed by URL only,
+  /// so exercises sharing a recording share the file.
+  String _audioFile(Exercise exercise) =>
+      mediaCacheFileName(exercise.audioFileUrl ?? '', DownloadFileKind.audio);
 }

@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
+import 'package:pahlevani/data/media_cache/media_cache_paths.dart';
 import 'package:pahlevani/data/repositories_impl/download_repository_impl.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart'
     show Exercise, ExerciseMedia;
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
@@ -16,36 +18,10 @@ import '../../fakes/test_seed_data.dart';
 class MockLocalDataSource extends Mock
     implements TrainingSessionLocalDataSource {}
 
-// Mirrors _audioFilename / _djb2 from DownloadRepositoryImpl so tests can
-// pre-create the exact file paths the impl will look for. Keyed purely on
-// the exercise (name + URL hash) — not on the item/session — since audio is
-// now shared across every session that references the same exercise.
-String _urlHash(String url) {
-  var hash = 5381;
-  for (final c in url.codeUnits) {
-    hash = ((hash << 5) + hash) ^ c;
-  }
-  return (hash.toUnsigned(32)).toRadixString(16).padLeft(8, '0');
-}
-
-String _audioFilename(Exercise exercise) {
-  final safeName = exercise.name
-      .replaceAll(RegExp(r'[^a-zA-Z0-9 \-_]+'), '_')
-      .replaceAll(' ', '_');
-  final url = exercise.audioFileUrl ?? '';
-  String ext = '.mp3';
-  try {
-    final uri = Uri.parse(url);
-    if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.contains('.')) {
-      final candidate = uri.pathSegments.last
-          .substring(uri.pathSegments.last.lastIndexOf('.'));
-      if (['.mp3', '.m4a', '.wav', '.ogg'].contains(candidate.toLowerCase())) {
-        ext = candidate;
-      }
-    }
-  } catch (_) {}
-  return '${safeName}_${_urlHash(url)}$ext';
-}
+// The cache's own naming function — tests pre-create exactly the paths the
+// impl looks for, without a copy of the naming logic that could drift.
+String _audioFilename(Exercise exercise) =>
+    mediaCacheFileName(exercise.audioFileUrl ?? '', DownloadFileKind.audio);
 
 void main() {
   late MockLocalDataSource mockDs;
@@ -198,7 +174,7 @@ void main() {
 
     test('returns path when image file exists', () async {
       const url = 'https://example.com/img.jpg';
-      final imgFile = File('${tmpDir.path}/img_${_urlHash(url)}')..createSync();
+      final imgFile = File('${tmpDir.path}/img_${urlHash(url)}')..createSync();
 
       expect(await repo.getLocalImagePath(url), imgFile.path);
     });
@@ -297,6 +273,36 @@ void main() {
       verifyNever(() => mockDs.downloadFile(any(), any(), any()));
     });
 
+    test(
+        'two exercises sharing one recording share one cached file (no '
+        'second download)', () async {
+      when(() => mockDs.downloadFile(any(), any(), any()))
+          .thenAnswer((inv) async {
+        await File(inv.positionalArguments[1] as String)
+            .create(recursive: true);
+      });
+      const shared = 'https://cdn/shared-recording.mp3';
+      const a = Exercise(
+          id: 501,
+          name: 'Mile Aram 1st',
+          audioFileUrl: shared,
+          repetitionsDefault: 1);
+      const b = Exercise(
+          id: 502,
+          name: 'Mile Aram 2nd',
+          audioFileUrl: shared,
+          repetitionsDefault: 1);
+      const itemA = ItemDetail(item: testItem1, exercise: a);
+      const itemB = ItemDetail(item: testItem2, exercise: b);
+
+      await repo.cacheAudio(itemA);
+
+      expect(await repo.getLocalAudioPath(itemB), isNotNull,
+          reason: 'the recording is already on the device');
+      expect(await repo.getLocalAudioPath(itemB),
+          await repo.getLocalAudioPath(itemA));
+    });
+
     test('downloads file when not already on disk', () async {
       when(() => mockDs.downloadFile(any(), any(), any()))
           .thenAnswer((inv) async {
@@ -382,7 +388,7 @@ void main() {
     test('returns cached path without re-downloading if file already exists',
         () async {
       const url = 'https://example.com/img.jpg';
-      final path = '${tmpDir.path}/img_${_urlHash(url)}';
+      final path = '${tmpDir.path}/img_${urlHash(url)}';
       File(path).createSync();
 
       final result = await repo.cacheImage(url);
@@ -419,7 +425,7 @@ void main() {
 
     test('returns path when video file exists', () async {
       const url = 'https://example.com/clip.mp4';
-      final vidFile = File('${tmpDir.path}/vid_${_urlHash(url)}.mp4')
+      final vidFile = File('${tmpDir.path}/vid_${urlHash(url)}.mp4')
         ..createSync();
 
       expect(await repo.getLocalVideoPath(url), vidFile.path);
@@ -459,7 +465,7 @@ void main() {
     test('returns cached path without re-downloading if file already exists',
         () async {
       const url = 'https://example.com/clip.mp4';
-      final path = '${tmpDir.path}/vid_${_urlHash(url)}.mp4';
+      final path = '${tmpDir.path}/vid_${urlHash(url)}.mp4';
       File(path).createSync();
 
       final result = await repo.cacheVideo(url);
