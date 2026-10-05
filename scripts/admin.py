@@ -37,6 +37,8 @@ from mutagen.mp3 import MP3
 from supabase import create_client, Client
 
 from check_session_audio_coverage import run_coverage_check
+from media_assets import MediaAsset, record_media_asset
+from morshed_admin import set_default_morshed
 
 # ── Config ────────────────────────────────────────────────────────────────────
 # Every value below comes from the process environment only — see the module
@@ -453,20 +455,30 @@ def extract_poster(video_path: str, out_path: str, timestamp: float = 1.0) -> bo
     return result.returncode == 0
 
 def upload_asset_to_r2(local_path: str, r2_key: str, content_type: str) -> str:
-    """Upload a file already on disk (video/poster output from ffmpeg)."""
+    """Upload a file already on disk (video/poster output from ffmpeg).
+
+    Also records its size in media_asset (see media_assets.py) — every upload
+    goes through this function or upload_bytes_to_r2, so no path can skip it.
+    """
     get_r2_client().upload_file(
         local_path, R2_BUCKET, r2_key, ExtraArgs={"ContentType": content_type}
     )
-    return f"{R2_PUBLIC_BASE}/{r2_key}"
+    url = f"{R2_PUBLIC_BASE}/{r2_key}"
+    record_media_asset(
+        get_client(), MediaAsset(url, os.path.getsize(local_path), content_type))
+    return url
 
 def upload_bytes_to_r2(data: bytes, r2_key: str, content_type: str) -> str:
     """Upload in-memory bytes straight from a Streamlit file_uploader — no
     temp file needed (unlike upload_asset_to_r2, which is for ffmpeg output
-    that's already on disk)."""
+    that's already on disk). Records the size in media_asset, like
+    upload_asset_to_r2."""
     get_r2_client().put_object(
         Bucket=R2_BUCKET, Key=r2_key, Body=data, ContentType=content_type
     )
-    return f"{R2_PUBLIC_BASE}/{r2_key}"
+    url = f"{R2_PUBLIC_BASE}/{r2_key}"
+    record_media_asset(get_client(), MediaAsset(url, len(data), content_type))
+    return url
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -2120,6 +2132,29 @@ def tab_audio_tracks():
             }).execute()
             bust_cache()
             st.rerun()
+
+    # ── Default Morshed (migration 0041) ─────────────────────────────────
+    # The recordings a first-time user downloads before choosing a Morshed.
+    if not morsheds.empty and "is_default" in morsheds.columns:
+        options = [None] + morsheds["id"].tolist()
+        names = dict(zip(morsheds["id"], morsheds["name"]))
+        current = next((int(r["id"]) for _, r in morsheds.iterrows()
+                        if bool(r["is_default"])), None)
+        chosen = st.selectbox(
+            "Default Morshed (downloaded by first-time users)",
+            options, index=options.index(current),
+            format_func=lambda i: "— none —" if i is None else names[i],
+            key="default_morshed",
+        )
+        if chosen != current and st.button("💾 Save default Morshed",
+                                           key="sv_default_morshed"):
+            set_default_morshed(get_client(),
+                                None if chosen is None else int(chosen))
+            st.success("Default Morshed saved.")
+            bust_cache()
+            st.rerun()
+    elif not morsheds.empty:
+        st.caption("Default Morshed: apply migration 0041 to enable.")
 
     st.divider()
 
