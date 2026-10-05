@@ -9,6 +9,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pahlevani/data/models/hive_models.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/data/models/hive_type_ids.dart';
 
 /// Service for handling local database operations using Hive
 class TrainingSessionLocalDatabase {
@@ -46,9 +47,9 @@ class TrainingSessionLocalDatabase {
   /// Deletes all typed boxes when the cache version changes (schema migration).
   static Future<void> init() async {
     await Hive.initFlutter();
-    Hive.registerAdapter(HiveTrainingSessionAdapter());
-    Hive.registerAdapter(HiveExerciseAdapter());
-    Hive.registerAdapter(HiveTrainingSessionItemAdapter());
+    registerHiveAdapter(HiveTrainingSessionAdapter());
+    registerHiveAdapter(HiveExerciseAdapter());
+    registerHiveAdapter(HiveTrainingSessionItemAdapter());
     await _migrateIfNeeded();
   }
 

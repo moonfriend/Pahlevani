@@ -1,3 +1,7 @@
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
+import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,9 +17,11 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -60,113 +66,42 @@ class _FakeSessionRepo implements TrainingSessionRepository {
   Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
-/// Like [_FakeSessionRepo] but with a settable snapshot, for tests that need
-/// to simulate a reload (e.g. an edit) landing between two loadTracks() calls.
-class _MutableSessionRepo implements TrainingSessionRepository {
-  DomainSnapshot snapshot;
-  _MutableSessionRepo(this.snapshot);
-
-  @override
-  Future<DomainSnapshot> getTrainingSessions({bool refresh = false}) async =>
-      snapshot;
-
-  @override
-  Future<DomainSnapshot> syncFromRemote() async => snapshot;
-
-  @override
-  Future<TrainingSession> saveTrainingSession(TrainingSession s,
-          {List<ItemDetail>? items}) async =>
-      s;
-
-  @override
-  Future<void> updateTrainingSession(TrainingSession s,
-      {List<ItemDetail>? items}) async {}
-
-  @override
-  Future<void> deleteTrainingSession(int id) async {}
-
-  @override
-  Future<TrainingSession> saveOwnedSession({
-    required TrainingSession session,
-    required List<ItemDetail> items,
-  }) async =>
-      session;
-
-  @override
-  Future<void> assignSessionToTrainee({
-    required int sessionId,
-    required String traineeUserId,
-  }) async {}
-
-  @override
-  Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
-}
-
 class _FakeDownloadRepo implements DownloadRepository {
-  // Instrumentation for resolvePlayableAudioPath — lets tests assert it's
-  // called exactly once per track and that its result (not the raw remote
-  // URL) is what reaches the audio engine.
-  int resolveCallCount = 0;
-  final List<int> resolvedItemIds = [];
-  String Function(ItemDetail item)? resolvedPathBuilder;
+  @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
 
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
+  // Sessions are downloaded before they play, so by default every track's
+  // audio is on the device; tests about missing media override this.
+  String? Function(ItemDetail item) localAudioPathBuilder =
+      (item) => '/cached/${item.item.id}.mp3';
+
   @override
-  Stream<double> downloadTrainingSession(SessionDetail s) =>
-      const Stream.empty();
-  @override
-  Future<bool> isTrainingSessionDownloaded(
-          int id, List<ItemDetail> items) async =>
-      false;
-  @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(ItemDetail item) async =>
+      localAudioPathBuilder(item);
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
-
-  final List<String> cacheImageCalls = [];
-  final List<String> cacheVideoCalls = [];
-
-  // Null by default (matches the real repo's "download failed/still in
-  // flight" outcome) — a test opts in to a successful cache by setting this.
-  String? Function(String url)? cacheVideoResultBuilder;
-
-  // When set, cacheVideo() resolves via this instead of the builder above —
-  // lets a test control precisely *when* a cache result lands (e.g. after a
-  // reload has already happened), not just whether it succeeds.
-  Completer<String?>? cacheVideoCompleter;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async =>
       localImagePathBuilder?.call(imageUrl);
-  @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-  @override
-  Future<String?> cacheImage(String url) async {
-    cacheImageCalls.add(url);
-    return null;
-  }
 
   @override
   Future<String?> getLocalVideoPath(String videoUrl) async =>
       localVideoPathBuilder?.call(videoUrl);
-  @override
-  Future<String?> cacheVideo(String url) async {
-    cacheVideoCalls.add(url);
-    if (cacheVideoCompleter != null) return cacheVideoCompleter!.future;
-    return cacheVideoResultBuilder?.call(url);
-  }
-
-  @override
-  Future<bool> checkAllCachedAndMark(int sid, List<ItemDetail> items) async =>
-      false;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async {
-    resolveCallCount++;
-    resolvedItemIds.add(item.item.id);
-    return resolvedPathBuilder?.call(item) ?? '/cached/${item.item.id}.mp3';
-  }
 }
 
 // ── Builder helpers ────────────────────────────────────────────────────────────
@@ -205,16 +140,31 @@ TrainingSessionPlayerCubit _makeCubit(
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
   FakeAudioCatalogRepository? audioCatalogRepo,
+  FakeLearntExercisesRepository? learntExercisesRepo,
+  PlayerMode mode = PlayerMode.athlete,
 }) {
   final session = snapshot.sessionsById.values.first;
   return TrainingSessionPlayerCubit(
     trainingSession: session,
+    mode: mode,
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
     downloadRepository: downloadRepo ?? _FakeDownloadRepo(),
     sessionRepository: _FakeSessionRepo(snapshot),
     audioCatalogRepository: audioCatalogRepo ?? FakeAudioCatalogRepository(),
+    learntExercisesRepository:
+        learntExercisesRepo ?? FakeLearntExercisesRepository(),
     notificationService: FakePlayerNotificationService(),
   );
+}
+
+/// Feeds engine position readings (ms) one at a time, letting each reach the
+/// cubit — the player's timeline is driven by these, not by wall-clock time.
+Future<void> _feedPositions(
+    FakeAudioPlayerService audio, List<int> positionsMs) async {
+  for (final p in positionsMs) {
+    audio.emitPosition(Duration(milliseconds: p));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -344,6 +294,53 @@ void main() {
 
       expect(cubit.state.tracks[0].title, ex1.name);
       expect(cubit.state.tracks[1].title, ex2.name);
+    });
+
+    test(
+        'no Morshed chosen → plays the default Morshed\'s recording, not just '
+        'the first one found', () async {
+      const exercise = Exercise(
+          id: 10, name: 'Shena', repetitionsDefault: 1, movementTypeId: 5);
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0, reps: 1)],
+        [exercise],
+      );
+      final catalog = FakeAudioCatalogRepository(
+        morsheds: const [
+          Morshed(id: 1, name: 'First'),
+          Morshed(id: 2, name: 'Default', isDefault: true),
+        ],
+        tracks: const [
+          MovementAudioTrack(
+              id: 1,
+              movementTypeId: 5,
+              morshedId: 1,
+              audioUrl: 'https://cdn/first.mp3',
+              repetitionsDefault: 1),
+          MovementAudioTrack(
+              id: 2,
+              movementTypeId: 5,
+              morshedId: 2,
+              audioUrl: 'https://cdn/default.mp3',
+              repetitionsDefault: 1),
+        ],
+      );
+      // Only the default Morshed's recording is on the device: playing it
+      // proves that's the one resolved.
+      final downloads = _FakeDownloadRepo()
+        ..localAudioPathBuilder = (item) =>
+            item.exercise.audioFileUrl == 'https://cdn/default.mp3'
+                ? '/local/default.mp3'
+                : null;
+      final cubit =
+          _makeCubit(snap, audioCatalogRepo: catalog, downloadRepo: downloads);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state.tracks.single.audioFilePath, '/local/default.mp3');
     });
 
     group('media resolution', () {
@@ -816,10 +813,12 @@ void main() {
       final audioService = FakeAudioPlayerService();
       final cubit = TrainingSessionPlayerCubit(
         trainingSession: session,
+        mode: PlayerMode.athlete,
         audioPlayerService: audioService,
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
         audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
         notificationService: FakePlayerNotificationService(),
       );
       addTearDown(cubit.close);
@@ -1103,276 +1102,86 @@ void main() {
     });
   });
 
-  // ---------- audio egress: resolve-before-play ----------
+  // ---------- local-only playback ----------
   //
-  // Regression coverage for the double-fetch bug: playing a track that isn't
-  // cached yet used to stream the raw remote URL *and* separately trigger a
-  // background cacheAudio() download of the same file. The fix routes
-  // playback through resolvePlayableAudioPath() so only one fetch happens.
+  // Sessions are downloaded before they play: the player only ever hands the
+  // engine a file already on the device, never a remote URL.
 
-  group('audio egress (resolve-before-play)', () {
-    test('never hands the raw remote URL to the audio engine', () async {
-      final session = _session(1);
-      final exercise = _exercise(10, url: 'https://cdn.example.com/raw.mp3');
-      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
-      final snap = _snapshotWithItems(session, items, [exercise]);
+  group('local-only playback (no streaming)', () {
+    DomainSnapshot twoTracks() => _snapshotWithItems(
+          _session(1),
+          [
+            _item(sessionId: 1, exerciseId: 10, position: 0),
+            _item(sessionId: 1, exerciseId: 11, position: 1),
+          ],
+          [_exercise(10), _exercise(11)],
+        );
+
+    test('plays the downloaded file, never the remote URL', () async {
       final audioService = FakeAudioPlayerService();
       final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap,
+      final cubit = _makeCubit(twoTracks(),
           audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
 
-      expect(audioService.lastPlayedPath, isNot(exercise.audioFileUrl));
-      expect(downloadRepo.resolveCallCount, greaterThan(0));
+      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(cubit.state.needsDownload, isFalse);
     });
 
-    test('setIndexAndPlay resolves through the repository, not the raw URL',
-        () async {
-      final session = _session(1);
-      final items = [
-        _item(sessionId: 1, exerciseId: 10, position: 0),
-        _item(sessionId: 1, exerciseId: 11, position: 1),
-      ];
-      final snap =
-          _snapshotWithItems(session, items, [_exercise(10), _exercise(11)]);
+    test('each track plays its own downloaded file', () async {
       final audioService = FakeAudioPlayerService();
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap,
-          audioService: audioService, downloadRepo: downloadRepo);
+      final cubit = _makeCubit(twoTracks(), audioService: audioService);
       addTearDown(cubit.close);
-
       await cubit.loadTracks();
-      final resolvedForTrack0 = audioService.lastPlayedPath;
-      await Future<void>.delayed(Duration.zero);
+
       cubit.setIndexAndPlay(1);
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(resolvedForTrack0, isNot(_exercise(10).audioFileUrl));
-      expect(audioService.lastPlayedPath, isNot(_exercise(11).audioFileUrl));
-      expect(downloadRepo.resolvedItemIds, containsAll([10000, 10001]));
+      expect(audioService.lastPlayedPath, '/cached/10001.mp3');
     });
 
-    test('a track whose path is already local is never passed to resolve',
+    test('audio not on the device → needs download; nothing plays or streams',
         () async {
-      // audioFilePath only ever becomes local via getLocalAudioPath, which
-      // this fake hardcodes to null — so this documents the guard exists in
-      // _loadSourceAtIndex (`track.audioFilePath.startsWith('/')`) without
-      // needing a more elaborate fixture: resolve is called exactly once,
-      // for the one (non-local) track that was loaded.
-      final session = _session(1);
-      final items = [_item(sessionId: 1, exerciseId: 10, position: 0)];
-      final snap = _snapshotWithItems(session, items, [_exercise(10)]);
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-
-      expect(downloadRepo.resolveCallCount, 1);
-    });
-  });
-
-  // ---------- image caching path ----------
-
-  group('image caching', () {
-    test('caches image when track has photo media', () async {
-      final session = _session(1);
-      const photoMedia = ExerciseMedia(
-          type: 'photo', src: 'https://img.example.com/photo.jpg');
-      const exercise = Exercise(
-          id: 10,
-          name: 'Photo Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: photoMedia);
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-
-      expect(cubit.state.tracks[0].media.type, 'photo');
-      expect(downloadRepo.cacheImageCalls,
-          contains('https://img.example.com/photo.jpg'));
-    });
-  });
-
-  // ---------- video caching path (lookahead, independent of the big
-  // "Download session" flow — covers an already-downloaded session that
-  // gains a video after the fact, since checkAllCachedAndMark only tracks
-  // audio) ----------
-
-  group('video caching', () {
-    test('caches video when track has video media not yet local', () async {
-      final session = _session(1);
-      const videoMedia = ExerciseMedia(
-        type: 'video',
-        src: 'https://cdn.example.com/clip.mp4',
-        poster: 'https://cdn.example.com/poster.jpg',
-      );
-      const exercise = Exercise(
-          id: 10,
-          name: 'Video Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: videoMedia);
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-
-      expect(downloadRepo.cacheVideoCalls,
-          contains('https://cdn.example.com/clip.mp4'));
-    });
-
-    test('does not re-cache a video whose path is already local', () async {
-      final session = _session(1);
-      const exercise = Exercise(
-          id: 10,
-          name: 'Video Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: ExerciseMedia(
-              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
+      final audioService = FakeAudioPlayerService();
       final downloadRepo = _FakeDownloadRepo()
-        ..localVideoPathBuilder = (_) => '/local/clip.mp4';
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
+        ..localAudioPathBuilder =
+            (item) => item.item.id == 10001 ? null : '/cached/10000.mp3';
+      final cubit = _makeCubit(twoTracks(),
+          audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
 
       await cubit.loadTracks();
 
-      expect(cubit.state.tracks[0].media.src, '/local/clip.mp4');
-      expect(downloadRepo.cacheVideoCalls, isEmpty);
-    });
-
-    test(
-        "swaps a track's media to the local path once background caching "
-        'finishes, without needing loadTracks() called again', () async {
-      final session = _session(1);
-      const exercise = Exercise(
-          id: 10,
-          name: 'Video Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: ExerciseMedia(
-              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
-      final downloadRepo = _FakeDownloadRepo()
-        ..cacheVideoResultBuilder = (_) => '/cached/clip.mp4';
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-      await Future<void>.delayed(
-          Duration.zero); // let the background cache land
-
-      expect(cubit.state.tracks[0].media.src, '/cached/clip.mp4');
-      expect(cubit.state.tracks[0].media.type, 'video');
-    });
-
-    test(
-        'playback proceeds normally, and the poster-fallback path stays '
-        'intact, even when the video never gets cached', () async {
-      final session = _session(1);
-      const exercise = Exercise(
-          id: 10,
-          name: 'Video Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: ExerciseMedia(
-              type: 'video',
-              src: 'https://cdn.example.com/clip.mp4',
-              poster: 'https://cdn.example.com/poster.jpg'));
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [exercise]);
-      // cacheVideoResultBuilder deliberately left unset — cacheVideo()
-      // resolves to null, simulating a download that failed or never
-      // finished, same as _FakeDownloadRepo's default.
-      final downloadRepo = _FakeDownloadRepo();
-      final cubit = _makeCubit(snap, downloadRepo: downloadRepo);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-
-      expect(cubit.state.isPlaying, isTrue);
-      expect(cubit.state.errorMessage, isNull);
-
-      await Future<void>.delayed(Duration.zero);
-
-      // No bad state written from the failed cache — src/poster untouched,
-      // so _Stage's poster-fallback rendering keeps working exactly as
-      // before this change.
-      expect(
-          cubit.state.tracks[0].media.src, 'https://cdn.example.com/clip.mp4');
-      expect(cubit.state.tracks[0].media.poster,
-          'https://cdn.example.com/poster.jpg');
-      expect(cubit.state.isPlaying, isTrue);
-    });
-
-    test(
-        'a late-arriving cache result does not patch a track after a reload '
-        'changed what is at that index', () async {
-      final session = _session(1);
-      const videoExercise = Exercise(
-          id: 10,
-          name: 'Video Ex',
-          audioFileUrl: 'https://audio.mp3',
-          repetitionsDefault: 1,
-          media: ExerciseMedia(
-              type: 'video', src: 'https://cdn.example.com/clip.mp4'));
-      final snapWithVideo = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [videoExercise]);
-
-      final completer = Completer<String?>();
-      final downloadRepo = _FakeDownloadRepo()..cacheVideoCompleter = completer;
-      final sessionRepo = _MutableSessionRepo(snapWithVideo);
-      final cubit = TrainingSessionPlayerCubit(
-        trainingSession: session,
-        audioPlayerService: FakeAudioPlayerService(),
-        downloadRepository: downloadRepo,
-        sessionRepository: sessionRepo,
-        audioCatalogRepository: FakeAudioCatalogRepository(),
-        notificationService: FakePlayerNotificationService(),
-      );
-      addTearDown(cubit.close);
-
-      await cubit
-          .loadTracks(); // kicks off caching clip.mp4, pending on completer
-
-      // Simulate an edit/refresh landing before the video finishes
-      // downloading — position 0 now has a different exercise with no
-      // video at all.
-      const plainExercise = Exercise(
-          id: 11,
-          name: 'Plain Ex',
-          audioFileUrl: 'https://audio2.mp3',
-          repetitionsDefault: 1);
-      sessionRepo.snapshot = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 11, position: 0)], [plainExercise]);
-      await cubit.loadTracks();
-
-      expect(cubit.state.tracks[0].media, ExerciseMedia.none);
-
-      // Now the ORIGINAL (stale) download finishes.
-      completer.complete('/cached/clip.mp4');
-      await Future<void>.delayed(Duration.zero);
-
-      // Must not have been patched with the stale video path.
-      expect(cubit.state.tracks[0].media, ExerciseMedia.none);
+      expect(cubit.state.needsDownload, isTrue);
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
     });
   });
 
-  // ---------- notification command routing ----------
+  test('a video not on the device shows its poster (e.g. audio-only tier)',
+      () async {
+    const videoMove = Exercise(
+      id: 11,
+      name: 'Video',
+      audioFileUrl: 'https://audio/11.mp3',
+      media: ExerciseMedia(
+          type: 'video',
+          src: 'https://cdn/11.mp4',
+          poster: 'https://cdn/11.jpg'),
+    );
+    final snap = _snapshotWithItems(_session(1),
+        [_item(sessionId: 1, exerciseId: 11, position: 0)], [videoMove]);
+    final cubit = _makeCubit(snap);
+    addTearDown(cubit.close);
+
+    await cubit.loadTracks();
+
+    expect(cubit.state.tracks.single.videoReady, isFalse);
+    expect(cubit.state.needsDownload, isFalse,
+        reason: 'videos are optional (tier) — only audio is required');
+  });
 
   group('notification commands', () {
     // Returns both the cubit and its notification fake for direct command injection.
@@ -1382,10 +1191,12 @@ void main() {
       final session = snap.sessionsById.values.first;
       final cubit = TrainingSessionPlayerCubit(
         trainingSession: session,
+        mode: PlayerMode.athlete,
         audioPlayerService: FakeAudioPlayerService(),
         downloadRepository: _FakeDownloadRepo(),
         sessionRepository: _FakeSessionRepo(snap),
         audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
         notificationService: notification,
       );
       return (cubit, notification);
@@ -1464,6 +1275,76 @@ void main() {
       expect(cubit.state.isPlaying, isTrue);
     });
 
+    test('pause command while already paused stays paused (not a toggle)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.pause();
+
+      notification.emit(NotificationCommand.pause);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'a lock-screen pause must never resume playback');
+    });
+
+    test('play command while already playing keeps playing (not a toggle)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0)],
+        [_exercise(1)],
+      );
+      final (cubit, notification) = makeCubitN(snap);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // playing
+
+      notification.emit(NotificationCommand.play);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.isPlaying, isTrue,
+          reason: 'a lock-screen play must never pause playback');
+    });
+
+    test('seek command moves the move timeline like the seek bar does',
+        () async {
+      // 2 reps of a 1-rep, 10s clip → a 20s move.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 1, position: 0, reps: 2)],
+        [_exercise(1, reps: 1)],
+      );
+      final notification = FakePlayerNotificationService();
+      final audio = FakeAudioPlayerService();
+      final cubit = TrainingSessionPlayerCubit(
+        trainingSession: snap.sessionsById.values.first,
+        mode: PlayerMode.athlete,
+        audioPlayerService: audio,
+        downloadRepository: _FakeDownloadRepo(),
+        sessionRepository: _FakeSessionRepo(snap),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
+        learntExercisesRepository: FakeLearntExercisesRepository(),
+        notificationService: notification,
+      );
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      notification.emit(const NotificationCommand.seek(Duration(seconds: 12)));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(audio.seekedTo, const Duration(seconds: 2),
+          reason: '12s into the move = 2s into the second loop of the clip');
+      expect(cubit.state.logicalPosition, const Duration(seconds: 12));
+    });
+
     test('notification updated with track title and isPlaying=true on load',
         () async {
       final snap = _snapshotWithItems(
@@ -1500,7 +1381,466 @@ void main() {
     });
   });
 
+  // ---------- learning mode: never auto-plays; only explicit play() starts a track ----------
+
+  group('learning mode', () {
+    test('loadTracks loads the first track without playing it', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+      expect(audioService.lastSetSourcePath, isNotNull);
+    });
+
+    test('startCurrentTrack() starts the pending track via play(path)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      // Must go through play(path), not resume() — the track was only ever
+      // handed to the engine via setSource(), never actually played, and
+      // resuming a never-played source isn't something every platform
+      // backend supports (this is what broke Learning Mode's Go button on
+      // a real device: resume() alone left the engine in a bad state).
+      await cubit.startCurrentTrack();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(audioService.playCallCount, 1);
+      expect(audioService.resumed, isFalse);
+    });
+
+    test('next() advances without auto-playing the new track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      await cubit.startCurrentTrack(); // Go — starts track 0
+      expect(cubit.state.isPlaying, isTrue);
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'learning mode must not auto-play the next track');
+    });
+
+    test('setIndexAndPlay does not auto-play the tapped track', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      cubit.setIndexAndPlay(1);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+    });
+  });
+
+  // ---------- learning mode: "Learnt" moves skip the prompt entirely ----------
+
+  group('learning mode — learnt exercises', () {
+    test('a learnt exercise auto-plays without waiting for Go', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {10}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(audioService.playCallCount, 1);
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+
+    test('an unlearnt exercise still pauses and waits for Go', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isFalse);
+      expect(audioService.playCallCount, 0);
+      expect(cubit.shouldPromptLearningMode, isTrue);
+    });
+
+    test('next() auto-plays a learnt track but pauses for an unlearnt one',
+        () async {
+      // Exercise 11 (track 1) is learnt; exercise 10 (track 0) is not.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(
+        snap,
+        audioService: audioService,
+        mode: PlayerMode.learning,
+        learntExercisesRepo: FakeLearntExercisesRepository(learntIds: {11}),
+      );
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'track 0 (exercise 10) is not learnt');
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isTrue,
+          reason: 'track 1 (exercise 11) is learnt — auto-plays');
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+  });
+
+  // ---------- zoorkhaneh mode: never auto-advances; rep count climbs past total ----------
+
+  group('zoorkhaneh mode', () {
+    test('does not auto-advance once the target duration is reached', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+          _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+        ],
+        [_exercise(10, reps: 1), _exercise(11, reps: 1)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(milliseconds: 300));
+      await _feedPositions(audioService, [200, 290, 10, 250]); // looped → 550ms
+
+      expect(cubit.state.playingIndex, 0,
+          reason: 'zoorkhaneh mode must not auto-advance mid-loop');
+      expect(cubit.state.logicalPosition.inMilliseconds,
+          greaterThan(cubit.state.logicalDuration.inMilliseconds));
+    });
+
+    test('a manual next() still advances immediately', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0, reps: 1),
+          _item(sessionId: 1, exerciseId: 11, position: 1, reps: 1),
+        ],
+        [_exercise(10, reps: 1), _exercise(11, reps: 1)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(milliseconds: 300));
+      await _feedPositions(audioService, [200, 290, 10, 250]);
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test(
+        'fewer reps than the clip: loops the shortened clip and keeps counting',
+        () async {
+      // 2 reps of a 4-rep, 10s clip → each loop is the first 5s of the clip.
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0, reps: 2)],
+        [_exercise(10, reps: 4)],
+      );
+      final audioService = FakeAudioPlayerService();
+      final cubit = _makeCubit(snap,
+          audioService: audioService, mode: PlayerMode.zoorkhaneh);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+      audioService.emitDuration(const Duration(seconds: 10));
+      await _feedPositions(audioService, [4000, 5050]);
+
+      expect(audioService.seekedTo, Duration.zero,
+          reason: 'the clip is restarted at the 5s target');
+      expect(cubit.state.logicalPosition, const Duration(seconds: 5));
+
+      // A late reading from before the restart landed is ignored; then the
+      // restarted clip continues the timeline.
+      await _feedPositions(audioService, [5100, 300]);
+      expect(cubit.state.logicalPosition, const Duration(milliseconds: 5300));
+      expect(cubit.state.playingIndex, 0);
+    });
+  });
+
   // ---------- AudioPlayerState.copyWith / withError ----------
+
+  // ---------- single clock: the move timeline comes from the audio engine ----------
+  group('engine-derived move timeline', () {
+    const clip = Duration(seconds: 10);
+    Duration ms(int v) => Duration(milliseconds: v);
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 20));
+
+    // Feeds engine readings one by one, letting each reach the cubit.
+    Future<void> feed(FakeAudioPlayerService audio, List<int> positions) async {
+      for (final p in positions) {
+        audio.emitPosition(ms(p));
+        await settle();
+      }
+    }
+
+    // [itemCount] items, each prescribing [reps] of an exercise whose clip
+    // holds [clipReps] reps.
+    TrainingSessionPlayerCubit build(FakeAudioPlayerService audio,
+        {required int reps, required int clipReps, int itemCount = 2}) {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          for (var i = 0; i < itemCount; i++)
+            _item(sessionId: 1, exerciseId: 10, position: i, reps: reps),
+        ],
+        [_exercise(10, reps: clipReps)],
+      );
+      return _makeCubit(snap, audioService: audio);
+    }
+
+    test('advances when the logical timeline reaches the target across a loop',
+        () async {
+      // 2 reps of a 1-rep, 10s clip → the move lasts 20s (clip plays twice).
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      await feed(audio, [5000, 9900, 100, 9900]); // loop → logical 19900
+      expect(cubit.state.playingIndex, 0);
+      expect(cubit.state.logicalPosition, ms(19900));
+
+      await feed(audio, [50]); // second wrap → logical 20050 ≥ 20s
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test(
+        'reps fewer than the clip: advances at the target without restarting '
+        'the clip', () async {
+      // 2 reps of a 4-rep, 10s clip → the move lasts 5s.
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 4);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      await feed(audio, [4000, 5100]);
+
+      expect(cubit.state.playingIndex, 1);
+      expect(audio.seekedTo, isNull,
+          reason: 'the clip must not be seeked back to 0 before advancing');
+    });
+
+    test('does not advance while the engine reports no progress', () async {
+      // Paused or buffering: no position readings arrive. Wall-clock time
+      // passing must not move the move's timeline.
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 1, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(ms(300));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(cubit.state.playingIndex, 0);
+      expect(cubit.state.logicalPosition, Duration.zero);
+    });
+
+    test('several readings past the target advance only once', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 1, clipReps: 1, itemCount: 3);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      audio
+        ..emitPosition(ms(10000))
+        ..emitPosition(ms(10050))
+        ..emitPosition(ms(10100));
+      await settle();
+
+      expect(cubit.state.playingIndex, 1);
+    });
+
+    test("a late reading from the previous move doesn't leak into the next",
+        () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 2, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+      await feed(audio, [9000]);
+
+      cubit.next();
+      await feed(audio, [9500]); // stale: still the old clip's playhead
+      audio.emitDuration(clip);
+      await settle();
+      await feed(audio, [100]);
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.logicalPosition, ms(100));
+    });
+
+    test('the move length is known as soon as the clip loads', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio, reps: 3, clipReps: 1);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(clip);
+      await settle();
+
+      expect(cubit.state.logicalDuration, const Duration(seconds: 30));
+    });
+  });
+
+  // ---------- superseded track loads ----------
+  group('superseded track loads', () {
+    test('a slow load overtaken by a newer one never plays (rapid next taps)',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+          _item(sessionId: 1, exerciseId: 12, position: 2),
+        ],
+        [_exercise(10), _exercise(11), _exercise(12)],
+      );
+      final audio = FakeAudioPlayerService();
+      final downloads = _FakeDownloadRepo();
+      final slowMove2 = Completer<void>();
+      audio.playGates['/cached/10001.mp3'] = slowMove2; // move 2 starts slowly
+      final cubit =
+          _makeCubit(snap, audioService: audio, downloadRepo: downloads);
+      addTearDown(cubit.close);
+      await cubit.loadTracks(); // move 1 playing
+
+      cubit.next(); // move 2: engine still starting
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      cubit.next(); // move 3: loads and plays
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(audio.lastPlayedPath, '/cached/10002.mp3');
+
+      slowMove2.complete(); // move 2's start finally returns
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(cubit.state.playingIndex, 2);
+      expect(audio.lastPlayedPath, '/cached/10002.mp3',
+          reason: 'the overtaken load for move 2 must not start playing');
+    });
+
+    test("an overtaken load can't seed the new move's timeline", () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+          _item(sessionId: 1, exerciseId: 12, position: 2),
+        ],
+        [_exercise(10), _exercise(11), _exercise(12)],
+      );
+      final audio = FakeAudioPlayerService();
+      final downloads = _FakeDownloadRepo();
+      final slowMove2 = Completer<void>();
+      audio.playGates['/cached/10001.mp3'] = slowMove2;
+      final cubit =
+          _makeCubit(snap, audioService: audio, downloadRepo: downloads);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      audio.emitDuration(const Duration(seconds: 10)); // move 3's clip
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _feedPositions(audio, [4000]);
+
+      slowMove2.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _feedPositions(audio, [4200]);
+
+      expect(cubit.state.logicalPosition, const Duration(milliseconds: 4200),
+          reason: "move 3's timeline must not be reset by move 2's late load");
+    });
+  });
 
   group('AudioPlayerState.withError', () {
     test('preserves tracks and playingIndex, clears isPlaying', () {

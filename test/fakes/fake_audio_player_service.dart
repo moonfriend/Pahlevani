@@ -57,12 +57,17 @@ class FakeAudioPlayerService implements AudioPlayerService {
   /// the cubit ignores engine-originated state changes.
   void emitPlaying(bool playing) => _playingCtrl.add(playing);
 
+  /// Per-path gates: [play] of that path doesn't return until its completer
+  /// completes — an engine that is slow to start one particular clip.
+  final Map<String, Completer<void>> playGates = {};
+
   @override
   Future<void> play(String path) async {
     lastPlayedPath = path;
     stopped = false;
     paused = false;
     playCallCount++;
+    await playGates[path]?.future;
     if (completePlayOnPause) {
       final c = Completer<void>();
       _pendingPlayCompleters.add(c);

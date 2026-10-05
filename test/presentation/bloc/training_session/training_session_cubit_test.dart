@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
@@ -80,69 +82,54 @@ class _SpyRepository implements TrainingSessionRepository {
   Future<List<SessionAssignment>> listAssignments(int sessionId) async => [];
 }
 
-class _DownloadRepoWithStream implements DownloadRepository {
-  final Stream<double> Function(SessionDetail) streamFactory;
-  bool downloadCalled = false;
-  bool isDownloaded = false;
+class _DownloadRepoSessionOneDownloaded implements DownloadRepository {
+  @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
 
-  _DownloadRepoWithStream(
-      {required this.streamFactory, this.isDownloaded = false});
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
 
   @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async =>
       {1: DownloadStatus.downloaded};
 
   @override
-  Stream<double> downloadTrainingSession(SessionDetail session) {
-    downloadCalled = true;
-    return streamFactory(session);
-  }
-
-  @override
-  Future<bool> isTrainingSessionDownloaded(
-          int sessionId, List<ItemDetail> items) async =>
-      isDownloaded;
-
-  @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => null;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;
 
   @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async =>
-      item.exercise.audioFileUrl ?? '';
-
-  @override
-  Future<String?> cacheImage(String url) async => null;
-
-  @override
   Future<String?> getLocalVideoPath(String videoUrl) async => null;
-
-  @override
-  Future<String?> cacheVideo(String url) async => null;
-
-  @override
-  Future<bool> checkAllCachedAndMark(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
 }
 
 class _FakeDownloadRepository implements DownloadRepository {
   @override
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  @override
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
+  @override
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
-
-  @override
-  Stream<double> downloadTrainingSession(SessionDetail session) =>
-      const Stream.empty();
-
-  @override
-  Future<bool> isTrainingSessionDownloaded(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
 
   @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => null;
@@ -151,25 +138,7 @@ class _FakeDownloadRepository implements DownloadRepository {
   Future<String?> getLocalImagePath(String imageUrl) async => null;
 
   @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async =>
-      item.exercise.audioFileUrl ?? '';
-
-  @override
-  Future<String?> cacheImage(String url) async => null;
-
-  @override
   Future<String?> getLocalVideoPath(String videoUrl) async => null;
-
-  @override
-  Future<String?> cacheVideo(String url) async => null;
-
-  @override
-  Future<bool> checkAllCachedAndMark(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
 }
 
 TrainingSessionCubit _makeCubit(_SpyRepository repo,
@@ -316,10 +285,7 @@ void main() {
         () async {
       final session = _session(1);
       final repo = _SpyRepository(_snapshotWith([session]));
-      final downloadRepo = _DownloadRepoWithStream(
-        streamFactory: (_) => const Stream.empty(),
-        isDownloaded: false,
-      );
+      final downloadRepo = _DownloadRepoSessionOneDownloaded();
       final cubit = TrainingSessionCubit(
         sessionRepository: repo,
         downloadRepository: downloadRepo,
@@ -327,7 +293,7 @@ void main() {
       );
       addTearDown(cubit.close);
 
-      // _DownloadRepoWithStream.getInitialDownloadStatuses returns {1: downloaded}
+      // _DownloadRepoSessionOneDownloaded.getInitialDownloadStatuses returns {1: downloaded}
       await cubit.initialize();
 
       final loaded = cubit.state as TrainingSessionLoaded;
@@ -539,100 +505,6 @@ void main() {
       // 100s / 25 reps * 50 reps = 200s.
       expect((cubit.state as TrainingSessionLoaded).uiModel.sessionDurations[1],
           200);
-    });
-  });
-
-  group('downloadTrainingSession()', () {
-    test('emits Downloading state with progress 0 when download starts',
-        () async {
-      final session = _session(1);
-      final repo = _SpyRepository(_snapshotWith([session]));
-
-      final controller = StreamController<double>();
-      final downloadRepo = _DownloadRepoWithStream(
-        streamFactory: (_) => controller.stream,
-      );
-      final cubit = TrainingSessionCubit(
-        sessionRepository: repo,
-        downloadRepository: downloadRepo,
-        audioCatalogRepository: FakeAudioCatalogRepository(),
-      );
-      // Close cubit first so its subscription is cancelled before controller close
-      addTearDown(() async {
-        await cubit.close();
-        await controller.close();
-      });
-
-      await cubit.fetchTrainingSessions(forceRefresh: true);
-      unawaited(cubit.downloadTrainingSession(1));
-
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(cubit.state, isA<TrainingSessionDownloading>());
-      final downloading = cubit.state as TrainingSessionDownloading;
-      expect(downloading.downloadingTrainingSessionId, 1);
-    });
-
-    test('progress events are reflected in state', () async {
-      final session = _session(1);
-      final repo = _SpyRepository(_snapshotWith([session]));
-
-      final controller = StreamController<double>();
-      final downloadRepo = _DownloadRepoWithStream(
-        streamFactory: (_) => controller.stream,
-      );
-      final cubit = TrainingSessionCubit(
-        sessionRepository: repo,
-        downloadRepository: downloadRepo,
-        audioCatalogRepository: FakeAudioCatalogRepository(),
-      );
-      addTearDown(() async {
-        await cubit.close();
-        await controller.close();
-      });
-
-      await cubit.fetchTrainingSessions(forceRefresh: true);
-      unawaited(cubit.downloadTrainingSession(1));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-
-      controller.add(0.5);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      final mid = cubit.state as TrainingSessionDownloading;
-      expect(mid.downloadProgress[1], 0.5);
-    });
-
-    test('emits Loaded with downloaded status after stream completes',
-        () async {
-      final session = _session(1);
-      final repo = _SpyRepository(_snapshotWith([session]));
-      final downloadRepo = _DownloadRepoWithStream(
-        streamFactory: (_) => Stream.fromIterable([0.5, 1.0]),
-        isDownloaded: true,
-      );
-      final cubit = TrainingSessionCubit(
-        sessionRepository: repo,
-        downloadRepository: downloadRepo,
-        audioCatalogRepository: FakeAudioCatalogRepository(),
-      );
-      addTearDown(cubit.close);
-
-      await cubit.fetchTrainingSessions(forceRefresh: true);
-      await cubit.downloadTrainingSession(1);
-      // Give async onDone callback time to complete
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
-      expect(cubit.state, isA<TrainingSessionLoaded>());
-      final loaded = cubit.state as TrainingSessionLoaded;
-      expect(loaded.uiModel.downloadStatuses[1], DownloadStatus.downloaded);
-    });
-
-    test('emits Error when session not found in snapshot', () async {
-      final repo = _SpyRepository(NullDomainSnapshot());
-      final cubit = _makeCubit(repo);
-      addTearDown(cubit.close);
-
-      await cubit.downloadTrainingSession(999);
-
-      expect(cubit.state, isA<TrainingSessionError>());
     });
   });
 }

@@ -10,10 +10,14 @@ import 'package:pahlevani/domain/entities/training_session/session_details.dart'
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 
 /// Substitutes a resolved recording's audio-shaped fields onto [base] —
 /// everything else (name, media, description...) stays the exercise's own.
@@ -51,12 +55,10 @@ class AudioPlayerState {
   final bool isFinished;
 
   /// Bumped every time audio position is authoritatively (re)established — a
-  /// fresh source load, a mid-track seek, or a background video download
-  /// finishing for the currently-visible track — never a normal playback
-  /// tick. _ExerciseVideo watches this to apply exactly one discrete resync
-  /// seek; see computeVideoResyncTargetMs. For a genuinely fresh mount
-  /// (position 0), _ExerciseVideo instead uses the anchor-based
-  /// computeVideoSyncPlan — see its initState for the exact routing.
+  /// fresh source load or a mid-track seek — never a normal playback tick.
+  /// _ExerciseVideo watches this to apply exactly one discrete resync seek;
+  /// see computeVideoResyncTargetMs. A freshly mounted video (track start)
+  /// uses the anchor-based computeVideoSyncPlan instead.
   final int videoResyncGeneration;
 
   /// The audio-loop-relative position (ms) at the moment
@@ -65,6 +67,11 @@ class AudioPlayerState {
   /// seek target), not read back asynchronously, to avoid a race with the
   /// engine's own event timing.
   final int videoResyncPositionMs;
+
+  /// Some of the session's audio isn't on the device. Sessions are
+  /// downloaded completely before they play (no streaming), so the page
+  /// offers the download instead of playing. Never set on web.
+  final bool needsDownload;
 
   TrainingItemWithAudio? get currentTrack =>
       tracks.isNotEmpty && playingIndex >= 0 && playingIndex < tracks.length
@@ -92,6 +99,7 @@ class AudioPlayerState {
     this.isFinished = false,
     this.videoResyncGeneration = 0,
     this.videoResyncPositionMs = 0,
+    this.needsDownload = false,
   });
 
   AudioPlayerState copyWith({
@@ -107,6 +115,7 @@ class AudioPlayerState {
     bool? isFinished,
     int? videoResyncGeneration,
     int? videoResyncPositionMs,
+    bool? needsDownload,
   }) =>
       AudioPlayerState(
         playingIndex: playingIndex ?? this.playingIndex,
@@ -123,6 +132,7 @@ class AudioPlayerState {
             videoResyncGeneration ?? this.videoResyncGeneration,
         videoResyncPositionMs:
             videoResyncPositionMs ?? this.videoResyncPositionMs,
+        needsDownload: needsDownload ?? this.needsDownload,
       );
 
   AudioPlayerState withError(String message) => AudioPlayerState(
@@ -138,58 +148,84 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final DownloadRepository _downloadRepo;
   final TrainingSessionRepository _sessionRepo;
   final AudioCatalogRepository _audioCatalogRepo;
+  final LearntExercisesRepository _learntExercisesRepo;
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
+  final PlayerMode _mode;
+
+  /// Whether [loadTracks] starts playing the first track by itself. False
+  /// when the player is restarted after an edit, so it waits for the user.
+  final bool _autoStart;
 
   final List<ItemDetail> _itemDetails = [];
 
-  // Tracks which track indices have already been scheduled for background
-  // caching this session — prevents concurrent redundant downloads.
-  final _cachedIndices = <int>{};
+  // Snapshotted once per loadTracks() call — Learning Mode's "skip the
+  // prompt for moves I already know" is scoped to a single play-through; a
+  // toggle made mid-session (via the ⓘ page) takes effect the next time this
+  // session is opened, not retroactively for tracks already in this run.
+  Set<int> _learntExerciseIds = {};
 
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
+  /// Length of the current audio clip, and of the whole move (the clip's
+  /// length scaled from its own reps to the prescribed reps).
   Duration? _originalDuration;
   Duration? _targetDuration;
 
-  Timer? _logicalTimer;
-  Duration _logicalElapsed = Duration.zero;
-  Duration? _logicalTargetDuration;
+  /// The move's single timeline, derived from engine positions — see
+  /// [PlaybackClock] for why this replaced a fixed-interval tick counter.
+  final _clock = PlaybackClock();
+
+  /// False from the moment a new track starts loading until its source has
+  /// been handed to the engine, so late readings from the previous clip
+  /// can't seed the new move's timeline.
+  bool _sourceDispatched = false;
+
+  /// Set once the current move has asked to advance, so further readings
+  /// past the target can't advance it twice.
+  bool _advanceRequested = false;
+
+  /// Zoorkhaneh with fewer reps than the clip: set after we restart the clip
+  /// ourselves, until the engine confirms it is back before the target.
+  bool _awaitingLoopRestart = false;
+
+  /// Bumped by every track load. A load that awaits (resolving/downloading
+  /// the file, loading the engine) and finds a newer load has started since
+  /// gives up silently — otherwise rapid next/prev taps let an overtaken,
+  /// slower load start playing the wrong track under the visible one.
+  int _loadGeneration = 0;
 
   TrainingSessionPlayerCubit({
     required TrainingSession trainingSession,
+    required PlayerMode mode,
     required AudioPlayerService audioPlayerService,
     required DownloadRepository downloadRepository,
     required TrainingSessionRepository sessionRepository,
     required AudioCatalogRepository audioCatalogRepository,
+    required LearntExercisesRepository learntExercisesRepository,
     required PlayerNotificationService notificationService,
+    bool autoStart = true,
   })  : _trainingSession = trainingSession,
+        _mode = mode,
         _audioService = audioPlayerService,
         _downloadRepo = downloadRepository,
         _sessionRepo = sessionRepository,
         _audioCatalogRepo = audioCatalogRepository,
+        _learntExercisesRepo = learntExercisesRepository,
         _notification = notificationService,
+        _autoStart = autoStart,
         super(const AudioPlayerState(
             playingIndex: 0, isPlaying: false, tracks: [], isLoading: true)) {
     _initListeners();
   }
 
   void _initListeners() {
-    _positionSubscription = _audioService.onPositionChanged.listen((position) {
-      emit(state.copyWith(position: position));
-      _handleDynamicDuration(position);
-    });
-
-    _durationSubscription = _audioService.onDurationChanged.listen((duration) {
-      if (duration.inMilliseconds <= 0) return;
-      _originalDuration = duration;
-      _calculateTargetDuration();
-      emit(state.copyWith(duration: _targetDuration ?? duration));
-      _logicalTimer?.cancel();
-      _startLogicalTimer();
-    });
+    _positionSubscription =
+        _audioService.onPositionChanged.listen(_onEnginePosition);
+    _durationSubscription =
+        _audioService.onDurationChanged.listen(_onEngineDuration);
 
     // NOTE: we deliberately do NOT subscribe to _audioService.onPlayingChanged.
     // The cubit is the single source of truth for isPlaying — it is mutated
@@ -208,6 +244,22 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _audioService.setLooping(true);
   }
 
+  bool _isLearnt(Exercise? exercise) =>
+      exercise != null && _learntExerciseIds.contains(exercise.id);
+
+  /// Learning mode pauses before every track that hasn't been marked
+  /// "Learnt" — the page shows the move's prompt with a "Go" button that
+  /// calls [startCurrentTrack] once the user is ready. A learnt move starts
+  /// on its own, same as every other mode.
+  bool _shouldAutoPlay(int index) =>
+      _mode != PlayerMode.learning || _isLearnt(exerciseAt(index));
+
+  /// Exposed for the page: whether Learning Mode's pre-track prompt should
+  /// be shown for the currently-loaded track. Mirrors [_shouldAutoPlay]
+  /// without the page needing to know about the learnt-exercises store
+  /// itself.
+  bool get shouldPromptLearningMode => !_shouldAutoPlay(state.playingIndex);
+
   /// The full [Exercise] behind the track at [index] (for the info page +
   /// per-item length). Null if the index is out of range.
   Exercise? exerciseAt(int index) => (index >= 0 && index < _itemDetails.length)
@@ -222,20 +274,28 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> loadTracks() async {
     final List<TrainingItemWithAudio> tracksToLoad = [];
     _itemDetails.clear();
-    _cachedIndices.clear();
 
     // Subscribe (or re-subscribe) to notification commands so lock-screen /
     // dropdown controls are forwarded to this cubit.
     unawaited(_notificationSub?.cancel());
     _notificationSub = _notification.commands.listen((cmd) {
       switch (cmd) {
-        case NotificationCommand.skipNext:
+        case SkipNextCommand():
           next();
-        case NotificationCommand.skipPrev:
+        case SkipPrevCommand():
           unawaited(prev());
-        case NotificationCommand.play:
-        case NotificationCommand.pause:
-          togglePlay();
+        // Explicit intents, never togglePlay(): the OS shows its own idea of
+        // the state, and a toggle would invert ours whenever they differ.
+        case PlayCommand():
+          if (state.isFinished) {
+            replay();
+          } else if (!state.isPlaying) {
+            unawaited(play());
+          }
+        case PauseCommand():
+          pause();
+        case SeekCommand(:final position):
+          unawaited(seekTo(position));
       }
     });
 
@@ -247,13 +307,23 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final sessionId = _trainingSession.id;
       final items = snap.itemsBySessionId[sessionId] ?? [];
 
+      if (_mode == PlayerMode.learning) {
+        _learntExerciseIds = await _learntExercisesRepo.getLearntExerciseIds();
+      }
+
       // Resolved once per load — an athlete's chosen Morshed takes effect
       // the next time they open a session, not live mid-playback (there's
       // no requirement for the latter, and it would complicate the already
       // subtle position/duration state below for no real benefit).
       final audioTracks = await _audioCatalogRepo.getMovementAudioTracks();
-      final selectedMorshedId = await _audioCatalogRepo.getSelectedMorshedId();
+      // The athlete's choice, else the admin-set default — the same rule
+      // session durations and downloads use (effectiveMorshedId).
+      final morshedId = effectiveMorshedId(
+        selectedId: await _audioCatalogRepo.getSelectedMorshedId(),
+        morsheds: await _audioCatalogRepo.getMorsheds(),
+      );
 
+      var audioMissing = false;
       for (final item in items) {
         final rawExercise = snap.exercisesById[item.exerciseId];
         if (rawExercise == null) continue;
@@ -266,7 +336,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         // errorMessage rather than a crash.
         final resolvedTrack = resolveAudioTrack(
           movementTypeId: rawExercise.movementTypeId,
-          chosenMorshedId: selectedMorshedId,
+          chosenMorshedId: morshedId,
           availableTracks: audioTracks,
         );
         final exercise = resolvedTrack == null
@@ -275,7 +345,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         AppLogger.d(
           'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
           'movementTypeId=${rawExercise.movementTypeId} '
-          'chosenMorshedId=$selectedMorshedId '
+          'chosenMorshedId=$morshedId '
           'resolvedTrack=${resolvedTrack == null ? 'null (no curated audio)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
           'finalAudioUrl=${exercise.audioFileUrl}',
         );
@@ -287,8 +357,16 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         final itemDetail = ItemDetail(item: item, exercise: exercise);
         _itemDetails.add(itemDetail);
 
-        final localAudio = await _downloadRepo.getLocalAudioPath(itemDetail);
-        final audioPath = localAudio ?? exercise.audioFileUrl ?? '';
+        // Native: the downloaded file only — never the remote URL. Web has
+        // no local storage, so the browser streams the remote URL there.
+        final remoteAudio = exercise.audioFileUrl ?? '';
+        final String audioPath;
+        if (kIsWeb) {
+          audioPath = remoteAudio;
+        } else {
+          audioPath = await _downloadRepo.getLocalAudioPath(itemDetail) ?? '';
+          if (audioPath.isEmpty && remoteAudio.isNotEmpty) audioMissing = true;
+        }
 
         var resolvedMedia = exercise.media;
         // Explicit readiness flag — the single source of truth for "can the
@@ -362,8 +440,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           duration: Duration.zero,
           isLoading: false,
           errorMessage: null,
+          needsDownload: audioMissing,
         ));
-        await _loadSourceAtIndex(0, shouldPlay: true);
+        if (audioMissing) return; // the page offers the download instead
+        await _loadSourceAtIndex(0,
+            shouldPlay: _autoStart && _shouldAutoPlay(0));
       }
     } catch (e) {
       emit(state.copyWith(
@@ -381,10 +462,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         duration: Duration.zero,
         isFinished: false,
       ));
-      _loadSourceAtIndex(nextIndex, shouldPlay: true);
+      _loadSourceAtIndex(nextIndex, shouldPlay: _shouldAutoPlay(nextIndex));
     } else {
       _audioService.stop();
-      _stopLogicalTimer();
       emit(state.copyWith(isPlaying: false, isFinished: true));
     }
   }
@@ -399,7 +479,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       isPlaying: false,
       isFinished: false,
     ));
-    _loadSourceAtIndex(0, shouldPlay: true);
+    _loadSourceAtIndex(0, shouldPlay: _shouldAutoPlay(0));
   }
 
   /// Below this, "previous" is treated as the start of a fresh tap rather
@@ -421,7 +501,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       position: Duration.zero,
       duration: Duration.zero,
     ));
-    unawaited(_loadSourceAtIndex(prevIndex, shouldPlay: true));
+    unawaited(
+        _loadSourceAtIndex(prevIndex, shouldPlay: _shouldAutoPlay(prevIndex)));
   }
 
   void setIndex(int index) {
@@ -440,90 +521,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   void setIndexAndPlay(int index) {
     if (index >= 0 && index < state.tracks.length) {
-      emit(state.copyWith(playingIndex: index, isPlaying: true));
-      _loadSourceAtIndex(index, shouldPlay: true);
-    }
-  }
-
-  // Each index is scheduled at most once per loadTracks() call.
-  // _cachedIndices.add() returns false if already present → skip.
-  void _cacheInBackground(int index) {
-    if (index < 0 ||
-        index >= state.tracks.length ||
-        index >= _itemDetails.length) {
-      return;
-    }
-    if (!_cachedIndices.add(index)) return;
-
-    final track = state.tracks[index];
-    final detail = _itemDetails[index];
-
-    if (!track.audioFilePath.startsWith('/')) {
-      _downloadRepo.cacheAudio(detail);
-    }
-    if (track.media.type == 'photo' &&
-        track.media.src != null &&
-        !track.media.src!.startsWith('/')) {
-      _downloadRepo.cacheImage(track.media.src!);
-    } else if (track.media.type == 'video' &&
-        track.media.src != null &&
-        !track.media.src!.startsWith('/')) {
-      // Independent of the big "Download session" flow, which only tracks
-      // audio completeness (checkAllCachedAndMark) — a session already
-      // marked downloaded before this exercise had a video would otherwise
-      // never get a chance to fetch it. This lookahead runs on every
-      // playthrough regardless of that flag.
-      //
-      // Live swap-in: once the download actually finishes, patch this
-      // track's media so the stage picks up the now-local, playable video
-      // without the user needing to leave and reopen the player. A failed
-      // or never-finishing download (localPath == null) is a silent no-op —
-      // playback and the poster-image fallback are entirely unaffected.
-      final originalSrc = track.media.src!;
-      unawaited(_downloadRepo.cacheVideo(originalSrc).then((localPath) {
-        if (localPath == null) return;
-        _applyResolvedVideo(index, originalSrc, localPath);
-      }));
-    }
-  }
-
-  /// Applies a background-cached video's local path to `tracks[index]`, but
-  /// only if that slot still holds the same media it did when caching
-  /// started — a reload (e.g. an edit save) between then and now may have
-  /// replaced it with different content, and a late-arriving result must
-  /// not clobber that.
-  void _applyResolvedVideo(int index, String originalSrc, String localPath) {
-    if (isClosed || index < 0 || index >= state.tracks.length) return;
-    final current = state.tracks[index];
-    if (current.media.src != originalSrc) return;
-
-    final updatedTracks = [...state.tracks];
-    updatedTracks[index] = current.copyWith(
-      media: ExerciseMedia(
-        type: 'video',
-        src: localPath,
-        poster: current.media.poster,
-        videoAnchorMs: current.media.videoAnchorMs,
-      ),
-      videoReady: true,
-    );
-
-    // Only the currently-visible track needs a resync bump — lookahead
-    // tracks (index+1..+3) get their media patched silently here and will
-    // get a fresh, correct resync of their own the moment the user actually
-    // navigates to them (_loadSourceAtIndex always bumps the generation).
-    // For the visible track, capture the real, current audio-loop position
-    // so the freshly-mounted video seeks to where the audio actually is
-    // instead of assuming it just started at 0 — see
-    // _ExerciseVideoState.initState in training_session_player_page.dart.
-    if (index == state.playingIndex) {
-      emit(state.copyWith(
-        tracks: updatedTracks,
-        videoResyncGeneration: state.videoResyncGeneration + 1,
-        videoResyncPositionMs: state.position.inMilliseconds,
-      ));
-    } else {
-      emit(state.copyWith(tracks: updatedTracks));
+      final autoPlay = _shouldAutoPlay(index);
+      emit(state.copyWith(playingIndex: index, isPlaying: autoPlay));
+      _loadSourceAtIndex(index, shouldPlay: autoPlay);
     }
   }
 
@@ -531,20 +531,19 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     if (index < 0 || index >= state.tracks.length) return;
 
     final track = state.tracks[index];
-    // Resolve to a local path before handing it to the audio engine — playing
-    // a remote URL directly would stream/download the file, and the
-    // background lookahead cache would then download it again separately.
-    final sourcePath = track.audioFilePath.startsWith('/')
-        ? track.audioFilePath
-        : await _downloadRepo.resolvePlayableAudioPath(_itemDetails[index]);
-
-    _originalDuration = null;
-    _targetDuration = null;
-    _stopLogicalTimer();
-    _logicalElapsed = Duration.zero;
+    final generation = ++_loadGeneration;
+    bool superseded() => isClosed || generation != _loadGeneration;
+    // Before the first await: from here on, readings belong to the old clip.
+    _resetMoveTimeline();
+    // Already the downloaded file (or, on web, the remote URL) — resolved
+    // once in loadTracks; nothing is downloaded or streamed here.
+    final sourcePath = track.audioFilePath;
 
     try {
       if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
+      // Set before handing the source over: the engine reports the new
+      // clip's duration while play()/setSource() is still in progress.
+      _sourceDispatched = true;
 
       if (shouldPlay) {
         // The cubit is the authority: declare the intent (isPlaying: true)
@@ -567,7 +566,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         await _audioService.play(sourcePath);
       } else {
         await _audioService.stop();
+        if (superseded()) return;
         await _audioService.setSource(sourcePath);
+        if (superseded()) return;
         emit(state.copyWith(
           isPlaying: false,
           isLoading: false,
@@ -576,6 +577,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         ));
       }
 
+      if (superseded()) return;
       // Update the OS notification (lock screen / dropdown card).
       _notification.update(
         trackTitle: track.displayName,
@@ -583,15 +585,8 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         isPlaying: shouldPlay,
         duration: state.duration == Duration.zero ? null : state.duration,
       );
-
-      _cacheInBackground(index);
-      _cacheInBackground(index + 1);
-      _cacheInBackground(index + 2);
-      _cacheInBackground(index + 3);
-      unawaited(_downloadRepo
-          .checkAllCachedAndMark(_trainingSession.id, _itemDetails)
-          .catchError((_) => false));
     } catch (e) {
+      if (superseded()) return;
       emit(state.copyWith(
           errorMessage: 'Error loading track: ${track.displayName}'));
       await _audioService.stop();
@@ -601,7 +596,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   Future<void> stop() async {
     await _audioService.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
-    _stopLogicalTimer();
   }
 
   Future<void> play() async {
@@ -609,12 +603,18 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       // Declare intent before commanding the engine — same pattern as
       // _loadSourceAtIndex. The UI updates immediately; the engine catches up.
       emit(state.copyWith(isPlaying: true));
-      if (_logicalTimer == null || !_logicalTimer!.isActive) {
-        _startLogicalTimer();
-      }
       await _audioService.resume();
     }
   }
+
+  /// Starts the current track for the first time — used by Learning Mode's
+  /// "Go" button. That track was only ever handed to the engine via
+  /// setSource() (never played), so this goes through the same play(path)
+  /// bootstrap every other track start uses, rather than [play]'s resume() —
+  /// resuming a source that was never actually played is not something every
+  /// platform backend supports, unlike a genuine pause-then-resume mid-track.
+  Future<void> startCurrentTrack() =>
+      _loadSourceAtIndex(state.playingIndex, shouldPlay: true);
 
   void togglePlay() {
     if (state.isFinished) {
@@ -637,91 +637,108 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   }
 
   Future<void> seekTo(Duration position) async {
-    if (_originalDuration == null || _logicalTargetDuration == null) return;
+    final target = _targetDuration;
+    if (!_clock.isStarted || target == null) return;
     final clamped = Duration(
-      milliseconds: position.inMilliseconds
-          .clamp(0, _logicalTargetDuration!.inMilliseconds),
+      milliseconds: position.inMilliseconds.clamp(0, target.inMilliseconds),
     );
-    _logicalTimer?.cancel();
-    _logicalElapsed = clamped;
-    final seekMs = clamped.inMilliseconds % _originalDuration!.inMilliseconds;
-    await _audioService.seek(Duration(milliseconds: seekMs));
+    // The clock re-bases itself first, so the engine's jump to the new spot
+    // is never mistaken for a loop.
+    final enginePosition = _clock.seekTo(clamped);
+    _awaitingLoopRestart = false;
+    await _audioService.seek(enginePosition);
     emit(state.copyWith(
       logicalPosition: clamped,
       videoResyncGeneration: state.videoResyncGeneration + 1,
-      videoResyncPositionMs: seekMs,
+      videoResyncPositionMs: enginePosition.inMilliseconds,
     ));
-    if (state.isPlaying) _startLogicalTimer();
   }
 
+  /// Move length = clip length scaled from the clip's own reps to the
+  /// prescribed reps (e.g. a 10s, 1-rep clip prescribed ×3 → 30s).
   void _calculateTargetDuration() {
     final track = state.currentTrack;
-    if (track == null || _originalDuration == null) return;
+    final clip = _originalDuration;
+    if (track == null || clip == null) return;
     final defaultReps = track.defaultRepetitions ?? 1;
-    final effectiveReps = track.effectiveRepetitions;
-    final ms = (_originalDuration!.inMilliseconds / defaultReps * effectiveReps)
+    if (defaultReps <= 0) {
+      _targetDuration = clip;
+      return;
+    }
+    final ms = (clip.inMilliseconds / defaultReps * track.effectiveRepetitions)
         .round();
     _targetDuration = Duration(milliseconds: ms);
   }
 
-  void _handleDynamicDuration(Duration position) {
-    if (_targetDuration == null || !state.isPlaying) return;
-    if (position >= _targetDuration!) _audioService.seek(Duration.zero);
+  /// Forgets the previous move's timing; positions are ignored until the
+  /// next source is dispatched (see [_sourceDispatched]).
+  void _resetMoveTimeline() {
+    _sourceDispatched = false;
+    _advanceRequested = false;
+    _awaitingLoopRestart = false;
+    _originalDuration = null;
+    _targetDuration = null;
+    _clock.reset();
+    emit(state.copyWith(
+        logicalPosition: Duration.zero, logicalDuration: Duration.zero));
   }
 
-  void _startLogicalTimer() {
-    // Defensive cancel: callers (e.g. seekTo, called rapid-fire during a
-    // slider drag) may race, leaving a previous timer's cancellation
-    // overtaken by a newer call before it ever scheduled a replacement.
-    // Without this, multiple Timer.periodic instances can end up ticking
-    // concurrently — multiplying the effective tick rate (the "progress
-    // bar moves very fast and the track ends immediately" symptom) — and
-    // orphaned ones keep ticking forever after the page closes, since
-    // close() can only cancel whichever single timer _logicalTimer
-    // currently references.
-    _logicalTimer?.cancel();
-    if (!state.isPlaying) return;
-    final track = state.currentTrack;
-    if (track == null || _originalDuration == null) return;
-    final originalMs = _originalDuration!.inMilliseconds;
-    if (originalMs <= 0) return;
-    final defaultReps = track.defaultRepetitions ?? 1;
-    if (defaultReps <= 0) return;
-    final effectiveReps = track.effectiveRepetitions;
-    final targetMs = (originalMs / defaultReps * effectiveReps).round();
-    _logicalTargetDuration = Duration(milliseconds: targetMs);
+  void _onEngineDuration(Duration duration) {
+    if (!_sourceDispatched || duration <= Duration.zero) return;
+    _originalDuration = duration;
+    _calculateTargetDuration();
+    // Engines may re-report the same clip's duration mid-move; only the
+    // first report starts the timeline, so progress isn't wiped.
+    if (!_clock.isStarted) _clock.start(duration);
     emit(state.copyWith(
-        logicalPosition: _logicalElapsed,
-        logicalDuration: _logicalTargetDuration));
-    _logicalTimer =
-        Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-      if (isClosed) {
-        timer.cancel();
-        return;
-      }
-      if (!state.isPlaying) return;
-      _logicalElapsed += const Duration(milliseconds: 200);
-      if (_logicalElapsed >= _logicalTargetDuration!) {
-        timer.cancel();
-        next();
-        return;
-      }
-      emit(state.copyWith(logicalPosition: _logicalElapsed));
-    });
+      duration: _targetDuration ?? duration,
+      logicalPosition: _clock.logicalPosition,
+      logicalDuration: _targetDuration,
+    ));
   }
 
-  void _stopLogicalTimer() {
-    _logicalTimer?.cancel();
-    emit(state.copyWith(
-        logicalPosition: _logicalElapsed,
-        logicalDuration: _logicalTargetDuration ?? Duration.zero));
+  /// The single place where the move's progress — and its end — is decided.
+  void _onEnginePosition(Duration position) {
+    if (!_sourceDispatched) return;
+    final target = _targetDuration;
+    final clip = _originalDuration;
+    if (!_clock.isStarted || target == null || clip == null) {
+      emit(state.copyWith(position: position));
+      return;
+    }
+
+    // Zoorkhaneh, prescribed reps fewer than the clip's: we loop the first
+    // `target` of the clip ourselves. Ignore readings until our seek(0) lands.
+    final loopsShortClip = _mode == PlayerMode.zoorkhaneh && target < clip;
+    if (loopsShortClip && _awaitingLoopRestart) {
+      if (position >= target) return;
+      _awaitingLoopRestart = false;
+    }
+
+    var logical = _clock.onEnginePosition(position);
+    final restartShortClip =
+        loopsShortClip && state.isPlaying && position >= target;
+    if (restartShortClip) {
+      _clock.restartLoop(target);
+      _awaitingLoopRestart = true;
+      logical = _clock.logicalPosition;
+    }
+    emit(state.copyWith(position: position, logicalPosition: logical));
+    if (restartShortClip) unawaited(_audioService.seek(Duration.zero));
+
+    // Zoorkhaneh never auto-advances: the timeline climbs past the target
+    // forever (the rep counter reads it as an uncapped count) until a manual
+    // next().
+    if (!state.isPlaying || _mode == PlayerMode.zoorkhaneh) return;
+
+    if (logical >= target && !_advanceRequested) {
+      _advanceRequested = true;
+      next();
+    }
   }
 
   @override
   Future<void> close() async {
-    // Cancel timer first (sync) before any awaits so the fake timer system in
-    // tests sees no pending timers when _verifyInvariants runs.
-    _logicalTimer?.cancel();
     await _notificationSub?.cancel();
     await _positionSubscription?.cancel();
     await _durationSubscription?.cancel();

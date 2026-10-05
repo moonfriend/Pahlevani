@@ -24,15 +24,18 @@ import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
@@ -142,6 +145,8 @@ void _registerFakes(DomainSnapshot snapshot,
   getIt.registerSingleton<PlayerNotificationService>(
       FakePlayerNotificationService());
   getIt.registerSingleton<AudioCatalogRepository>(FakeAudioCatalogRepository());
+  getIt.registerSingleton<LearntExercisesRepository>(
+      FakeLearntExercisesRepository());
 }
 
 Widget _buildPage(DomainSnapshot snapshot) {
@@ -153,7 +158,8 @@ Widget _buildPage(DomainSnapshot snapshot) {
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
-      home: AudioPlayerPage(trainingSession: testSession1),
+      home: AudioPlayerPage(
+          trainingSession: testSession1, mode: PlayerMode.athlete),
     ),
   );
 }

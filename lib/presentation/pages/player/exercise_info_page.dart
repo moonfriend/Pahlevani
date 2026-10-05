@@ -1,12 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
-import 'package:video_player/video_player.dart';
+import 'package:pahlevani/presentation/widgets/player/exercise_demo_video_player.dart';
+import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
 
 /// Detail page for a single move — opened from the ⓘ on a player track row.
 /// Shows the move's demonstration video (with its own audio, if a locally
@@ -65,7 +64,7 @@ class ExerciseInfoPage extends StatelessWidget {
           if (hasPlayableVideo)
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: _InfoVideoPlayer(
+              child: ExerciseDemoVideoPlayer(
                 key: ValueKey(resolvedMedia.src),
                 src: resolvedMedia.src!,
               ),
@@ -120,7 +119,10 @@ class ExerciseInfoPage extends StatelessWidget {
                     fontSize: 13.5,
                     color: colors.onMuted)),
           ],
-          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [LearntToggle(exerciseId: exercise.id)],
+          ),
 
           // Description.
           Text('ABOUT THIS MOVE',
@@ -172,107 +174,6 @@ class _VideoPlaceholder extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: colors.onMuted)),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Standalone demonstration-video player for the info page — unlike the
-/// player stage's muted, audio-synced `_ExerciseVideo`, this plays with its
-/// own original audio and exposes a visible play/pause control, since here
-/// it's the only thing making sound (the info page always opens paused —
-/// see the ⓘ tap handler that calls `cubit.pause()` first).
-class _InfoVideoPlayer extends StatefulWidget {
-  const _InfoVideoPlayer({super.key, required this.src});
-  final String src;
-
-  @override
-  State<_InfoVideoPlayer> createState() => _InfoVideoPlayerState();
-}
-
-class _InfoVideoPlayerState extends State<_InfoVideoPlayer> {
-  late final VideoPlayerController _controller;
-  bool _ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = kIsWeb
-        ? VideoPlayerController.networkUrl(Uri.parse(widget.src))
-        : VideoPlayerController.file(File(widget.src));
-    _controller
-      ..setLooping(true)
-      ..addListener(_onTick)
-      ..initialize().then((_) {
-        if (mounted) setState(() => _ready = true);
-      }).catchError((_) {
-        // Corrupt/unreadable local file — fail silently, same convention as
-        // the player stage's _ExerciseVideo.
-      });
-  }
-
-  void _onTick() {
-    if (mounted) setState(() {});
-  }
-
-  void _togglePlay() {
-    if (!_ready) return;
-    if (_controller.value.isPlaying) {
-      _controller.pause();
-    } else {
-      _controller.play();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onTick);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: GestureDetector(
-        onTap: _togglePlay,
-        child: ColoredBox(
-          color: Colors.black,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_ready)
-                FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: _controller.value.size.width,
-                    height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
-                  ),
-                )
-              else
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white70),
-                ),
-              if (_ready)
-                Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
-                        color: Colors.black45, shape: BoxShape.circle),
-                    child: Icon(
-                        _controller.value.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 32),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );

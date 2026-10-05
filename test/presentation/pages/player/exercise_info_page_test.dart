@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 
 Widget _wrap(Exercise ex, {ExerciseMedia? media}) => MaterialApp(
       theme: PahlevaniTheme.dark(),
@@ -73,6 +77,13 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 }
 
 void main() {
+  setUp(() {
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+  });
+
+  tearDown(() => getIt.reset());
+
   testWidgets('shows the move name, gloss and description', (tester) async {
     await tester.pumpWidget(_wrap(const Exercise(
       id: 1,

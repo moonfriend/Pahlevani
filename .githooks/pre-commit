@@ -7,8 +7,17 @@
 
 set -e
 
+# git commit exports GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE into every hook's
+# environment. Dart 3.7+'s `dart format` shells out to git internally and,
+# seeing those set, tries to diff against `origin/master` as a hardcoded
+# fallback — which doesn't exist here (this repo's default branch is
+# `main`), so it aborts with "fatal: Not a valid object name origin/master"
+# on every single commit. Unset them so dart format falls back to normal
+# directory-based git discovery instead.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
+
 echo "→ Checking Dart formatting..."
-dart format --set-exit-if-changed . || {
+dart format --output=none --set-exit-if-changed . || {
   echo ""
   echo "  Format check failed. Run: dart format ."
   echo "  Then re-stage your changes and commit again."

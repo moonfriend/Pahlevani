@@ -3,8 +3,8 @@ import 'package:pahlevani/data/dtos/movement_audio_track_row.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 
-Morshed mapMorshed(MorshedRow r) =>
-    Morshed(id: r.id, name: r.name, photoUrl: r.photoUrl);
+Morshed mapMorshed(MorshedRow r) => Morshed(
+    id: r.id, name: r.name, photoUrl: r.photoUrl, isDefault: r.isDefault);
 
 MovementAudioTrack mapMovementAudioTrack(MovementAudioTrackRow r) =>
     MovementAudioTrack(

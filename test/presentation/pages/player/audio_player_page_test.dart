@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
+import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
@@ -9,17 +12,21 @@ import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
@@ -40,9 +47,12 @@ void _registerFakes(DomainSnapshot snapshot) {
   getIt.registerSingleton<TrainingHistoryRepository>(
       FakeTrainingHistoryRepository());
   getIt.registerSingleton<AudioCatalogRepository>(FakeAudioCatalogRepository());
+  getIt.registerSingleton<LearntExercisesRepository>(
+      FakeLearntExercisesRepository());
 }
 
-Widget _buildPage(DomainSnapshot snapshot) {
+Widget _buildPage(DomainSnapshot snapshot,
+    {PlayerMode mode = PlayerMode.athlete}) {
   return BlocProvider(
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
@@ -51,7 +61,7 @@ Widget _buildPage(DomainSnapshot snapshot) {
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
-      home: AudioPlayerPage(trainingSession: testSession1),
+      home: AudioPlayerPage(trainingSession: testSession1, mode: mode),
     ),
   );
 }
@@ -474,6 +484,8 @@ void main() {
         FakeTrainingHistoryRepository());
     getIt.registerSingleton<AudioCatalogRepository>(
         FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -485,9 +497,9 @@ void main() {
     // Rep counter uses RichText; findRichText: true is required.
     expect(find.textContaining('Rep', findRichText: true), findsWidgets);
 
-    // emitDuration starts _logicalTimer in the cubit. Cancel it by closing the
-    // cubit synchronously (via widget disposal) BEFORE _verifyInvariants runs —
-    // addTearDown callbacks fire after invariant checks, so they're too late.
+    // Close the cubit synchronously (via widget disposal) BEFORE
+    // _verifyInvariants runs — addTearDown callbacks fire after invariant
+    // checks, so they're too late.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
@@ -509,18 +521,21 @@ void main() {
         FakeTrainingHistoryRepository());
     getIt.registerSingleton<AudioCatalogRepository>(
         FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
 
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // testExercise1 has repetitionsDefault=3; a 3s duration gives exactly
-    // 1s (5 logical-timer ticks) per rep — enough headroom to land cleanly
-    // on rep 2 without the boundary rounding into rep 1 or rep 3.
+    // testExercise1 has repetitionsDefault=3; a 3s clip gives 1s per rep.
+    // The counter follows the audio engine's position, so drive it with a
+    // reading mid-way through rep 2.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
     expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
 
-    await tester.pump(const Duration(milliseconds: 1100));
+    capturedAudio.emitPosition(const Duration(milliseconds: 1500));
+    await tester.pump();
     expect(find.textContaining('Rep 2', findRichText: true), findsWidgets);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -640,4 +655,502 @@ void main() {
 
     expect(find.text('Photo Move'), findsWidgets);
   });
+
+  // ── Learning mode ──────────────────────────────────────────────────────────
+  //
+  // The pop-up is a modal dialog (showGeneralDialog), not a full page — the
+  // player stays mounted (dimmed) behind it, and there's no AppBar back
+  // button to drive via tester.pageBack(); dismissing it means tapping the
+  // barrier outside the card. These assert against the fake audio service's
+  // recorded calls (the actual side effect of play/pause intent) rather than
+  // reading cubit state directly. Also: once playback is genuinely running,
+  // the "now playing" equalizer pill runs an indefinitely-repeating
+  // animation — pumpAndSettle() never settles in that state, so bounded
+  // tester.pump(duration) calls are used instead from that point onward.
+
+  testWidgets('learning mode shows a Go pop-up before the first track plays',
+      (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester
+        .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('Go'), findsOneWidget);
+    expect(capturedAudio.resumed, isFalse);
+    expect(capturedAudio.playCallCount, 0);
+  });
+
+  testWidgets('tapping Go starts playback and dismisses the pop-up',
+      (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester
+        .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
+    await _pumpAndLoad(tester);
+
+    await tester.tap(find.text('Go'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Go'), findsNothing);
+    // Must go through play(path), not resume() — this track was only ever
+    // setSource()'d, never actually played (see startCurrentTrack()'s doc).
+    expect(capturedAudio.playCallCount, 1);
+    expect(capturedAudio.resumed, isFalse);
+  });
+
+  testWidgets('backing out of the pop-up leaves playback paused',
+      (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester
+        .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
+    await _pumpAndLoad(tester);
+
+    // Never plays in this test, so pumpAndSettle is safe here. Tap the
+    // barrier outside the card — the modal prompt has no back button.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Go'), findsNothing);
+    expect(capturedAudio.resumed, isFalse);
+    expect(capturedAudio.playCallCount, 0);
+  });
+
+  testWidgets('advancing to the next track re-shows the pop-up',
+      (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester
+        .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
+    await _pumpAndLoad(tester);
+
+    await tester
+        .tap(find.text('Go')); // starts track 0 (Shena), dismisses pop-up
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Advance via the lock-screen/notification channel — it reaches the
+    // cubit's next() directly, without needing a widget-tree reference to
+    // the cubit while the (now-dismissed) pop-up route may still be settling.
+    final notification =
+        getIt<PlayerNotificationService>() as FakePlayerNotificationService;
+    notification.emit(NotificationCommand.skipNext);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // testSession1's second item (Kabbadeh) — the pop-up reappeared for it.
+    expect(find.text('Go'), findsOneWidget);
+    expect(find.text('Kabbadeh'), findsWidgets);
+  });
+
+  // ── Zoorkhaneh mode ────────────────────────────────────────────────────────
+
+  testWidgets(
+      'zoorkhaneh mode keeps looping the track instead of finishing the session',
+      (tester) async {
+    final singleItemSnap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [testItem1] // testExercise1: repetitionsDefault = 3
+      },
+      exercisesById: {testExercise1.id: testExercise1},
+    );
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(singleItemSnap));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester
+        .pumpWidget(_buildPage(singleItemSnap, mode: PlayerMode.zoorkhaneh));
+    await _pumpAndLoad(tester);
+
+    // 3 reps on a 3s clip → 1s/rep.
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+
+    // A single-item session in any other mode would have auto-completed
+    // (isFinished: true) once the 3s nominal target passed. Play well past
+    // that point — the engine loops the clip once (2.9s → 0.1s), giving a
+    // 5.6s timeline — zoorkhaneh mode must still be looping, uncapped rep
+    // count climbing past the nominal total of 3, with no "of Total" shown.
+    for (final ms in [1000, 2900, 100, 2600]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
+
+    final cubit = tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+    expect(cubit.state.isFinished, isFalse,
+        reason: 'zoorkhaneh mode must not auto-complete the session');
+    expect(cubit.state.playingIndex, 0);
+    expect(find.textContaining('Rep 6', findRichText: true), findsWidgets);
+    expect(find.textContaining('of 3', findRichText: true), findsNothing,
+        reason: 'zoorkhaneh mode drops the "of Total" suffix');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  // ── Rep-color cleanup ──────────────────────────────────────────────────────
+
+  testWidgets(
+      'a non-default rep count no longer shows the "custom" label or color',
+      (tester) async {
+    final customRepsSnap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [
+          // testExercise1's repetitionsDefault is 3 — 7 here used to render
+          // the now-removed orange "custom" styling.
+          const TrainingItem(
+              id: 30001,
+              sessionId: 1,
+              exerciseId: 101,
+              position: 1,
+              prescription: RepsPresc(7)),
+        ]
+      },
+      exercisesById: {101: testExercise1},
+    );
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(customRepsSnap));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester.pumpWidget(_buildPage(customRepsSnap));
+    await _pumpAndLoad(tester);
+
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+
+    expect(find.text('7×'), findsOneWidget);
+    expect(find.textContaining('custom', findRichText: true), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  // ── Layout across window sizes ─────────────────────────────────────────────
+
+  group('player layout', () {
+    // tester.view (not setSurfaceSize) so MediaQuery reports the same size —
+    // the stage's height cap is computed from MediaQuery.
+    Future<void> openAt(WidgetTester tester, Size size) async {
+      tester.view
+        ..devicePixelRatio = 1.0
+        ..physicalSize = size;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Size stageSize(WidgetTester tester) => tester.getSize(find
+        .descendant(
+            of: find.byType(AudioPlayerPage),
+            matching: find.byType(AspectRatio))
+        .first);
+
+    testWidgets('a wide, short desktop window does not overflow',
+        (tester) async {
+      await openAt(tester, const Size(1134, 720)); // the reported window
+      expect(tester.takeException(), isNull,
+          reason: 'the player column must fit the window (no overflow)');
+      final stage = stageSize(tester);
+      expect(stage.width / stage.height, closeTo(16 / 9, 0.01),
+          reason: 'the stage keeps the videos\' 16:9 shape');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    for (final size in const [
+      Size(844, 390), // phone, landscape
+      Size(834, 1194), // tablet, portrait
+      Size(1194, 834), // tablet, landscape
+      Size(1280, 800), // small desktop window
+    ]) {
+      testWidgets('no overflow at ${size.width.toInt()}x${size.height.toInt()}',
+          (tester) async {
+        await openAt(tester, size);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+    }
+
+    testWidgets('a phone keeps the full-width stage', (tester) async {
+      await openAt(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+      expect(stageSize(tester).width, 390 - 32,
+          reason: 'phones are unaffected: stage spans the width minus margins');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
+  // ── Edit from the player ───────────────────────────────────────────────────
+
+  group('Edit from the player', () {
+    TrainingSessionPlayerCubit playerCubit(WidgetTester tester) => tester
+        .element(find
+            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+        .read<TrainingSessionPlayerCubit>();
+
+    // As in the app, the session list is loaded (the editor reads the
+    // session's moves from it) and shares the repository the player loads
+    // from, so a saved copy is visible to a freshly opened player.
+    Future<void> openPlayer(WidgetTester tester) async {
+      final sessionCubit = TrainingSessionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        downloadRepository: getIt<DownloadRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
+      );
+      await sessionCubit.fetchTrainingSessions();
+      addTearDown(sessionCubit.close);
+      await tester.pumpWidget(BlocProvider.value(
+        value: sessionCubit,
+        child: MaterialApp(
+          theme: PahlevaniTheme.dark(),
+          home: AudioPlayerPage(
+              trainingSession: testSession1, mode: PlayerMode.athlete),
+        ),
+      ));
+      await _pumpAndLoad(tester);
+    }
+
+    testWidgets('tapping Edit pauses playback before opening the editor',
+        (tester) async {
+      await openPlayer(tester);
+      expect(playerCubit(tester).state.isPlaying, isTrue);
+      final cubit = playerCubit(tester);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrainingSessionPage), findsOneWidget);
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'audio and the demo video must stop while editing');
+    });
+
+    testWidgets('leaving Edit without saving keeps the player paused',
+        (tester) async {
+      await openPlayer(tester);
+      final cubit = playerCubit(tester);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(EditTrainingSessionPage), findsNothing);
+      expect(identical(playerCubit(tester), cubit), isTrue,
+          reason: 'cancelling must not restart the player');
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets(
+        'saving restarts a fresh, paused player for the saved copy of the '
+        'session', (tester) async {
+      await openPlayer(tester);
+      final oldCubit = playerCubit(tester);
+      final originalReps = oldCubit.state.tracks.first.effectiveRepetitions;
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+').first); // first move: one more rep
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      // Editor closes, the copy is saved, the old player closes, the new one
+      // loads — several async hops. Closing the old player waits on real
+      // async work (not fake time), hence runAsync alongside the pumps.
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final newCubit = playerCubit(tester);
+      expect(identical(newCubit, oldCubit), isFalse,
+          reason: 'the player must start from a clean slate');
+      expect(oldCubit.isClosed, isTrue);
+      expect(newCubit.state.tracks.first.effectiveRepetitions, originalReps + 1,
+          reason: 'a server session is saved as a copy; the player must '
+              'play that copy (with the edit), not the original');
+      expect(newCubit.state.playingIndex, 0);
+      expect(newCubit.state.isPlaying, isFalse,
+          reason: 'after Save the player waits for the user to press play');
+    });
+  });
+
+  // ── Media not on the device ────────────────────────────────────────────────
+
+  group('needs download', () {
+    testWidgets(
+        'audio not on the device → explains and offers the download, never '
+        'plays', (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      expect(find.textContaining("isn't on this device"), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Download'), findsOneWidget);
+      final cubit = tester
+          .element(find.byType(
+              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+          .read<TrainingSessionPlayerCubit>();
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets('after downloading, the player loads and plays',
+        (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Download'));
+      await tester.pumpAndSettle();
+      // The download completes; the files are now on the device.
+      downloads.localAudioPathBuilder = (item) => '/cached/${item.item.id}.mp3';
+      await tester.tap(find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('Download ')));
+      // Dialog finishes and closes, then the player reloads (several async
+      // hops; the playing equalizer animates forever, so no pumpAndSettle).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining("isn't on this device"), findsNothing);
+      final cubit = tester
+          .element(find.byType(
+              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
+          .read<TrainingSessionPlayerCubit>();
+      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state.tracks, isNotEmpty);
+    });
+  });
+}
+
+class _NoSizes implements MediaSizeRepository {
+  @override
+  Future<Map<String, int>> sizesFor(Set<String> urls) async =>
+      {for (final u in urls) u: 1000000};
+}
+
+class _MemoryPrefs implements DownloadPreferencesRepository {
+  DownloadTier? tier;
+  @override
+  Future<DownloadTier?> getPreferredTier() async => tier;
+  @override
+  Future<void> setPreferredTier(DownloadTier t) async => tier = t;
 }
