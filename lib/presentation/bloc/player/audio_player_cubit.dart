@@ -3,9 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
-import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
-import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
@@ -14,32 +12,9 @@ import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
-import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/domain/usecases/player/build_playback_queue.dart';
 import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
-
-/// Substitutes a resolved recording's audio-shaped fields onto [base] —
-/// everything else (name, media, description...) stays the exercise's own.
-/// Kept here rather than as an Exercise.copyWith so the training_session
-/// domain entity doesn't need to know about the audio_catalog module; only
-/// this presentation-layer cubit depends on both.
-Exercise _withResolvedAudio(Exercise base, MovementAudioTrack track) =>
-    Exercise(
-      id: base.id,
-      movementId: base.movementId,
-      name: base.name,
-      titleFa: base.titleFa,
-      gloss: base.gloss,
-      audioFileUrl: track.audioUrl,
-      repetitionsDefault: track.repetitionsDefault,
-      durationSeconds: track.durationSeconds,
-      media: base.media,
-      description: base.description,
-      videoUrl: base.videoUrl,
-      audioAnchorMs: track.audioAnchorMs,
-      movementTypeId: base.movementTypeId,
-    );
 
 /// State for the audio player.
 class AudioPlayerState {
@@ -145,13 +120,11 @@ class AudioPlayerState {
 
 class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   final AudioPlayerService _audioService;
-  final DownloadRepository _downloadRepo;
-  final TrainingSessionRepository _sessionRepo;
-  final AudioCatalogRepository _audioCatalogRepo;
   final LearntExercisesRepository _learntExercisesRepo;
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
   final PlayerMode _mode;
+  final BuildPlaybackQueue _buildQueue;
 
   /// Whether [loadTracks] starts playing the first track by itself. False
   /// when the player is restarted after an edit, so it waits for the user.
@@ -210,9 +183,11 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   })  : _trainingSession = trainingSession,
         _mode = mode,
         _audioService = audioPlayerService,
-        _downloadRepo = downloadRepository,
-        _sessionRepo = sessionRepository,
-        _audioCatalogRepo = audioCatalogRepository,
+        _buildQueue = BuildPlaybackQueue(
+          sessionRepository: sessionRepository,
+          audioCatalogRepository: audioCatalogRepository,
+          downloadRepository: downloadRepository,
+        ),
         _learntExercisesRepo = learntExercisesRepository,
         _notification = notificationService,
         _autoStart = autoStart,
@@ -303,127 +278,19 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     await _audioService.stop();
 
     try {
-      final snap = await _sessionRepo.getTrainingSessions();
-      final sessionId = _trainingSession.id;
-      final items = snap.itemsBySessionId[sessionId] ?? [];
-
       if (_mode == PlayerMode.learning) {
         _learntExerciseIds = await _learntExercisesRepo.getLearntExerciseIds();
       }
 
-      // Resolved once per load — an athlete's chosen Morshed takes effect
-      // the next time they open a session, not live mid-playback (there's
-      // no requirement for the latter, and it would complicate the already
-      // subtle position/duration state below for no real benefit).
-      final audioTracks = await _audioCatalogRepo.getMovementAudioTracks();
-      // The athlete's choice, else the admin-set default — the same rule
-      // session durations and downloads use (effectiveMorshedId).
-      final morshedId = effectiveMorshedId(
-        selectedId: await _audioCatalogRepo.getSelectedMorshedId(),
-        morsheds: await _audioCatalogRepo.getMorsheds(),
-      );
-
-      var audioMissing = false;
-      for (final item in items) {
-        final rawExercise = snap.exercisesById[item.exerciseId];
-        if (rawExercise == null) continue;
-
-        // Null when the movement hasn't been curated with a type yet, or
-        // nothing has been recorded for it — the terminal state now (no
-        // legacy per-exercise fallback exists anymore); the exercise then
-        // keeps its own audio-shaped fields at null, which the empty-source
-        // check in _loadSourceAtIndex below turns into a per-track
-        // errorMessage rather than a crash.
-        final resolvedTrack = resolveAudioTrack(
-          movementTypeId: rawExercise.movementTypeId,
-          chosenMorshedId: morshedId,
-          availableTracks: audioTracks,
-        );
-        final exercise = resolvedTrack == null
-            ? rawExercise
-            : _withResolvedAudio(rawExercise, resolvedTrack);
-        AppLogger.d(
-          'audio resolve: exercise=${rawExercise.id} "${rawExercise.name}" '
-          'movementTypeId=${rawExercise.movementTypeId} '
-          'chosenMorshedId=$morshedId '
-          'resolvedTrack=${resolvedTrack == null ? 'null (no curated audio)' : '(morshedId=${resolvedTrack.morshedId}, url=${resolvedTrack.audioUrl})'} '
-          'finalAudioUrl=${exercise.audioFileUrl}',
-        );
-
-        final repsToDo = item.prescription is RepsPresc
-            ? (item.prescription as RepsPresc).count
-            : null;
-
-        final itemDetail = ItemDetail(item: item, exercise: exercise);
-        _itemDetails.add(itemDetail);
-
-        // Native: the downloaded file only — never the remote URL. Web has
-        // no local storage, so the browser streams the remote URL there.
-        final remoteAudio = exercise.audioFileUrl ?? '';
-        final String audioPath;
-        if (kIsWeb) {
-          audioPath = remoteAudio;
-        } else {
-          audioPath = await _downloadRepo.getLocalAudioPath(itemDetail) ?? '';
-          if (audioPath.isEmpty && remoteAudio.isNotEmpty) audioMissing = true;
-        }
-
-        var resolvedMedia = exercise.media;
-        // Explicit readiness flag — the single source of truth for "can the
-        // stage actually show a playable video right now," replacing the
-        // old convention of inferring it from whether media.src happens to
-        // start with '/'. Set here (the only place that makes the
-        // local-vs-remote decision) and carried on the track itself.
-        var videoReady = false;
-        if (exercise.media.type == 'photo' && exercise.media.hasAsset) {
-          final localImage =
-              await _downloadRepo.getLocalImagePath(exercise.media.src!);
-          if (localImage != null) {
-            resolvedMedia = ExerciseMedia(type: 'photo', src: localImage);
-          }
-        } else if (exercise.media.type == 'video' && exercise.media.hasAsset) {
-          // Video only ever plays from the local cache (never streamed) — if
-          // it isn't cached yet, src stays the remote URL, which the player
-          // stage treats as "not playable" and falls back to the poster.
-          // Web has no local filesystem to cache into (DownloadRepository
-          // no-ops there), so any non-empty remote URL is ready — the
-          // player streams it directly.
-          final localVideo =
-              await _downloadRepo.getLocalVideoPath(exercise.media.src!);
-          final posterUrl = exercise.media.poster;
-          final localPoster = (posterUrl != null && posterUrl.isNotEmpty)
-              ? await _downloadRepo.getLocalImagePath(posterUrl)
-              : null;
-          resolvedMedia = ExerciseMedia(
-            type: 'video',
-            src: localVideo ?? exercise.media.src,
-            poster: localPoster ?? posterUrl,
-            videoAnchorMs: exercise.media.videoAnchorMs,
-          );
-          videoReady = kIsWeb || localVideo != null;
-        }
-
-        // Constant start-offset so the video's "sarzarb"/main beat lines up
-        // with the audio's, when both anchors are set (see migration 0012).
-        // Null when either is missing — video then plays decoupled, as
-        // before this feature existed.
-        final audioAnchorMs = exercise.audioAnchorMs;
-        final videoAnchorMs = exercise.media.videoAnchorMs;
-        final videoStartOffsetMs =
-            (audioAnchorMs != null && videoAnchorMs != null)
-                ? videoAnchorMs - audioAnchorMs
-                : null;
-
-        tracksToLoad.add(TrainingItemWithAudio(
-          id: item.id.toString(),
-          title: exercise.name,
-          audioFilePath: audioPath,
-          media: resolvedMedia,
-          defaultRepetitions: exercise.repetitionsDefault,
-          userRepetitions: repsToDo,
-          videoStartOffsetMs: videoStartOffsetMs,
-          videoReady: videoReady,
-        ));
+      final queue =
+          await _buildQueue(_trainingSession.id, useRemoteMedia: kIsWeb);
+      final audioMissing = queue.audioMissing;
+      for (final item in queue.items) {
+        AppLogger.d('queue: "${item.track.title}" '
+            'audio=${item.source.exercise.audioFileUrl} '
+            'file=${item.track.audioFilePath}');
+        _itemDetails.add(item.source);
+        tracksToLoad.add(item.track);
       }
 
       if (tracksToLoad.isEmpty) {
