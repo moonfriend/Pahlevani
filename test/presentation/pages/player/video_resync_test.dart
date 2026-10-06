@@ -281,6 +281,61 @@ void main() {
     });
   });
 
+  testWidgets('an audio loop realigns a drifted video (D4)', (tester) async {
+    const exercise = Exercise(
+      id: 10,
+      name: 'Video Ex',
+      audioFileUrl: 'https://audio.mp3',
+      repetitionsDefault: 1,
+      media:
+          ExerciseMedia(type: 'video', src: 'https://cdn.example.com/clip.mp4'),
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [
+          const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 10,
+              position: 0,
+              prescription: RepsPresc(3)) // the 8 s clip loops 3×
+        ]
+      },
+      exercisesById: {10: exercise},
+    );
+    late FakeAudioPlayerService audio;
+    _registerFakes(snap, onAudioServiceCreated: (a) => audio = a);
+
+    await tester.binding.setSurfaceSize(const Size(800, 900));
+    await tester.pumpWidget(_buildPage(snap));
+    await tester.pump();
+    await tester.pump();
+    fakePlatform.sendInitialized(0, duration: const Duration(seconds: 10));
+    await tester.pump();
+    audio.emitDuration(const Duration(seconds: 8));
+    await tester.pump();
+    List<String> seeks() =>
+        fakePlatform.calls.where((c) => c.startsWith('seekTo:')).toList();
+
+    audio.emitPosition(const Duration(milliseconds: 7900));
+    await tester.pump();
+    final before = seeks().length;
+    // The audio wraps to the start of its clip; the fake video reports
+    // position 0, i.e. 1.5 s away from where it should be.
+    audio.emitPosition(const Duration(milliseconds: 1500));
+    await tester.pump();
+    await tester.pump();
+
+    expect(seeks().skip(before), ['seekTo:1500']);
+
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
   testWidgets('pressing previous (restart) resyncs the video back to start',
       (tester) async {
     const exercise = Exercise(

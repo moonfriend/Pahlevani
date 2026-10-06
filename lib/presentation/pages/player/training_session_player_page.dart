@@ -12,7 +12,6 @@ import 'package:pahlevani/presentation/widgets/download/media_download_dialog.da
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
-import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -38,6 +37,7 @@ import 'package:pahlevani/presentation/pages/training_session/edit_training_sess
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 import 'package:pahlevani/presentation/widgets/player/learning_mode_prompt.dart';
+import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/widgets/tracking/movement_count_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -460,13 +460,14 @@ class _Stage extends StatelessWidget {
               if (hasVideo)
                 Positioned.fill(
                   child: _ExerciseVideo(
-                    key: ValueKey(track.media.src),
+                    // One video widget (and follower) per move, even when
+                    // two moves in a row share the same clip.
+                    key: ValueKey('${track.id}|${track.media.src}'),
+                    timeline: cubit.timeline,
                     path: track.media.src!,
                     posterSrc: track.media.poster,
                     isPlaying: state.isPlaying,
                     startOffsetMs: track.videoStartOffsetMs,
-                    resyncGeneration: state.videoResyncGeneration,
-                    resyncPositionMs: state.videoResyncPositionMs,
                   ),
                 )
               else if (hasPhoto || hasVideoPoster)
@@ -567,64 +568,21 @@ Widget buildMediaImage(String src) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Video/audio sync — a constant one-time offset (see
-// TrainingItemWithAudio.videoStartOffsetMs) so the video's "sarzarb"/main
-// beat lines up with the audio's, applied once when the video starts.
-// Deliberately not re-applied on every loop (v1 scope, see plan): re-seeking
-// video_player on a timer is a real jank risk (seekTo triggers a genuine
-// buffering pause on Android, not an instant jump), so drift across many
-// loops is an accepted limitation for now rather than something to build
-// continuous correction for.
-//
-// Discrete, user-initiated repositioning (a seek-bar drag, restarting the
-// track) is a different, cheaper case — see computeVideoResyncTargetMs below,
-// driven by AudioPlayerState.videoResyncGeneration.
-// ─────────────────────────────────────────────────────────────────────────────
-({int? seekToMs, int? delayMs}) computeVideoSyncPlan(
-    int? startOffsetMs, int videoDurationMs) {
-  if (startOffsetMs == null || videoDurationMs <= 0) {
-    return (seekToMs: null, delayMs: null);
-  }
-  if (startOffsetMs >= 0) {
-    // Modulo handles an anchor beyond one loop length — start partway into
-    // the current loop iteration rather than failing to seek at all.
-    return (seekToMs: startOffsetMs % videoDurationMs, delayMs: null);
-  }
-  // Audio's beat lands later in its own file than video's does, so video
-  // needs to wait at frame 0, not seek to a negative position.
-  return (seekToMs: null, delayMs: -startOffsetMs);
-}
-
-/// Video position (ms, wrapped into [0, videoDurationMs)) that corresponds to
-/// the audio being at [audioLoopPositionMs] within its current loop. Used
-/// only for discrete resyncs — every place AudioPlayerState authoritatively
-/// (re)establishes audio position (a fresh source load, or a mid-track seek)
-/// bumps videoResyncGeneration, and _ExerciseVideo applies exactly one seek
-/// in response. Never called on a timer, so this doesn't reintroduce the
-/// continuous-reseek jank risk noted above computeVideoSyncPlan.
-int computeVideoResyncTargetMs(
-    int audioLoopPositionMs, int? startOffsetMs, int videoDurationMs) {
-  if (videoDurationMs <= 0) return 0;
-  final raw = audioLoopPositionMs + (startOffsetMs ?? 0);
-  return ((raw % videoDurationMs) + videoDurationMs) % videoDurationMs;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Exercise demonstration video — muted, looping, local-file only. Play/pause
-// follows the audio cubit's isPlaying (the audio guidance drives the actual
-// timeline; this is a silent visual companion, not an independently
-// controlled player), so it never exposes its own transport controls.
+// Exercise demonstration video — muted, looping, local-file only. It follows
+// the move's audio through a VideoFollower (alignment on start, seek and
+// loop; play/pause from the session); this widget only owns the controller
+// and renders it, so it never exposes its own transport controls.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ExerciseVideo extends StatefulWidget {
   const _ExerciseVideo({
     super.key,
+    required this.timeline,
     required this.path,
     required this.isPlaying,
     this.posterSrc,
     this.startOffsetMs,
-    this.resyncGeneration = 0,
-    this.resyncPositionMs = 0,
   });
+  final MoveTimeline timeline;
   final String path;
   final bool isPlaying;
 
@@ -633,12 +591,9 @@ class _ExerciseVideo extends StatefulWidget {
   /// would otherwise be showing one layer up, so mounting hands off from
   /// poster to live video with no blank/static frame in between.
   final String? posterSrc;
-  final int? startOffsetMs;
 
-  /// Bumped by the cubit every time audio position is authoritatively reset
-  /// (a fresh load or a seek) — see AudioPlayerState.videoResyncGeneration.
-  final int resyncGeneration;
-  final int resyncPositionMs;
+  /// Video anchor − audio anchor, see [videoAlignment].
+  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -646,31 +601,18 @@ class _ExerciseVideo extends StatefulWidget {
 
 class _ExerciseVideoState extends State<_ExerciseVideo> {
   late final VideoPlayerController _controller;
+  late final VideoFollower _follower;
   bool _ready = false;
-
-  // Set in initState so a resync that was already in flight when this widget
-  // mounted doesn't immediately re-fire on top of the cold-start sync plan.
-  late int _lastAppliedResyncGeneration;
-
-  // True from the moment initialize() succeeds until the computed sync plan
-  // (seek or delay) has been fully applied. _Stage rebuilds far more often
-  // than once — every ~200ms audio tick — and didUpdateWidget reacts to
-  // each one by auto-playing whenever isPlaying=true but the controller
-  // isn't yet playing. Without this guard, a rebuild landing during the
-  // sync window (which _ready alone doesn't prevent, since it becomes true
-  // immediately on initialize(), before the plan is even computed) races
-  // straight past a pending seek or delay and starts playback from
-  // position 0 immediately — confirmed live: a real negative offset that
-  // should have delayed play() by ~1.3s instead started right away.
-  bool _syncPending = true;
 
   @override
   void initState() {
     super.initState();
-    _lastAppliedResyncGeneration = widget.resyncGeneration;
+    _follower = VideoFollower(
+        timeline: widget.timeline, startOffsetMs: widget.startOffsetMs)
+      ..setPlaying(widget.isPlaying);
     // dart:io's File doesn't exist on web — video_player_web only supports
     // networkUrl()/asset(). widget.path is the remote R2 URL there (the
-    // cubit never resolves a local cache path on web), so this streams
+    // player never resolves a local cache path on web), so this streams
     // directly rather than downloading first, matching normal browser
     // video behavior.
     //
@@ -690,35 +632,11 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     _controller
       ..setLooping(true)
       ..setVolume(0)
-      ..initialize().then((_) async {
+      ..initialize().then((_) {
         if (!mounted) return;
         setState(() => _ready = true);
-        final durationMs = _controller.value.duration.inMilliseconds;
-
-        // Videos are on the device before the session plays, so the widget
-        // only mounts when a track starts (audio at the start of its loop):
-        // apply the anchor-based seek-or-delay plan, including the
-        // negative-offset "wait at frame 0" behavior a live exercise
-        // (Shena Sar Navazi) relies on. Later repositioning is a discrete
-        // resync in didUpdateWidget.
-        final plan = computeVideoSyncPlan(widget.startOffsetMs, durationMs);
-        AppLogger.d('video sync (cold start): startOffsetMs='
-            '${widget.startOffsetMs} videoDurationMs=$durationMs '
-            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
-        if (plan.seekToMs != null) {
-          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
-          if (!mounted) return;
-        }
-        if (plan.delayMs != null) {
-          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
-            if (!mounted) return;
-            _syncPending = false;
-            if (widget.isPlaying) unawaited(_controller.play());
-          }));
-          return;
-        }
-        _syncPending = false;
-        if (widget.isPlaying) unawaited(_controller.play());
+        // Aligns to wherever the audio is by now, then follows it.
+        _follower.attach(_ControllerVideo(_controller));
       }).catchError((_) {
         // Corrupt/unreadable local file — fail silently, same as a broken
         // image falls back to errorBuilder rather than crashing the stage.
@@ -728,52 +646,14 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_ready || _syncPending) return;
-    if (widget.resyncGeneration != _lastAppliedResyncGeneration) {
-      // A discrete resync (restart, seek-bar drag) — apply exactly one seek,
-      // never on a timer, so this doesn't reintroduce the continuous-reseek
-      // jank risk noted above computeVideoSyncPlan. Only consume the
-      // generation once actually applied — if the controller isn't ready
-      // (guarded above), the next rebuild (already happening on every audio
-      // position update) retries rather than silently dropping it.
-      _lastAppliedResyncGeneration = widget.resyncGeneration;
-      final targetMs = computeVideoResyncTargetMs(widget.resyncPositionMs,
-          widget.startOffsetMs, _controller.value.duration.inMilliseconds);
-      unawaited(_seekVideo(targetMs));
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      _follower.setPlaying(widget.isPlaying);
     }
-    if (widget.isPlaying && !_controller.value.isPlaying) {
-      _controller.play();
-    } else if (!widget.isPlaying && _controller.value.isPlaying) {
-      _controller.pause();
-    }
-  }
-
-  bool _seekInFlight = false;
-  int? _pendingSeekMs;
-
-  /// Seeks the video with at most one native seek in flight; targets that
-  /// arrive meanwhile replace each other and only the latest is applied.
-  /// A seek-bar drag resyncs on every drag update (~60/s), and each native
-  /// seek is expensive (a real re-buffer on Android) — firing them all,
-  /// overlapping, only adds load and lands on stale positions.
-  Future<void> _seekVideo(int targetMs) async {
-    if (_seekInFlight) {
-      _pendingSeekMs = targetMs;
-      return;
-    }
-    _seekInFlight = true;
-    try {
-      await _controller.seekTo(Duration(milliseconds: targetMs));
-    } finally {
-      _seekInFlight = false;
-    }
-    final next = _pendingSeekMs;
-    _pendingSeekMs = null;
-    if (next != null && mounted) await _seekVideo(next);
   }
 
   @override
   void dispose() {
+    _follower.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -783,9 +663,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     if (!_ready || !_controller.value.isInitialized) {
       // Keep showing the same poster _Stage would otherwise render one
       // layer up, instead of leaving the stage blank/static (the only
-      // thing behind it, PersianPattern, doesn't animate) — this is the
-      // window that used to read as "frozen" between a background download
-      // finishing and this controller actually becoming ready to show frames.
+      // thing behind it, PersianPattern, doesn't animate).
       final poster = widget.posterSrc;
       return (poster != null && poster.isNotEmpty)
           ? buildMediaImage(poster)
@@ -803,6 +681,26 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       ),
     );
   }
+}
+
+/// [FollowedVideo] backed by a video_player controller.
+class _ControllerVideo implements FollowedVideo {
+  _ControllerVideo(this._controller);
+  final VideoPlayerController _controller;
+
+  @override
+  Duration get duration => _controller.value.duration;
+  @override
+  bool get isPlaying => _controller.value.isPlaying;
+  @override
+  Future<Duration> position() async =>
+      await _controller.position ?? _controller.value.position;
+  @override
+  Future<void> play() => _controller.play();
+  @override
+  Future<void> pause() => _controller.pause();
+  @override
+  Future<void> seekTo(Duration position) => _controller.seekTo(position);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

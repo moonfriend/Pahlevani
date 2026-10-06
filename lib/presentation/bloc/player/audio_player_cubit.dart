@@ -25,20 +25,6 @@ class AudioPlayerState {
   final String? errorMessage;
   final bool isFinished;
 
-  /// Bumped every time audio position is authoritatively (re)established — a
-  /// fresh source load or a mid-track seek — never a normal playback tick.
-  /// _ExerciseVideo watches this to apply exactly one discrete resync seek;
-  /// see computeVideoResyncTargetMs. A freshly mounted video (track start)
-  /// uses the anchor-based computeVideoSyncPlan instead.
-  final int videoResyncGeneration;
-
-  /// The audio-loop-relative position (ms) at the moment
-  /// [videoResyncGeneration] was last bumped — captured directly at the call
-  /// site (either from the position stream's last known value, or a fresh
-  /// seek target), not read back asynchronously, to avoid a race with the
-  /// engine's own event timing.
-  final int videoResyncPositionMs;
-
   /// Some of the session's audio isn't on the device. Sessions are
   /// downloaded completely before they play (no streaming), so the page
   /// offers the download instead of playing. Never set on web.
@@ -64,8 +50,6 @@ class AudioPlayerState {
     this.isLoading = false,
     this.errorMessage,
     this.isFinished = false,
-    this.videoResyncGeneration = 0,
-    this.videoResyncPositionMs = 0,
     this.needsDownload = false,
   });
 
@@ -76,8 +60,6 @@ class AudioPlayerState {
     bool? isLoading,
     String? errorMessage,
     bool? isFinished,
-    int? videoResyncGeneration,
-    int? videoResyncPositionMs,
     bool? needsDownload,
   }) =>
       AudioPlayerState(
@@ -87,10 +69,6 @@ class AudioPlayerState {
         isLoading: isLoading ?? this.isLoading,
         errorMessage: errorMessage ?? this.errorMessage,
         isFinished: isFinished ?? this.isFinished,
-        videoResyncGeneration:
-            videoResyncGeneration ?? this.videoResyncGeneration,
-        videoResyncPositionMs:
-            videoResyncPositionMs ?? this.videoResyncPositionMs,
         needsDownload: needsDownload ?? this.needsDownload,
       );
 
@@ -350,8 +328,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         emit(state.copyWith(
           isPlaying: true,
           isLoading: false,
-          videoResyncGeneration: state.videoResyncGeneration + 1,
-          videoResyncPositionMs: 0,
         ));
       }
       final outcome = await _timeline.load(move, play: shouldPlay);
@@ -360,8 +336,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         emit(state.copyWith(
           isPlaying: false,
           isLoading: false,
-          videoResyncGeneration: state.videoResyncGeneration + 1,
-          videoResyncPositionMs: 0,
         ));
       }
       // Update the OS notification (lock screen / dropdown card).
@@ -421,14 +395,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     emit(state.copyWith(isPlaying: false));
   }
 
-  Future<void> seekTo(Duration position) async {
-    final clipPosition = await _timeline.seek(position);
-    if (clipPosition == null || isClosed) return;
-    emit(state.copyWith(
-      videoResyncGeneration: state.videoResyncGeneration + 1,
-      videoResyncPositionMs: clipPosition.inMilliseconds,
-    ));
-  }
+  /// Moves within the current move; the timeline tells the rest (progress
+  /// bar, demo video).
+  Future<void> seekTo(Duration position) => _timeline.seek(position);
 
   @override
   Future<void> close() async {

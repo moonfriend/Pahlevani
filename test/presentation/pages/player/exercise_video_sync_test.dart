@@ -181,11 +181,12 @@ void main() {
   });
 
   testWidgets(
-      'negative videoStartOffsetMs delays play() instead of racing it in '
-      'via didUpdateWidget on the next rebuild', (tester) async {
-    // audioAnchorMs=2000, videoAnchorMs=703 -> offset=-1297 -> should delay
-    // play() by 1297ms, exactly reproducing the real values from live
-    // testing that exposed this race.
+      'negative videoStartOffsetMs holds the video at frame 0 until the '
+      'audio reaches the offset (audio time, not wall-clock time)',
+      (tester) async {
+    // audioAnchorMs=2000, videoAnchorMs=703 -> offset=-1297: the video must
+    // wait until the audio is 1297 ms into the move — the real values from
+    // the live test that first exposed a race here.
     const exercise = Exercise(
       id: 10,
       name: 'Video Ex',
@@ -220,43 +221,30 @@ void main() {
     await tester.pump(); // schedule loadTracks
     await tester.pump(); // complete async loadTracks + build controller
 
-    // The controller has called createWithOptions by now; fire the
-    // "initialized" event a real platform decoder would send.
-    // setMixWithOthers fires synchronously at construction (before
-    // initialize()) — nothing else (play/pause/seekTo) should have happened
-    // yet, since the controller isn't initialized.
+    // Nothing but the creation option happens before the controller is
+    // initialized.
     expect(fakePlatform.calls.map((c) => c.method), ['setMixWithOthers:true']);
     fakePlatform.sendInitialized(0, duration: const Duration(seconds: 30));
-    await tester.pump(); // let initialize().then(...) run
-
-    // Start the cubit's real 200ms rebuild timer — mirrors what actually
-    // happens on-device (the audio engine reports its duration, which
-    // starts _startLogicalTimer()). This is what drives _Stage to rebuild
-    // repeatedly, which is what exposed the didUpdateWidget race live.
+    await tester.pump();
     audio.emitDuration(const Duration(seconds: 30));
     await tester.pump();
 
-    // Let several real 200ms ticks land during the delay window — each one
-    // emits a new AudioPlayerState, rebuilding _Stage and firing
-    // _ExerciseVideo's didUpdateWidget. Before the fix, the very first such
-    // rebuild called play() immediately, racing right past the delay.
-    for (var i = 0; i < 5; i++) {
-      elapsedMs += 200;
-      await tester.pump(const Duration(milliseconds: 200));
+    // Wall-clock time passing without audio progress (e.g. paused or
+    // buffering) must not start the video…
+    await tester.pump(const Duration(milliseconds: 1500));
+    // …nor audio that hasn't reached the offset yet.
+    for (final ms in [400, 800, 1200]) {
+      audio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump(const Duration(milliseconds: 50));
     }
-    // 1000ms elapsed — still before the 1297ms delay should fire.
     expect(fakePlatform.calls.where((c) => c.method == 'play'), isEmpty,
-        reason: 'play() must not fire before the computed delay elapses, '
-            'even though multiple widget rebuilds happened in between');
+        reason: 'the video waits at frame 0 until the audio gets there');
 
-    // Advance past the full delay.
-    elapsedMs += 400;
-    await tester.pump(const Duration(milliseconds: 400));
+    audio.emitPosition(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(fakePlatform.calls.where((c) => c.method == 'play'), isNotEmpty,
-        reason: 'play() must fire once the delay has actually elapsed');
-    final playCall = fakePlatform.calls.firstWhere((c) => c.method == 'play');
-    expect(playCall.elapsedMs, greaterThanOrEqualTo(1297));
+        reason: 'once the audio passes the offset, the video starts');
 
     addTearDown(() async {
       await tester.binding.setSurfaceSize(null);
