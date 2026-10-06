@@ -15,6 +15,12 @@ class PlaybackClock {
   Duration? _clip;
   Duration _completedLoops = Duration.zero;
   Duration _lastEnginePosition = Duration.zero;
+  int _wrapCount = 0;
+
+  /// How many times the engine has looped the clip on its own since [start]
+  /// — not seeks, not [restartLoop]. Lets a caller notice a wrap (e.g. to
+  /// realign the demo video) by comparing before and after a reading.
+  int get wrapCount => _wrapCount;
 
   /// Whether [start] has been called for the current move.
   bool get isStarted => _clip != null;
@@ -25,6 +31,7 @@ class PlaybackClock {
   /// Begins timing a new move whose audio clip is [clipDuration] long.
   void start(Duration clipDuration) {
     _clip = clipDuration;
+    _wrapCount = 0;
     _completedLoops = Duration.zero;
     _lastEnginePosition = Duration.zero;
   }
@@ -32,6 +39,7 @@ class PlaybackClock {
   /// Forgets everything — call when a new source starts loading.
   void reset() {
     _clip = null;
+    _wrapCount = 0;
     _completedLoops = Duration.zero;
     _lastEnginePosition = Duration.zero;
   }
@@ -47,6 +55,7 @@ class PlaybackClock {
     if (clip == null) return enginePosition;
     if (_lastEnginePosition - enginePosition > clip ~/ 2) {
       _completedLoops += clip;
+      _wrapCount++;
     }
     _lastEnginePosition = enginePosition;
     return logicalPosition;

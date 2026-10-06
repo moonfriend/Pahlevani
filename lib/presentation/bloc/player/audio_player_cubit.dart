@@ -13,7 +13,7 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/player/build_playback_queue.dart';
-import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
+import 'package:pahlevani/domain/player/move_timeline.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 
 /// State for the audio player.
@@ -119,7 +119,7 @@ class AudioPlayerState {
 }
 
 class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
-  final AudioPlayerService _audioService;
+  final MoveTimeline _timeline;
   final LearntExercisesRepository _learntExercisesRepo;
   final TrainingSession _trainingSession;
   final PlayerNotificationService _notification;
@@ -138,37 +138,9 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   // session is opened, not retroactively for tracks already in this run.
   Set<int> _learntExerciseIds = {};
 
-  StreamSubscription<Duration>? _positionSubscription;
-  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<MoveProgress>? _progressSub;
+  StreamSubscription<MoveEvent>? _moveEventSub;
   StreamSubscription<NotificationCommand>? _notificationSub;
-
-  /// Length of the current audio clip, and of the whole move (the clip's
-  /// length scaled from its own reps to the prescribed reps).
-  Duration? _originalDuration;
-  Duration? _targetDuration;
-
-  /// The move's single timeline, derived from engine positions — see
-  /// [PlaybackClock] for why this replaced a fixed-interval tick counter.
-  final _clock = PlaybackClock();
-
-  /// False from the moment a new track starts loading until its source has
-  /// been handed to the engine, so late readings from the previous clip
-  /// can't seed the new move's timeline.
-  bool _sourceDispatched = false;
-
-  /// Set once the current move has asked to advance, so further readings
-  /// past the target can't advance it twice.
-  bool _advanceRequested = false;
-
-  /// Zoorkhaneh with fewer reps than the clip: set after we restart the clip
-  /// ourselves, until the engine confirms it is back before the target.
-  bool _awaitingLoopRestart = false;
-
-  /// Bumped by every track load. A load that awaits (resolving/downloading
-  /// the file, loading the engine) and finds a newer load has started since
-  /// gives up silently — otherwise rapid next/prev taps let an overtaken,
-  /// slower load start playing the wrong track under the visible one.
-  int _loadGeneration = 0;
 
   TrainingSessionPlayerCubit({
     required TrainingSession trainingSession,
@@ -182,7 +154,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     bool autoStart = true,
   })  : _trainingSession = trainingSession,
         _mode = mode,
-        _audioService = audioPlayerService,
+        _timeline = MoveTimeline(audioPlayerService),
         _buildQueue = BuildPlaybackQueue(
           sessionRepository: sessionRepository,
           audioCatalogRepository: audioCatalogRepository,
@@ -196,27 +168,28 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     _initListeners();
   }
 
+  /// The current move's audio and time — for widgets that follow the move
+  /// directly (rep counter, progress bar, demo video).
+  MoveTimeline get timeline => _timeline;
+
   void _initListeners() {
-    _positionSubscription =
-        _audioService.onPositionChanged.listen(_onEnginePosition);
-    _durationSubscription =
-        _audioService.onDurationChanged.listen(_onEngineDuration);
-
-    // NOTE: we deliberately do NOT subscribe to _audioService.onPlayingChanged.
-    // The cubit is the single source of truth for isPlaying — it is mutated
-    // only by intents (button taps, lock-screen commands via _notificationSub,
-    // track completion). The engine is a pure follower that receives play/pause
-    // commands but must never write back into state. Subscribing here would
-    // re-introduce the play/pause desync: the looping engine emits
-    // stopped→playing on every loop cycle, and those internal transitions would
-    // race with — and silently overwrite — a user's pause intent.
-    //
-    // Genuinely external events (OS audio-focus loss/regain) belong here too,
-    // but must arrive as explicit intents, not as raw engine-state writes. That
-    // routing is intentionally deferred (see backlog) rather than smuggled
-    // through onPlayingChanged.
-
-    _audioService.setLooping(true);
+    // Mirrors the move's progress into state (until the page reads it from
+    // the timeline directly).
+    _progressSub = _timeline.progress.listen((p) => emit(state.copyWith(
+          position: p.clipPosition,
+          duration: p.length,
+          logicalPosition: p.position,
+          logicalDuration: p.length,
+        )));
+    _moveEventSub = _timeline.events.listen((event) {
+      if (event is MoveTargetReached && state.isPlaying) next();
+    });
+    // The engine's own playing/paused events are deliberately never
+    // listened to: the cubit is the single source of truth for isPlaying,
+    // changed only by intents (taps, lock-screen commands, a move ending).
+    // The looping engine reports stopped→playing on every loop, which would
+    // overwrite a user's pause. OS audio-focus changes belong here too, but
+    // as explicit intents (backlog).
   }
 
   bool _isLearnt(Exercise? exercise) =>
@@ -275,7 +248,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     });
 
     emit(state.copyWith(isLoading: true, errorMessage: null));
-    await _audioService.stop();
+    await _timeline.stop();
 
     try {
       if (_mode == PlayerMode.learning) {
@@ -331,7 +304,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       ));
       _loadSourceAtIndex(nextIndex, shouldPlay: _shouldAutoPlay(nextIndex));
     } else {
-      _audioService.stop();
+      unawaited(_timeline.stop());
       emit(state.copyWith(isPlaying: false, isFinished: true));
     }
   }
@@ -396,46 +369,31 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   Future<void> _loadSourceAtIndex(int index, {bool shouldPlay = false}) async {
     if (index < 0 || index >= state.tracks.length) return;
-
     final track = state.tracks[index];
-    final generation = ++_loadGeneration;
-    bool superseded() => isClosed || generation != _loadGeneration;
-    // Before the first await: from here on, readings belong to the old clip.
-    _resetMoveTimeline();
-    // Already the downloaded file (or, on web, the remote URL) — resolved
-    // once in loadTracks; nothing is downloaded or streamed here.
-    final sourcePath = track.audioFilePath;
+    final move = MoveSpec(
+      audioPath: track.audioFilePath,
+      clipReps: track.defaultRepetitions ?? 1,
+      targetReps: track.effectiveRepetitions,
+      loopForever: _mode == PlayerMode.zoorkhaneh,
+    );
 
     try {
-      if (sourcePath.isEmpty) throw Exception('Audio source path is empty');
-      // Set before handing the source over: the engine reports the new
-      // clip's duration while play()/setSource() is still in progress.
-      _sourceDispatched = true;
-
-      if (shouldPlay) {
-        // The cubit is the authority: declare the intent (isPlaying: true)
-        // before commanding the engine, so every watcher (buttons, logical
-        // timer, notification) follows immediately rather than waiting on the
-        // engine's play() future to complete.
-        //
-        // We deliberately do NOT re-emit isPlaying after the await. The play()
-        // future's completion timing is backend-dependent: audioplayers resolves
-        // it when the command is dispatched, but just_audio resolves it only when
-        // playback later STOPS (e.g. on the user's next pause). Emitting
-        // isPlaying:true after that await would resurrect a pause the user just
-        // made — the play/pause desync. isLoading is cleared up-front instead.
+      if (shouldPlay && move.audioPath.isNotEmpty) {
+        // The cubit is the authority: declare the intent before commanding
+        // the engine, so every watcher (buttons, video, notification)
+        // follows immediately. Never re-emitted after the load: just_audio
+        // completes play() only when playback later stops, so an emit after
+        // it would resurrect a pause the user just made.
         emit(state.copyWith(
           isPlaying: true,
           isLoading: false,
           videoResyncGeneration: state.videoResyncGeneration + 1,
           videoResyncPositionMs: 0,
         ));
-        await _audioService.play(sourcePath);
-      } else {
-        await _audioService.stop();
-        if (superseded()) return;
-        await _audioService.setSource(sourcePath);
-        if (superseded()) return;
+      }
+      final outcome = await _timeline.load(move, play: shouldPlay);
+      if (isClosed || outcome == LoadOutcome.superseded) return;
+      if (!shouldPlay) {
         emit(state.copyWith(
           isPlaying: false,
           isLoading: false,
@@ -443,8 +401,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
           videoResyncPositionMs: 0,
         ));
       }
-
-      if (superseded()) return;
       // Update the OS notification (lock screen / dropdown card).
       _notification.update(
         trackTitle: track.displayName,
@@ -453,15 +409,14 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         duration: state.duration == Duration.zero ? null : state.duration,
       );
     } catch (e) {
-      if (superseded()) return;
+      if (isClosed) return;
       emit(state.copyWith(
           errorMessage: 'Error loading track: ${track.displayName}'));
-      await _audioService.stop();
     }
   }
 
   Future<void> stop() async {
-    await _audioService.stop();
+    await _timeline.stop();
     emit(state.copyWith(isPlaying: false, position: Duration.zero));
   }
 
@@ -470,7 +425,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       // Declare intent before commanding the engine — same pattern as
       // _loadSourceAtIndex. The UI updates immediately; the engine catches up.
       emit(state.copyWith(isPlaying: true));
-      await _audioService.resume();
+      await _timeline.resume();
     }
   }
 
@@ -499,117 +454,25 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   /// page) must use this, not togglePlay().
   void pause() {
     if (!state.isPlaying) return;
-    _audioService.pause();
+    _timeline.pause();
     emit(state.copyWith(isPlaying: false));
   }
 
   Future<void> seekTo(Duration position) async {
-    final target = _targetDuration;
-    if (!_clock.isStarted || target == null) return;
-    final clamped = Duration(
-      milliseconds: position.inMilliseconds.clamp(0, target.inMilliseconds),
-    );
-    // The clock re-bases itself first, so the engine's jump to the new spot
-    // is never mistaken for a loop.
-    final enginePosition = _clock.seekTo(clamped);
-    _awaitingLoopRestart = false;
-    await _audioService.seek(enginePosition);
+    final clipPosition = await _timeline.seek(position);
+    if (clipPosition == null || isClosed) return;
     emit(state.copyWith(
-      logicalPosition: clamped,
       videoResyncGeneration: state.videoResyncGeneration + 1,
-      videoResyncPositionMs: enginePosition.inMilliseconds,
+      videoResyncPositionMs: clipPosition.inMilliseconds,
     ));
-  }
-
-  /// Move length = clip length scaled from the clip's own reps to the
-  /// prescribed reps (e.g. a 10s, 1-rep clip prescribed ×3 → 30s).
-  void _calculateTargetDuration() {
-    final track = state.currentTrack;
-    final clip = _originalDuration;
-    if (track == null || clip == null) return;
-    final defaultReps = track.defaultRepetitions ?? 1;
-    if (defaultReps <= 0) {
-      _targetDuration = clip;
-      return;
-    }
-    final ms = (clip.inMilliseconds / defaultReps * track.effectiveRepetitions)
-        .round();
-    _targetDuration = Duration(milliseconds: ms);
-  }
-
-  /// Forgets the previous move's timing; positions are ignored until the
-  /// next source is dispatched (see [_sourceDispatched]).
-  void _resetMoveTimeline() {
-    _sourceDispatched = false;
-    _advanceRequested = false;
-    _awaitingLoopRestart = false;
-    _originalDuration = null;
-    _targetDuration = null;
-    _clock.reset();
-    emit(state.copyWith(
-        logicalPosition: Duration.zero, logicalDuration: Duration.zero));
-  }
-
-  void _onEngineDuration(Duration duration) {
-    if (!_sourceDispatched || duration <= Duration.zero) return;
-    _originalDuration = duration;
-    _calculateTargetDuration();
-    // Engines may re-report the same clip's duration mid-move; only the
-    // first report starts the timeline, so progress isn't wiped.
-    if (!_clock.isStarted) _clock.start(duration);
-    emit(state.copyWith(
-      duration: _targetDuration ?? duration,
-      logicalPosition: _clock.logicalPosition,
-      logicalDuration: _targetDuration,
-    ));
-  }
-
-  /// The single place where the move's progress — and its end — is decided.
-  void _onEnginePosition(Duration position) {
-    if (!_sourceDispatched) return;
-    final target = _targetDuration;
-    final clip = _originalDuration;
-    if (!_clock.isStarted || target == null || clip == null) {
-      emit(state.copyWith(position: position));
-      return;
-    }
-
-    // Zoorkhaneh, prescribed reps fewer than the clip's: we loop the first
-    // `target` of the clip ourselves. Ignore readings until our seek(0) lands.
-    final loopsShortClip = _mode == PlayerMode.zoorkhaneh && target < clip;
-    if (loopsShortClip && _awaitingLoopRestart) {
-      if (position >= target) return;
-      _awaitingLoopRestart = false;
-    }
-
-    var logical = _clock.onEnginePosition(position);
-    final restartShortClip =
-        loopsShortClip && state.isPlaying && position >= target;
-    if (restartShortClip) {
-      _clock.restartLoop(target);
-      _awaitingLoopRestart = true;
-      logical = _clock.logicalPosition;
-    }
-    emit(state.copyWith(position: position, logicalPosition: logical));
-    if (restartShortClip) unawaited(_audioService.seek(Duration.zero));
-
-    // Zoorkhaneh never auto-advances: the timeline climbs past the target
-    // forever (the rep counter reads it as an uncapped count) until a manual
-    // next().
-    if (!state.isPlaying || _mode == PlayerMode.zoorkhaneh) return;
-
-    if (logical >= target && !_advanceRequested) {
-      _advanceRequested = true;
-      next();
-    }
   }
 
   @override
   Future<void> close() async {
     await _notificationSub?.cancel();
-    await _positionSubscription?.cancel();
-    await _durationSubscription?.cancel();
-    await _audioService.dispose();
+    await _progressSub?.cancel();
+    await _moveEventSub?.cancel();
+    await _timeline.close();
     return super.close();
   }
 }
