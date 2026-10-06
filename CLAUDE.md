@@ -12,7 +12,7 @@ Flutter app for practising **Pahlevani** — traditional Persian warrior fitness
 |---|---|
 | UI Framework | Flutter / Material 3 |
 | Language | Dart ≥ 3.0 |
-| State Management | `flutter_bloc` ^8 — **Cubits only**, no full Blocs |
+| State Management | `flutter_bloc` ^8 — Cubits by default; a full `Bloc` when it earns its keep |
 | Dependency Injection | `get_it` ^7 (singleton `getIt` in `di/dependency_injection.dart`) |
 | Local Database | `hive_flutter` ^1 (code-gen via `hive_generator`) |
 | Remote Backend | Supabase (`supabase_flutter` ^2) |
@@ -262,7 +262,7 @@ Presentation  →  Domain  ←  Data
 |---|---|
 | **Domain** | Entities, repository interfaces, use cases. Pure Dart — no Flutter or package imports. |
 | **Data** | Implements repositories. Owns DTOs, Hive models, mappers, remote/local data sources. |
-| **Presentation** | Cubits consume repositories/use-cases. Widgets consume Cubits. |
+| **Presentation** | Cubits/Blocs consume repositories/use-cases. Widgets consume Cubits/Blocs. |
 
 ### Data flow (fetching sessions)
 ```
@@ -325,7 +325,10 @@ The normalised data model refactor is **complete**. The app is functional on `ma
 ## Coding Conventions
 
 - **File names**: `snake_case`. Class names: `PascalCase`.
-- **Cubits only** — no `Bloc` + events pattern. All state management via `Cubit<State>`.
+- **Cubit by default, Bloc when needed** (rule relaxed 2026-10-06). Start with a `Cubit<State>`; use a
+  `Bloc` + events where it clearly helps — e.g. event transformers (`restartable`, `droppable`),
+  many input sources (UI, lock screen, keyboard) that benefit from logged event objects, or
+  `emit.forEach` over a stream. Flag the choice as a design decision.
 - **Equatable** on state classes for equality; `sealed` keyword on state hierarchies.
 - **Hive type IDs**: declared only in `lib/data/models/hive_type_ids.dart` (`HiveTypeIds`, currently 0–8) and registered only via `registerHiveAdapter()`, which throws on a clash. Add every new adapter to `test/data/models/hive_type_ids_test.dart`. Increment sequentially; never reuse or renumber a shipped type ID.
 - **Always run `build_runner`** after any change to `@HiveType` or `@HiveField` annotations.
@@ -368,7 +371,7 @@ You are an elite, senior software engineer and system architect. You write excep
 
 ## 6. Language-Specific Constraints
 - **Python** (admin scripts): Strictly use `pydantic` models or standard `dataclasses` for data validation, serialization, and complex payload passing. Do not use raw, unstructured dictionaries for domain entities.
-- **Flutter/Dart**: Strictly use `flutter_bloc` Cubits — no Riverpod, no `setState` in complex widget trees, no raw `ChangeNotifier`. Exclusively use Material 3 widgets.
+- **Flutter/Dart**: Strictly use `flutter_bloc` (Cubits by default, Blocs when needed) — no Riverpod, no `setState` in complex widget trees, no raw `ChangeNotifier`. Exclusively use Material 3 widgets.
 
 ## 7. Execution Rules for Claude
 - If a requirement is ambiguous, stop and ask for clarification. Do not guess.
