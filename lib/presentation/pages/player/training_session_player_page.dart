@@ -28,7 +28,9 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
+import 'package:pahlevani/domain/player/move_timeline.dart';
 import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
@@ -57,6 +59,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   late TrainingSession _session;
   late TrainingSessionPlayerCubit _cubit;
 
+  /// The current move's position/rep, for the rep counter and progress bar
+  /// only — kept out of the player state so the page doesn't rebuild at
+  /// audio speed.
+  late MoveProgressCubit _progress;
+
   /// Bumped on every restart so everything below the page (stage, video
   /// widget and its controller, track list) is rebuilt from scratch.
   int _playerGeneration = 0;
@@ -68,6 +75,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     super.initState();
     _session = widget.trainingSession;
     _cubit = _createPlayer(_session, autoStart: true);
+    _progress = MoveProgressCubit(_cubit.timeline);
     _cubit.loadTracks();
     // Kept on for the whole session (not just while isPlaying) so a brief
     // pause to check form doesn't let the screen lock mid-training.
@@ -142,6 +150,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// The old player is fully closed first, so it releases the audio engine
   /// (shared app-wide on Android) before the new one loads into it.
   Future<void> _restartPlayer(TrainingSession session) async {
+    await _progress.close();
     await _cubit.close();
     if (!mounted) return;
     setState(() {
@@ -149,6 +158,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       _playerGeneration++;
       _precachedUrls.clear();
       _cubit = _createPlayer(session, autoStart: false);
+      _progress = MoveProgressCubit(_cubit.timeline);
     });
     unawaited(_cubit.loadTracks());
   }
@@ -156,6 +166,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   void dispose() {
     unawaited(WakelockPlus.disable());
+    _progress.close();
     _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
   }
@@ -202,8 +213,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final accent = colors.accentFor(_session.id);
 
-    return BlocProvider.value(
-      value: _cubit,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: _cubit),
+        BlocProvider.value(value: _progress),
+      ],
       child: Scaffold(
         backgroundColor: colors.bg,
         body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
@@ -264,7 +278,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               Column(children: [
                 _AppBar(session: _session, onEdit: () => _openEdit(context)),
                 _Stage(state: state, accent: accent, cubit: _cubit),
-                _RepCounter(state: state, mode: widget.mode),
+                _RepCounter(
+                    hasTrack: state.currentTrack != null, mode: widget.mode),
                 _ProgressBlock(state: state, cubit: _cubit),
                 // Fills the rest of the screen, extending behind the
                 // transport bar below (a transparent overlay) rather than
@@ -794,8 +809,8 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
 // Rep counter — the signature moment
 // ─────────────────────────────────────────────────────────────────────────────
 class _RepCounter extends StatefulWidget {
-  const _RepCounter({required this.state, required this.mode});
-  final AudioPlayerState state;
+  const _RepCounter({required this.hasTrack, required this.mode});
+  final bool hasTrack;
   final PlayerMode mode;
 
   @override
@@ -807,8 +822,6 @@ class _RepCounterState extends State<_RepCounter>
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
   late final Animation<double> _flash;
-
-  int _lastRep = 0;
 
   @override
   void initState() {
@@ -829,27 +842,10 @@ class _RepCounterState extends State<_RepCounter>
         parent: _ctrl, curve: const Interval(0, 0.6, curve: Curves.easeOut)));
   }
 
-  int _computeRep(AudioPlayerState s) {
-    if (s.logicalDuration.inMilliseconds <= 0) return 1;
-    final total = s.currentTrack?.effectiveRepetitions ?? 1;
-    final secondsPerRep = s.logicalDuration.inMilliseconds / total / 1000;
-    if (secondsPerRep <= 0) return 1;
-    return ((s.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() +
-        1;
-  }
-
-  @override
-  void didUpdateWidget(_RepCounter old) {
-    super.didUpdateWidget(old);
-    final total = widget.state.currentTrack?.effectiveRepetitions ?? 1;
-    final rawRep = _computeRep(widget.state);
-    final rep =
-        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
-    if (_lastRep != 0 && rep != _lastRep) {
-      HapticFeedback.selectionClick();
-      _ctrl.forward(from: 0);
-    }
-    _lastRep = rep;
+  /// A new rep: a haptic tick and a pulse of the pill.
+  void _onRepChanged() {
+    HapticFeedback.selectionClick();
+    _ctrl.forward(from: 0);
   }
 
   @override
@@ -860,16 +856,25 @@ class _RepCounterState extends State<_RepCounter>
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.state;
-    if (s.currentTrack == null || s.logicalDuration.inMilliseconds == 0) {
+    // Rebuilds on a new rep (or move), not on every position reading.
+    return BlocConsumer<MoveProgressCubit, MoveProgress>(
+      listenWhen: (prev, cur) => prev.rep != cur.rep,
+      listener: (_, __) => _onRepChanged(),
+      buildWhen: (prev, cur) =>
+          prev.rep != cur.rep ||
+          prev.repsTotal != cur.repsTotal ||
+          prev.isKnown != cur.isKnown,
+      builder: (context, progress) => _buildPill(context, progress),
+    );
+  }
+
+  Widget _buildPill(BuildContext context, MoveProgress progress) {
+    if (!widget.hasTrack || !progress.isKnown) {
       return const SizedBox(height: 16);
     }
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final track = s.currentTrack!;
-    final total = track.effectiveRepetitions;
-    final rawRep = _computeRep(s);
-    final rep =
-        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
+    final total = progress.repsTotal;
+    final rep = progress.rep;
     final pillBg = colors.repDefaultBg;
     final pillFg = colors.repDefault;
     final glow = colors.repDefault.withValues(alpha: 0.36);
@@ -956,72 +961,78 @@ class _ProgressBlock extends StatelessWidget {
     return '$m:$s';
   }
 
-  void _seek(double dx, double maxWidth) {
-    final dur = state.logicalDuration;
-    if (dur.inMilliseconds <= 0 || maxWidth <= 0) return;
+  void _seek(Duration length, double dx, double maxWidth) {
+    if (length.inMilliseconds <= 0 || maxWidth <= 0) return;
     final ratio = (dx / maxWidth).clamp(0.0, 1.0);
-    cubit.seekTo(Duration(milliseconds: (ratio * dur.inMilliseconds).round()));
+    cubit.seekTo(
+        Duration(milliseconds: (ratio * length.inMilliseconds).round()));
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
-    final dur = state.logicalDuration;
-    final pos = state.logicalPosition;
-    final progress = dur.inMilliseconds > 0
-        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
-      child: Column(children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Flexible(
-              child: Text(state.currentTrack?.title ?? '',
-                  style: TextStyle(
-                      fontFamily: PFonts.ui,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: cs.onSurface),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+    // Only the time and the bar follow the move's position.
+    return BlocBuilder<MoveProgressCubit, MoveProgress>(
+      builder: (context, progress) {
+        final length = progress.length;
+        final pos = progress.position;
+        final fraction = length.inMilliseconds > 0
+            ? (pos.inMilliseconds / length.inMilliseconds).clamp(0.0, 1.0)
+            : 0.0;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
+          child: Column(children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(state.currentTrack?.title ?? '',
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: cs.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                Text('${_clock(pos)} / ${_clock(length)}',
+                    style: PTextStyles.of(context)
+                        .playerTime
+                        .copyWith(color: colors.onMuted)),
+              ],
             ),
-            Text('${_clock(pos)} / ${_clock(dur)}',
-                style: PTextStyles.of(context)
-                    .playerTime
-                    .copyWith(color: colors.onMuted)),
-          ],
-        ),
-        const SizedBox(height: 7),
-        LayoutBuilder(
-          builder: (_, constraints) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
-            onHorizontalDragUpdate: (d) =>
-                _seek(d.localPosition.dx, constraints.maxWidth),
-            child: SizedBox(
-              height: 28,
-              child: Align(
-                alignment: Alignment.center,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: colors.surface3,
-                    valueColor: AlwaysStoppedAnimation(colors.repDefault),
+            const SizedBox(height: 7),
+            LayoutBuilder(
+              builder: (_, constraints) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) =>
+                    _seek(length, d.localPosition.dx, constraints.maxWidth),
+                onHorizontalDragUpdate: (d) =>
+                    _seek(length, d.localPosition.dx, constraints.maxWidth),
+                child: SizedBox(
+                  height: 28,
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: fraction,
+                        minHeight: 6,
+                        backgroundColor: colors.surface3,
+                        valueColor: AlwaysStoppedAnimation(colors.repDefault),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ]),
+          ]),
+        );
+      },
     );
   }
 }

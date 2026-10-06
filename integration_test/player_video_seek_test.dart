@@ -141,11 +141,11 @@ void main() {
         .element(find
             .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
         .read<TrainingSessionPlayerCubit>();
-    expect(cubit.state.logicalDuration, greaterThan(Duration.zero),
+    expect(cubit.timeline.current.length, greaterThan(Duration.zero),
         reason: 'the real audio engine should have reported the clip length');
 
     // Simulated drag: one seek per frame for ~1.5s, sweeping the timeline.
-    final total = cubit.state.logicalDuration.inMilliseconds;
+    final total = cubit.timeline.current.length.inMilliseconds;
     for (var i = 0; i < 90; i++) {
       final ratio = (i % 30) / 30;
       await cubit.seekTo(Duration(milliseconds: (total * ratio).round()));

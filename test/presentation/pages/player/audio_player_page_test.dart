@@ -542,6 +542,49 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets(
+      'audio position readings update the progress, but never rebuild the '
+      'stage (where the demo video lives)', (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+
+    // The stage's "Pause" pill: a rebuilt stage would create a new widget.
+    final stagePillBefore = tester.widget(find.text('Pause'));
+    for (final ms in [200, 600, 1100, 1500, 2100]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
+
+    expect(
+        identical(tester.widget(find.text('Pause')), stagePillBefore), isTrue,
+        reason: 'position readings must not rebuild the stage');
+    expect(find.text('0:02 / 0:03'), findsOneWidget,
+        reason: 'the progress time still follows the audio');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   // ── Notification command routing (end-to-end through UI) ─────────────────
 
   testWidgets('skipNext notification command advances player to next track',

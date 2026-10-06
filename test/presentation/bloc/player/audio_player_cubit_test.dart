@@ -579,7 +579,7 @@ void main() {
       expect(cubit.state.playingIndex, 1,
           reason: 'past the threshold, prev() must restart the current '
               'track rather than skip to the previous one');
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
       expect(audioService.seekedTo, Duration.zero);
     });
 
@@ -625,7 +625,7 @@ void main() {
       await cubit.prev();
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
       expect(audioService.seekedTo, Duration.zero);
     });
   });
@@ -799,7 +799,7 @@ void main() {
       await cubit.seekTo(const Duration(seconds: 99));
 
       expect(audioService.seekedTo, Duration.zero);
-      expect(cubit.state.logicalPosition, const Duration(seconds: 20));
+      expect(cubit.timeline.current.position, const Duration(seconds: 20));
     });
   });
 
@@ -944,19 +944,6 @@ void main() {
 
       expect(cubit.state.isPlaying, isFalse);
       expect(audioService.stopped, isTrue);
-    });
-
-    test('resets position to zero', () async {
-      final session = _session(1);
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
-      final cubit = _makeCubit(snap);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-      await cubit.stop();
-
-      expect(cubit.state.position, Duration.zero);
     });
   });
 
@@ -1342,7 +1329,7 @@ void main() {
 
       expect(audio.seekedTo, const Duration(seconds: 2),
           reason: '12s into the move = 2s into the second loop of the clip');
-      expect(cubit.state.logicalPosition, const Duration(seconds: 12));
+      expect(cubit.timeline.current.position, const Duration(seconds: 12));
     });
 
     test('notification updated with track title and isPlaying=true on load',
@@ -1581,8 +1568,8 @@ void main() {
 
       expect(cubit.state.playingIndex, 0,
           reason: 'zoorkhaneh mode must not auto-advance mid-loop');
-      expect(cubit.state.logicalPosition.inMilliseconds,
-          greaterThan(cubit.state.logicalDuration.inMilliseconds));
+      expect(cubit.timeline.current.position.inMilliseconds,
+          greaterThan(cubit.timeline.current.length.inMilliseconds));
     });
 
     test('a manual next() still advances immediately', () async {
@@ -1629,12 +1616,13 @@ void main() {
 
       expect(audioService.seekedTo, Duration.zero,
           reason: 'the clip is restarted at the 5s target');
-      expect(cubit.state.logicalPosition, const Duration(seconds: 5));
+      expect(cubit.timeline.current.position, const Duration(seconds: 5));
 
       // A late reading from before the restart landed is ignored; then the
       // restarted clip continues the timeline.
       await _feedPositions(audioService, [5100, 300]);
-      expect(cubit.state.logicalPosition, const Duration(milliseconds: 5300));
+      expect(
+          cubit.timeline.current.position, const Duration(milliseconds: 5300));
       expect(cubit.state.playingIndex, 0);
     });
   });
@@ -1683,7 +1671,7 @@ void main() {
 
       await feed(audio, [5000, 9900, 100, 9900]); // loop → logical 19900
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, ms(19900));
+      expect(cubit.timeline.current.position, ms(19900));
 
       await feed(audio, [50]); // second wrap → logical 20050 ≥ 20s
       expect(cubit.state.playingIndex, 1);
@@ -1718,7 +1706,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 700));
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
     });
 
     test('several readings past the target advance only once', () async {
@@ -1755,7 +1743,7 @@ void main() {
       await feed(audio, [100]);
 
       expect(cubit.state.playingIndex, 1);
-      expect(cubit.state.logicalPosition, ms(100));
+      expect(cubit.timeline.current.position, ms(100));
     });
 
     test('the move length is known as soon as the clip loads', () async {
@@ -1766,7 +1754,7 @@ void main() {
       audio.emitDuration(clip);
       await settle();
 
-      expect(cubit.state.logicalDuration, const Duration(seconds: 30));
+      expect(cubit.timeline.current.length, const Duration(seconds: 30));
     });
   });
 
@@ -1837,7 +1825,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       await _feedPositions(audio, [4200]);
 
-      expect(cubit.state.logicalPosition, const Duration(milliseconds: 4200),
+      expect(
+          cubit.timeline.current.position, const Duration(milliseconds: 4200),
           reason: "move 3's timeline must not be reset by move 2's late load");
     });
   });

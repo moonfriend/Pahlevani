@@ -21,12 +21,8 @@ class AudioPlayerState {
   final bool isPlaying;
   final int playingIndex;
   final List<TrainingItemWithAudio> tracks;
-  final Duration position;
-  final Duration duration;
   final bool isLoading;
   final String? errorMessage;
-  final Duration logicalPosition;
-  final Duration logicalDuration;
   final bool isFinished;
 
   /// Bumped every time audio position is authoritatively (re)established — a
@@ -65,12 +61,8 @@ class AudioPlayerState {
     required this.playingIndex,
     required this.isPlaying,
     required this.tracks,
-    this.position = Duration.zero,
-    this.duration = Duration.zero,
     this.isLoading = false,
     this.errorMessage,
-    this.logicalPosition = Duration.zero,
-    this.logicalDuration = Duration.zero,
     this.isFinished = false,
     this.videoResyncGeneration = 0,
     this.videoResyncPositionMs = 0,
@@ -81,12 +73,8 @@ class AudioPlayerState {
     int? playingIndex,
     bool? isPlaying,
     List<TrainingItemWithAudio>? tracks,
-    Duration? position,
-    Duration? duration,
     bool? isLoading,
     String? errorMessage,
-    Duration? logicalPosition,
-    Duration? logicalDuration,
     bool? isFinished,
     int? videoResyncGeneration,
     int? videoResyncPositionMs,
@@ -96,12 +84,8 @@ class AudioPlayerState {
         playingIndex: playingIndex ?? this.playingIndex,
         isPlaying: isPlaying ?? this.isPlaying,
         tracks: tracks ?? this.tracks,
-        position: position ?? this.position,
-        duration: duration ?? this.duration,
         isLoading: isLoading ?? this.isLoading,
         errorMessage: errorMessage ?? this.errorMessage,
-        logicalPosition: logicalPosition ?? this.logicalPosition,
-        logicalDuration: logicalDuration ?? this.logicalDuration,
         isFinished: isFinished ?? this.isFinished,
         videoResyncGeneration:
             videoResyncGeneration ?? this.videoResyncGeneration,
@@ -138,7 +122,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   // session is opened, not retroactively for tracks already in this run.
   Set<int> _learntExerciseIds = {};
 
-  StreamSubscription<MoveProgress>? _progressSub;
   StreamSubscription<MoveEvent>? _moveEventSub;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
@@ -173,14 +156,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   MoveTimeline get timeline => _timeline;
 
   void _initListeners() {
-    // Mirrors the move's progress into state (until the page reads it from
-    // the timeline directly).
-    _progressSub = _timeline.progress.listen((p) => emit(state.copyWith(
-          position: p.clipPosition,
-          duration: p.length,
-          logicalPosition: p.position,
-          logicalDuration: p.length,
-        )));
     _moveEventSub = _timeline.events.listen((event) {
       if (event is MoveTargetReached && state.isPlaying) next();
     });
@@ -276,8 +251,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         emit(state.copyWith(
           tracks: tracksToLoad,
           playingIndex: 0,
-          position: Duration.zero,
-          duration: Duration.zero,
           isLoading: false,
           errorMessage: null,
           needsDownload: audioMissing,
@@ -298,8 +271,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final nextIndex = state.playingIndex + 1;
       emit(state.copyWith(
         playingIndex: nextIndex,
-        position: Duration.zero,
-        duration: Duration.zero,
         isFinished: false,
       ));
       _loadSourceAtIndex(nextIndex, shouldPlay: _shouldAutoPlay(nextIndex));
@@ -312,10 +283,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   void replay() {
     emit(state.copyWith(
       playingIndex: 0,
-      position: Duration.zero,
-      duration: Duration.zero,
-      logicalPosition: Duration.zero,
-      logicalDuration: Duration.zero,
       isPlaying: false,
       isFinished: false,
     ));
@@ -330,7 +297,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   /// Restarts the current track if it's already past [_prevRestartThreshold]
   /// or there's no previous track to go to; otherwise skips back one track.
   Future<void> prev() async {
-    if (state.logicalPosition > _prevRestartThreshold ||
+    if (_timeline.current.position > _prevRestartThreshold ||
         state.playingIndex <= 0) {
       await seekTo(Duration.zero);
       return;
@@ -338,8 +305,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
     final prevIndex = state.playingIndex - 1;
     emit(state.copyWith(
       playingIndex: prevIndex,
-      position: Duration.zero,
-      duration: Duration.zero,
     ));
     unawaited(
         _loadSourceAtIndex(prevIndex, shouldPlay: _shouldAutoPlay(prevIndex)));
@@ -352,8 +317,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
       final wasPlaying = state.isPlaying;
       emit(state.copyWith(
         playingIndex: index,
-        position: Duration.zero,
-        duration: Duration.zero,
       ));
       _loadSourceAtIndex(index, shouldPlay: wasPlaying);
     }
@@ -406,7 +369,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
         trackTitle: track.displayName,
         artUri: track.media.type == 'photo' ? track.media.src : null,
         isPlaying: shouldPlay,
-        duration: state.duration == Duration.zero ? null : state.duration,
+        duration: _timeline.current.isKnown ? _timeline.current.length : null,
       );
     } catch (e) {
       if (isClosed) return;
@@ -417,7 +380,7 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
 
   Future<void> stop() async {
     await _timeline.stop();
-    emit(state.copyWith(isPlaying: false, position: Duration.zero));
+    emit(state.copyWith(isPlaying: false));
   }
 
   Future<void> play() async {
@@ -470,7 +433,6 @@ class TrainingSessionPlayerCubit extends Cubit<AudioPlayerState> {
   @override
   Future<void> close() async {
     await _notificationSub?.cancel();
-    await _progressSub?.cancel();
     await _moveEventSub?.cancel();
     await _timeline.close();
     return super.close();
