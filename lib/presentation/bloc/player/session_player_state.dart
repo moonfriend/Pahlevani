@@ -59,21 +59,50 @@ final class PlayerReady extends SessionPlayerState {
     required super.playingIndex,
     super.isPlaying,
     this.waitingForGo = false,
+    this.starTaps,
   });
 
   /// Learning mode: this move isn't learnt yet, so it waits for the user's
   /// "Go" instead of starting by itself.
   final bool waitingForGo;
 
-  PlayerReady copyWith({bool? isPlaying, bool? waitingForGo}) => PlayerReady(
+  /// Reps the user counted by tapping the star on this (counted) move; null
+  /// until the first tap. When set, it pre-fills the Rep log instead of the
+  /// audio's count.
+  final int? starTaps;
+
+  PlayerReady copyWith({bool? isPlaying, bool? waitingForGo, int? starTaps}) =>
+      PlayerReady(
         tracks: tracks,
         playingIndex: playingIndex,
         isPlaying: isPlaying ?? this.isPlaying,
         waitingForGo: waitingForGo ?? this.waitingForGo,
+        starTaps: starTaps ?? this.starTaps,
       );
 
   @override
-  List<Object?> get props => [...super.props, waitingForGo];
+  List<Object?> get props => [...super.props, waitingForGo, starTaps];
+}
+
+/// A counted move has just been played: playback is paused while the user
+/// confirms how many reps they did (the Rep log). [playingIndex] is that
+/// move.
+final class PlayerLoggingReps extends SessionPlayerState {
+  const PlayerLoggingReps({
+    required super.tracks,
+    required super.playingIndex,
+    required this.counted,
+    required this.target,
+  });
+
+  /// Pre-fill: the star taps if the user tapped, otherwise the audio's reps.
+  final int counted;
+
+  /// The reps the session prescribes for this move.
+  final int target;
+
+  @override
+  List<Object?> get props => [...super.props, counted, target];
 }
 
 /// Every move has been played.

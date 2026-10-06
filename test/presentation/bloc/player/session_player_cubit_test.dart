@@ -117,13 +117,15 @@ TrainingItem _item(
         {required int sessionId,
         required int exerciseId,
         required int position,
-        int reps = 3}) =>
+        int reps = 3,
+        bool isTracked = false}) =>
     TrainingItem(
       id: sessionId * 10000 + position,
       sessionId: sessionId,
       exerciseId: exerciseId,
       position: position,
       prescription: RepsPresc(reps),
+      isTracked: isTracked,
     );
 
 DomainSnapshot _snapshotWithItems(TrainingSession session,
@@ -1828,6 +1830,186 @@ void main() {
       expect(
           cubit.timeline.current.position, const Duration(milliseconds: 4200),
           reason: "move 3's timeline must not be reset by move 2's late load");
+    });
+  });
+
+  // ---------- rep log (counted moves) ----------
+
+  group('rep log', () {
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 20));
+
+    // Move 0 is counted (target 5), move 1 is not, move 2 is counted (4).
+    SessionPlayerCubit build(FakeAudioPlayerService audio,
+            {PlayerMode mode = PlayerMode.athlete}) =>
+        _makeCubit(
+          _snapshotWithItems(
+            _session(1),
+            [
+              _item(
+                  sessionId: 1,
+                  exerciseId: 10,
+                  position: 0,
+                  reps: 5,
+                  isTracked: true),
+              _item(sessionId: 1, exerciseId: 11, position: 1),
+              _item(
+                  sessionId: 1,
+                  exerciseId: 10,
+                  position: 2,
+                  reps: 4,
+                  isTracked: true),
+            ],
+            [_exercise(10, reps: 1), _exercise(11)],
+          ),
+          audioService: audio,
+          mode: mode,
+        );
+
+    test('next on a counted move pauses and asks for its reps', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next();
+
+      final s = cubit.state;
+      expect(s, isA<PlayerLoggingReps>());
+      s as PlayerLoggingReps;
+      expect(s.playingIndex, 0);
+      expect(s.target, 5);
+      expect(s.isPlaying, isFalse);
+      expect(audio.paused, isTrue);
+    });
+
+    test('the audio reaching the target on a counted move asks for its reps',
+        () async {
+      // 5 reps of a 1-rep, 10s clip: the move lasts 50s.
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      audio.emitDuration(const Duration(seconds: 10));
+      await settle();
+
+      await _feedPositions(
+          audio, [9900, 100, 9900, 100, 9900, 100, 9900, 100, 9900, 100]);
+
+      final s = cubit.state;
+      expect(s, isA<PlayerLoggingReps>());
+      expect((s as PlayerLoggingReps).counted, 5,
+          reason: 'prefilled from the audio: every rep was played');
+    });
+
+    test('star taps replace the audio count as the prefill', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit
+        ..countRep()
+        ..countRep()
+        ..countRep();
+      expect((cubit.state as PlayerReady).starTaps, 3);
+      cubit.next();
+
+      expect((cubit.state as PlayerLoggingReps).counted, 3);
+    });
+
+    test('star taps are ignored on a move that is not counted', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      cubit.skipRepLog(); // now on move 1, not counted
+
+      cubit.countRep();
+
+      expect((cubit.state as PlayerReady).starTaps, isNull);
+    });
+
+    test('saving logs the reps and goes on to the next move', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+
+      cubit.logReps(7);
+
+      expect(cubit.state, isA<PlayerReady>());
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isTrue);
+      expect(cubit.loggedReps, {0: 7});
+    });
+
+    test('skipping logs nothing and goes on to the next move', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+
+      cubit.skipRepLog();
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.loggedReps, isEmpty);
+    });
+
+    test('a move that is not counted goes straight on', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      cubit.skipRepLog();
+
+      cubit.next(); // move 1 → move 2
+
+      expect(cubit.state, isA<PlayerReady>());
+      expect(cubit.state.playingIndex, 2);
+    });
+
+    test('logging the last move finishes the session', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      cubit.logReps(5);
+      cubit.next();
+      cubit.next(); // last move, counted
+
+      expect(cubit.state, isA<PlayerLoggingReps>());
+      cubit.logReps(4);
+
+      expect(cubit.state, isA<PlayerFinished>());
+      expect(cubit.loggedReps, {0: 5, 2: 4});
+    });
+
+    test('replay starts a fresh log', () async {
+      final cubit = build(FakeAudioPlayerService());
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      cubit.logReps(5);
+
+      cubit.replay();
+
+      expect(cubit.loggedReps, isEmpty);
+    });
+
+    test('play intents are ignored while the rep log is open', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      cubit.next();
+      audio.resumed = false;
+
+      cubit.togglePlay();
+      await cubit.play();
+
+      expect(cubit.state, isA<PlayerLoggingReps>());
+      expect(audio.resumed, isFalse);
     });
   });
 }

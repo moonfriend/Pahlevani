@@ -33,6 +33,7 @@ import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
@@ -184,6 +185,33 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     }
   }
 
+  /// The Rep log for the counted move just played. Leaving it with Back
+  /// counts as "Skip logging", so the session never stays stuck paused.
+  Future<void> _showRepLog(
+      BuildContext context, PlayerLoggingReps state) async {
+    final move = state.tracks[state.playingIndex];
+    final reps = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (routeContext) => RepLogPage(
+          moveName: move.displayName,
+          moveNumber: state.playingIndex + 1,
+          moveCount: state.tracks.length,
+          target: state.target,
+          counted: state.counted,
+          onSave: (reps) => Navigator.pop(routeContext, reps),
+          onSkip: () => Navigator.pop(routeContext),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (reps == null) {
+      _cubit.skipRepLog();
+    } else {
+      _cubit.logReps(reps);
+    }
+  }
+
   /// Records this play-through in local history — always, so the calendar
   /// view reflects every completed session. If the session contains any
   /// trainer-flagged movement types, first asks the user to confirm/adjust
@@ -226,8 +254,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           listenWhen: (prev, cur) =>
               prev.playingIndex != cur.playingIndex ||
               (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (prev is! PlayerFinished && cur is PlayerFinished),
+              (prev is! PlayerFinished && cur is PlayerFinished) ||
+              (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
           listener: (context, state) {
+            if (state is PlayerLoggingReps) {
+              unawaited(_showRepLog(context, state));
+              return;
+            }
             if (state is PlayerFinished) {
               unawaited(_handleSessionFinished(context));
             }

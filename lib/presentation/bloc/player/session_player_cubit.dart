@@ -48,6 +48,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   // session is opened, not retroactively for moves already in this run.
   Set<int> _learntExerciseIds = {};
 
+  /// Reps confirmed in the Rep log during this run, by move index.
+  final Map<int, int> _loggedReps = {};
+
   late final StreamSubscription<MoveEvent> _moveEventSub;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
@@ -104,6 +107,16 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   /// movement types for the post-session history prompt.
   List<ItemDetail> get itemDetails => List.unmodifiable(_itemDetails);
 
+  /// Reps confirmed in the Rep log during this run, by move index — for the
+  /// Complete screen and the training history. Skipped moves are absent.
+  Map<int, int> get loggedReps => Map.unmodifiable(_loggedReps);
+
+  /// Whether the move at [index] was flagged by a trainer for counting.
+  bool isCounted(int index) =>
+      index >= 0 &&
+      index < _itemDetails.length &&
+      _itemDetails[index].item.isTracked;
+
   bool _startsOnItsOwn(int index) {
     final exercise = exerciseAt(index);
     return moveStartsOnItsOwn(
@@ -115,6 +128,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   Future<void> loadTracks() async {
     _listenToLockScreen();
     emit(const PlayerLoading());
+    _loggedReps.clear();
     await _timeline.stop();
 
     try {
@@ -232,21 +246,70 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     }
   }
 
+  /// The current move is done (its audio reached the target, or the user
+  /// skipped ahead): a counted move first asks for its reps, any other goes
+  /// straight on.
   void next() {
-    if (state is! PlayerReady) return;
-    switch (
-        afterMove(index: state.playingIndex, moveCount: state.tracks.length)) {
+    final s = state;
+    if (s is! PlayerReady) return;
+    final index = s.playingIndex;
+    switch (afterMove(
+        index: index, moveCount: s.tracks.length, logsReps: isCounted(index))) {
+      case LogReps():
+        _timeline.pause();
+        emit(PlayerLoggingReps(
+          tracks: s.tracks,
+          playingIndex: index,
+          counted: s.starTaps ?? _timeline.current.rep,
+          target: s.tracks[index].effectiveRepetitions,
+        ));
       case GoToMove(:final index):
         unawaited(_goTo(index, play: _startsOnItsOwn(index)));
       case FinishSession():
-        unawaited(_timeline.stop());
-        emit(PlayerFinished(
-            tracks: state.tracks, playingIndex: state.playingIndex));
+        _finish();
     }
+  }
+
+  /// A star tap on a counted move: one more rep counted by the user.
+  void countRep() {
+    final s = state;
+    if (s is! PlayerReady || !isCounted(s.playingIndex)) return;
+    emit(s.copyWith(starTaps: (s.starTaps ?? 0) + 1));
+  }
+
+  /// Rep log "Save": records [reps] for the move just done, then goes on.
+  void logReps(int reps) {
+    final s = state;
+    if (s is! PlayerLoggingReps) return;
+    _loggedReps[s.playingIndex] = reps;
+    _continueAfterLog(s);
+  }
+
+  /// Rep log "Skip logging": goes on without recording the move.
+  void skipRepLog() {
+    final s = state;
+    if (s is! PlayerLoggingReps) return;
+    _continueAfterLog(s);
+  }
+
+  void _continueAfterLog(PlayerLoggingReps s) {
+    switch (afterMove(index: s.playingIndex, moveCount: s.tracks.length)) {
+      case GoToMove(:final index):
+        unawaited(_goTo(index, play: _startsOnItsOwn(index)));
+      case FinishSession() || LogReps():
+        _finish();
+    }
+  }
+
+  void _finish() {
+    unawaited(_timeline.stop());
+    emit(
+        PlayerFinished(tracks: state.tracks, playingIndex: state.playingIndex));
   }
 
   void replay() {
     if (state.tracks.isEmpty) return;
+    _loggedReps.clear();
     unawaited(_goTo(0, play: _startsOnItsOwn(0)));
   }
 

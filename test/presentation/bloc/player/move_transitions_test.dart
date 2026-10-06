@@ -12,6 +12,11 @@ void main() {
     expect(afterMove(index: 2, moveCount: 3), isA<FinishSession>());
   });
 
+  test('a counted move asks for its reps first, even the last one', () {
+    expect(afterMove(index: 0, moveCount: 3, logsReps: true), isA<LogReps>());
+    expect(afterMove(index: 2, moveCount: 3, logsReps: true), isA<LogReps>());
+  });
+
   test('a move starts by itself, except an unlearnt one in Learning mode', () {
     for (final mode in PlayerMode.values) {
       expect(moveStartsOnItsOwn(mode: mode, isLearnt: true), isTrue);

@@ -15,8 +15,21 @@ final class FinishSession extends AfterMove {
   const FinishSession();
 }
 
-AfterMove afterMove({required int index, required int moveCount}) =>
-    index < moveCount - 1 ? GoToMove(index + 1) : const FinishSession();
+/// A move a trainer flagged for counting: ask for its reps (the Rep log)
+/// before going on — after the last move too.
+final class LogReps extends AfterMove {
+  const LogReps();
+}
+
+/// [logsReps]: the move just played is counted and its reps aren't logged
+/// yet.
+AfterMove afterMove(
+        {required int index, required int moveCount, bool logsReps = false}) =>
+    logsReps
+        ? const LogReps()
+        : index < moveCount - 1
+            ? GoToMove(index + 1)
+            : const FinishSession();
 
 /// Whether a move starts by itself when reached. In Learning mode a move
 /// that isn't learnt yet waits for the user's "Go".
