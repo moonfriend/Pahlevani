@@ -22,12 +22,11 @@ import '../../widgets/kashi/shamseh.dart';
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
 
 /// The sessions Home can offer, from the session list's state. Keeps the
-/// last known sessions while refreshing, downloading or after an error.
+/// last known sessions while refreshing or after an error.
 List<HomeSession> homeSessionsFrom(TrainingSessionState state) {
   final model = switch (state) {
     TrainingSessionLoaded(:final uiModel) ||
     TrainingSessionLoading(:final uiModel) ||
-    TrainingSessionDownloading(:final uiModel) ||
     TrainingSessionError(:final uiModel) =>
       uiModel,
     TrainingSessionInitial() => null,
