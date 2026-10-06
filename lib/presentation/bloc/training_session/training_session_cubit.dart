@@ -154,6 +154,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     );
   }
 
+  /// Whether [sessionId]'s media is on the device (not downloaded when the
+  /// statuses aren't known yet).
+  DownloadStatus downloadStatusOf(int sessionId) =>
+      _currentDownloadStatus[sessionId] ?? DownloadStatus.notDownloaded;
+
   /// Estimated play seconds of one session move with the athlete's
   /// Morshed, or null when unknown (exercise missing, or no recording).
   int? moveDurationSeconds(TrainingItem item) {

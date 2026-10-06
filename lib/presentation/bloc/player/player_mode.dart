@@ -1,5 +1,6 @@
 /// How a training session play-through behaves, chosen fresh per play-through
-/// via [showPlayerModeDialog] — not persisted session data, so this lives in
+/// (the session preview's Learning/Athlete toggle; Zoorkhaneh from the
+/// session's menu) — not persisted session data, so this lives in
 /// presentation rather than domain.
 enum PlayerMode {
   /// Today's default: tracks auto-play back-to-back for the prescribed reps.

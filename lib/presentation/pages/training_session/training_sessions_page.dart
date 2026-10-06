@@ -15,8 +15,9 @@ import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
-import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
-import 'package:pahlevani/presentation/widgets/player/player_mode_dialog.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_start.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/path/path_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
@@ -128,20 +129,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     unawaited(cubit.refreshAudioSelection());
   }
 
-  static const _downloadQuestion =
-      'Are you ready to download all the data of this training session?';
-
-  DownloadStatus _statusOf(int sessionId) {
-    final s = context.read<TrainingSessionCubit>().state;
-    final uiModel = switch (s) {
-      TrainingSessionLoaded() => s.uiModel,
-      TrainingSessionLoading() => s.uiModel,
-      TrainingSessionError() => s.uiModel,
-      _ => null,
-    };
-    return uiModel?.downloadStatuses[sessionId] ?? DownloadStatus.notDownloaded;
-  }
-
   /// Downloads [session]'s media via the download dialog (tier, size,
   /// progress). True once it's all on the device.
   Future<bool> _downloadSession(TrainingSession session,
@@ -156,27 +143,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
       await context.read<TrainingSessionCubit>().loadInitialStatuses();
     }
     return done;
-  }
-
-  Future<void> _openPlayer(TrainingSession session) async {
-    // Media is downloaded completely before a session is first played — no
-    // streaming. (Web has no local storage; the browser streams there.)
-    if (!kIsWeb && _statusOf(session.id) != DownloadStatus.downloaded) {
-      final ready = await _downloadSession(session, message: _downloadQuestion);
-      if (!ready || !mounted) return;
-    }
-    final mode = await showPlayerModeDialog(context);
-    if (mode == null || !mounted) return;
-    await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AudioPlayerPage(trainingSession: session, mode: mode),
-        ));
-    // Player may have cached tracks via lookahead — reload statuses so the
-    // "downloaded" badge appears if all tracks are now on disk.
-    if (mounted) {
-      unawaited(context.read<TrainingSessionCubit>().loadInitialStatuses());
-    }
   }
 
   Future<void> _openEdit(TrainingSession session) async {
@@ -247,6 +213,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
               decoration: BoxDecoration(
                   color: colors.border,
                   borderRadius: BorderRadius.circular(9))),
+          ListTile(
+            leading: const Icon(Icons.repeat_rounded),
+            title: const Text('Play in Zoorkhaneh mode',
+                style: TextStyle(
+                    fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Each move loops until you go on'),
+            onTap: () {
+              Navigator.pop(context);
+              startSession(this.context, session, PlayerMode.zoorkhaneh);
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.edit_outlined),
             title: Text(session.isUserCreated ? 'Edit session' : 'Edit a copy',
@@ -371,7 +348,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                         dlStatuses: dlStatuses,
                         itemCounts: itemCounts,
                         durations: durations,
-                        onOpen: _openPlayer,
+                        onOpen: (s) => openSessionPreview(context, s),
                         onMenu: (s) => _showOverflowSheet(context, s,
                             dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
                         onDownload: (s) => _downloadSession(s),
@@ -779,6 +756,7 @@ class _BannerCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onMenu,
       child: Container(
         decoration: BoxDecoration(
           color: cs.surface,
@@ -929,6 +907,7 @@ class _CompactCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onMenu,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(

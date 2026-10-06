@@ -7,8 +7,7 @@ import 'package:pahlevani/domain/entities/path/path_item.dart';
 import 'package:pahlevani/presentation/bloc/path/path_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/path/path_video_page.dart';
-import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
-import 'package:pahlevani/presentation/widgets/player/player_mode_dialog.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
 
 /// One node's ordered checklist — a session (done N times), a video, or a
 /// quote — each with a manual "mark done" toggle.
@@ -23,14 +22,7 @@ class PathNodeDetailPage extends StatelessWidget {
         .getSessionDetail(trainingSessionId)
         ?.session;
     if (session == null || !context.mounted) return;
-    final mode = await showPlayerModeDialog(context);
-    if (mode == null || !context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AudioPlayerPage(trainingSession: session, mode: mode),
-      ),
-    );
+    await openSessionPreview(context, session);
   }
 
   void _openVideo(BuildContext context, VideoPathItem item) {
