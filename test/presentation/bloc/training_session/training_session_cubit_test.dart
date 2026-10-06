@@ -506,5 +506,48 @@ void main() {
       expect((cubit.state as TrainingSessionLoaded).uiModel.sessionDurations[1],
           200);
     });
+
+    test('moveDurationSeconds() estimates one move the same way', () async {
+      const movementTypeId = 5;
+      const exercise =
+          Exercise(id: 1, name: 'Shena', movementTypeId: movementTypeId);
+      const track = MovementAudioTrack(
+        id: 1,
+        movementTypeId: movementTypeId,
+        morshedId: 1,
+        audioUrl: 'https://example.com/a.mp3',
+        repetitionsDefault: 25,
+        durationSeconds: 100,
+      );
+      const counted = TrainingItem(
+          id: 10001,
+          sessionId: 1,
+          exerciseId: 1,
+          position: 0,
+          prescription: RepsPresc(50));
+      const unknown = TrainingItem(
+          id: 10002,
+          sessionId: 1,
+          exerciseId: 99, // not in the snapshot
+          position: 1,
+          prescription: RepsPresc(3));
+      final repo = _SpyRepository(DomainSnapshot(
+        sessionsById: {1: _session(1)},
+        itemsBySessionId: {
+          1: [counted, unknown]
+        },
+        exercisesById: {1: exercise},
+      ));
+      final cubit = _makeCubit(repo,
+          audioCatalogRepo: FakeAudioCatalogRepository(
+              tracks: const [track], selectedMorshedId: 1));
+      addTearDown(cubit.close);
+
+      await cubit.initialize();
+
+      expect(cubit.moveDurationSeconds(counted), 200,
+          reason: '100s / 25 reps * 50 reps');
+      expect(cubit.moveDurationSeconds(unknown), isNull);
+    });
   });
 }

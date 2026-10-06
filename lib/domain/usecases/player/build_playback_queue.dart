@@ -9,6 +9,7 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/domain/usecases/player/resolve_move_media.dart';
 
 /// One move of a session, ready to play: the exercise it comes from and the
 /// resolved files the player uses. Kept together so the two can never drift
@@ -90,8 +91,9 @@ class BuildPlaybackQueue {
         if (audioPath.isEmpty && remoteAudio.isNotEmpty) audioMissing = true;
       }
 
-      final (media, videoReady) =
-          await _resolveMedia(exercise.media, useRemoteMedia);
+      final (media, videoReady) = await ResolveMoveMedia(_downloads)(
+          exercise.media,
+          useRemoteMedia: useRemoteMedia);
       final audioAnchorMs = exercise.audioAnchorMs;
       final videoAnchorMs = exercise.media.videoAnchorMs;
 
@@ -117,39 +119,6 @@ class BuildPlaybackQueue {
       ));
     }
     return PlaybackQueue(items: items, audioMissing: audioMissing);
-  }
-
-  /// Local copies of a move's photo, or video and poster, where downloaded.
-  /// A video only plays when its file is on the device (or on the web, where
-  /// it streams); otherwise its poster shows.
-  Future<(ExerciseMedia, bool videoReady)> _resolveMedia(
-      ExerciseMedia media, bool useRemoteMedia) async {
-    if (media.type == 'photo' && media.hasAsset) {
-      final localImage = await _downloads.getLocalImagePath(media.src!);
-      return (
-        localImage == null
-            ? media
-            : ExerciseMedia(type: 'photo', src: localImage),
-        false,
-      );
-    }
-    if (media.type == 'video' && media.hasAsset) {
-      final localVideo = await _downloads.getLocalVideoPath(media.src!);
-      final posterUrl = media.poster;
-      final localPoster = (posterUrl != null && posterUrl.isNotEmpty)
-          ? await _downloads.getLocalImagePath(posterUrl)
-          : null;
-      return (
-        ExerciseMedia(
-          type: 'video',
-          src: localVideo ?? media.src,
-          poster: localPoster ?? posterUrl,
-          videoAnchorMs: media.videoAnchorMs,
-        ),
-        useRemoteMedia || localVideo != null,
-      );
-    }
-    return (media, false);
   }
 }
 

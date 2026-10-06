@@ -6,6 +6,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
@@ -136,31 +137,12 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       var total = 0;
       var allKnown = true;
       for (final item in items) {
-        final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
-        if (exercise == null) {
+        final seconds = moveDurationSeconds(item);
+        if (seconds == null) {
           allKnown = false;
-          continue;
+        } else {
+          total += seconds;
         }
-        // Same resolution the player actually plays through, exactly like
-        // resolveAudioTrack's callers elsewhere — there is no more legacy
-        // per-exercise fallback, so when this comes up null the item's
-        // duration is simply unknown (handled by allKnown below).
-        final resolved = resolveAudioTrack(
-          movementTypeId: exercise.movementTypeId,
-          chosenMorshedId: _selectedMorshedId,
-          availableTracks: _audioTracks,
-        );
-        final trackDuration = resolved?.durationSeconds;
-        final defaultReps =
-            resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
-        if (trackDuration == null) {
-          allKnown = false;
-          continue;
-        }
-        final repsToDo = item.prescription is RepsPresc
-            ? (item.prescription as RepsPresc).count
-            : defaultReps;
-        total += (trackDuration / defaultReps * repsToDo).round();
       }
       if (allKnown) durations[sessionId] = total;
     }
@@ -170,6 +152,29 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       sessionItemCounts: itemCounts,
       sessionDurations: durations,
     );
+  }
+
+  /// Estimated play seconds of one session move with the athlete's
+  /// Morshed, or null when unknown (exercise missing, or no recording).
+  int? moveDurationSeconds(TrainingItem item) {
+    final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
+    if (exercise == null) return null;
+    // Same resolution the player actually plays through — there is no more
+    // legacy per-exercise fallback, so when this comes up null the move's
+    // duration is simply unknown.
+    final resolved = resolveAudioTrack(
+      movementTypeId: exercise.movementTypeId,
+      chosenMorshedId: _selectedMorshedId,
+      availableTracks: _audioTracks,
+    );
+    final trackDuration = resolved?.durationSeconds;
+    if (trackDuration == null) return null;
+    final defaultReps =
+        resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
+    final repsToDo = item.prescription is RepsPresc
+        ? (item.prescription as RepsPresc).count
+        : defaultReps;
+    return (trackDuration / defaultReps * repsToDo).round();
   }
 
   /// Returns the detailed item list for a session, built from the in-memory snapshot.
