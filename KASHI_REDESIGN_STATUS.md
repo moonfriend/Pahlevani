@@ -1,4 +1,4 @@
-# Kashi UX redesign — status (branch `new-ux-design`, 2026-10-05)
+# Kashi UX redesign — status (branch `new-ux-design`, updated 2026-10-06)
 
 Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_ui/Pahlevani_design_brand_colors.zip`
 → `design_handoff_pahlevani_v1/` (README.md, LOGIC_AND_STATE.md, `*.dc.html`, screenshots).
@@ -27,6 +27,36 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
     `SessionPlayerCubit` (`PlayerMode`).
 - Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
 
+## 2026-10-06: session flow done (A1–A4)
+Built on the refactored player (`SessionPlayerCubit`); the player and session list are now ours.
+- **Move content (migration `0042_movement_info_learning_content.sql`):** `movement_info.cues` (≤3),
+  `steps`, `variations` (jsonb `{name, level, reps}`), edited in admin → Movements → "Info page
+  content". English only; Farsi comes later via `.po` translation files (backlog). Everything
+  defaults to empty and the UI hides empty sections.
+- **A1 Session preview** (`pages/session_flow/session_preview_page.dart`) is the way into every
+  session (Home, All sessions, Path). Morshed dropdown = app-wide choice. Learning/Athlete toggle
+  (Learning default). Tapping a move → **learning sheet** (`widgets/kashi/learning_sheet.dart`, also
+  used for the player's How to and Learning mode's "Go"). Zoorkhaneh: long-press / ⋮ on a session
+  (`showSessionPlayMenu`, list overflow sheet). The mode dialog is gone. The download-before-play
+  check runs on Start (`session_start.dart`), for every entry point.
+- **A2 Kashi player:** restyle of `training_session_player_page.dart`; new `widgets/player/kashi/`
+  (`RepStar`, `SegmentProgress`). The star fills from the audio; a tap counts your own rep.
+  Edit is under ⋮. The track list is gone (segments jump to a move). The old ⓘ info page and
+  Learning prompt were removed.
+- **A3:** Rep log after every counted move (`PlayerLoggingReps`, `afterMove` → `LogReps`, cubit
+  `countRep/logReps/skipRepLog/loggedReps`); Complete replaces the player and records history from
+  the logged reps (`countLoggedMovements`); Return home pops to the shell. The old completion sheet
+  and count dialog were removed.
+- **A4 (user):** apply 0040 + 0042 to staging, test the admin tabs.
+- Tests: 884 unit/widget, 14 Linux integration journeys, 54 admin; all green.
+
+### Next
+- Manual testing on Linux, Android, web (`pahlevani-reports/manual_test_checklist.html`, "Kashi
+  session flow"), then push `release/staging`.
+- Library on the real move catalogue (still `sample_moves.dart`), using the new move content.
+- Tablet / desktop / web layouts; Farsi/RTL via `.po` files.
+- Learning card "Let's go" (practise one move) needs a single-move queue in the player.
+
 ## Built (phone layout)
 - **Foundations:** `KashiColors`/`KashiPalette`/`KashiTextStyles` (alongside the old theme), Noto Serif,
   brand assets, shared widgets in `lib/presentation/widgets/kashi/` (khatam, tile wall, day tile,
@@ -50,7 +80,7 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
 3. Decisions pending: shamseh geometry (phone screenshots tighter than code/web/tablet — kept code);
    default theme System vs Dark (kept Dark); account entry in Profile; Session preview screen (not built,
    sits between the session list and the player).
-4. Not mine: player and session list belong to the other agent.
+4. ~~Not mine: player and session list belong to the other agent.~~ Ours since 2026-10-06.
 
 ## Run
 ```bash
