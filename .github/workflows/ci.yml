@@ -180,6 +180,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # TEMPORARY diagnostic (fix/ci-green): the app exits at startup under xvfb.
+      # Report missing shared libs and the binary's own stderr. Remove once green.
+      - name: Diagnose Linux app startup (temporary)
+        continue-on-error: true
+        run: |
+          PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig flutter build linux --debug
+          B=build/linux/x64/debug/bundle
+          echo "== missing libraries"
+          for f in $B/pahlevani $B/lib/*.so*; do ldd "$f" | grep "not found" | sed "s|^|$f: |"; done || true
+          echo "== app stderr/stdout (15 s under xvfb)"
+          timeout 15 xvfb-run --auto-servernum $B/pahlevani 2>&1 | tail -60; echo "exit=${PIPESTATUS[0]}"
+
       # xvfb-run provides a virtual X11 display so Flutter can open a window.
       # Software Mesa handles GPU rendering on the headless runner.
       # Linux desktop does not use Firebase; no --dart-define needed here.
