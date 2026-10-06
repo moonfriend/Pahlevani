@@ -4,9 +4,20 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
 → `design_handoff_pahlevani_v1/` (README.md, LOGIC_AND_STATE.md, `*.dc.html`, screenshots).
 
 ## Branch
-- `new-ux-design` = `main` + the standards commits (hook fix, format fix, credentials-policy doc,
-  CLAUDE.md workspace/worktree rules + `scripts/wt.sh`). **Path / Fitness are deliberately not included.**
-- Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`. Not merged to `main`.
+- **2026-10-06: rebased onto `release/staging`** (user's decision: all work happens on staging; main
+  gets everything at the end). So it now **includes** Path + Fitness Test, download-before-play
+  (download dialog, no streaming), media sizes (migration 0041) and the player refactor
+  (`SessionPlayerCubit` + `MoveTimeline` + `MoveProgressCubit` + `VideoFollower`, see CLAUDE.md
+  "Data flow (playing a session)"). This branch's own stage-overflow fix was dropped in favour of
+  staging's (same problem, already fixed + tested there). Pre-rebase copy:
+  `backup/new-ux-design-pre-rebase-2026-10-06`. The rebased branch is **not pushed**; origin still has
+  the old one (a push needs `--force-with-lease`, user's call).
+- The old unused player widgets (`widgets/player/player_controls_widget`, `progress_bar_widget`,
+  `track_image_widget`, `track_list_item_widget`) are kept on purpose: reuse them where they fit
+  rather than reinventing.
+- Rep log: on countable moves, a pop-up asks how many reps were done — to be built as part of this UX
+  work (the player's `afterMove()` in `bloc/player/move_transitions.dart` is the hook).
+- Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
 
 ## Built (phone layout)
 - **Foundations:** `KashiColors`/`KashiPalette`/`KashiTextStyles` (alongside the old theme), Noto Serif,
@@ -19,8 +30,7 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
 - **Library + Learning card** (placeholder moves: `pages/library/sample_moves.dart`).
 - **Progress + Calendar** and **Profile** (real history, appearance, morshed; language is a placeholder).
 - **Rep log + Complete** — UI only, **not wired** (player flow). Debug builds: Profile → "Design previews".
-- Fixes: player stage overflow on wide/short windows (`training_session_player_page.dart` — may conflict
-  with the player agent's work), first-run storage failures, integration tests repaired and isolated
+- Fixes: first-run storage failures, integration tests repaired and isolated
   from real app data.
 
 ## To do / open
