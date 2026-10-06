@@ -17,6 +17,14 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
   rather than reinventing.
 - Rep log: on countable moves, a pop-up asks how many reps were done — to be built as part of this UX
   work (the player's `afterMove()` in `bloc/player/move_transitions.dart` is the hook).
+- **Player modes — user decision 2026-10-06** (build with the session preview; until then the old
+  "Choose a mode" dialog stays as is):
+  - Tapping a session opens the **session preview**, which has a toggle **Learning / Athlete**
+    (default **Learning**) for how the session starts.
+  - **Zoorkhaneh** mode is only offered from the session's **long-press / "⋮" menu**, next to the
+    other session actions (download, edit, …).
+  - The player needs no change for this: the mode is a constructor parameter of
+    `SessionPlayerCubit` (`PlayerMode`).
 - Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
 
 ## Built (phone layout)
