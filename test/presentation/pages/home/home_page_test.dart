@@ -45,6 +45,7 @@ SessionCompletionRecord _done(DateTime at, Map<String, int> reps) =>
 
 class _Calls {
   final opened = <TrainingSession>[];
+  final menus = <TrainingSession>[];
   int allSessions = 0, progress = 0, calendar = 0;
 }
 
@@ -83,6 +84,7 @@ Future<_Calls> _pump(
         sessions: sessions ?? _sessions(3),
         now: () => _today,
         onOpenSession: calls.opened.add,
+        onSessionMenu: calls.menus.add,
         onOpenAllSessions: () => calls.allSessions++,
         onOpenProgress: () => calls.progress++,
         onOpenCalendar: () => calls.calendar++,
@@ -122,6 +124,14 @@ void main() {
       await tester.tap(find.text('Start'));
       await tester.tap(find.text('Session 1'));
       expect(calls.opened.map((s) => s.id), [1, 1]);
+    });
+
+    testWidgets('long-pressing the card opens the session menu',
+        (tester) async {
+      final calls = await _pump(tester);
+      await tester.longPress(find.text('Session 1'));
+      expect(calls.menus.map((s) => s.id), [1]);
+      expect(calls.opened, isEmpty);
     });
 
     testWidgets('dots pick a session; swiping moves through them',

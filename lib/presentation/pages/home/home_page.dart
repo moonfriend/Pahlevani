@@ -72,6 +72,7 @@ class HomePage extends StatelessWidget {
     required this.onOpenAllSessions,
     required this.onOpenProgress,
     required this.onOpenCalendar,
+    this.onSessionMenu,
     this.now = DateTime.now,
   });
 
@@ -80,6 +81,10 @@ class HomePage extends StatelessWidget {
   final VoidCallback onOpenAllSessions;
   final VoidCallback onOpenProgress;
   final VoidCallback onOpenCalendar;
+
+  /// Long-press on the Today card: the session's own actions (Zoorkhaneh
+  /// mode).
+  final ValueChanged<TrainingSession>? onSessionMenu;
   final DateTime Function() now;
 
   /// The Today carousel offers the first few sessions; the rest are a tap
@@ -113,6 +118,7 @@ class HomePage extends StatelessWidget {
                 _TodayCard(
                   sessions: sessions.take(carouselSize).toList(),
                   onOpen: onOpenSession,
+                  onMenu: onSessionMenu,
                 ),
                 const SizedBox(height: _gap),
                 SizedBox(
@@ -209,10 +215,12 @@ class _Header extends StatelessWidget {
 
 /// The 2×2 lajvard card: a swipeable carousel of sessions with dots.
 class _TodayCard extends StatefulWidget {
-  const _TodayCard({required this.sessions, required this.onOpen});
+  const _TodayCard(
+      {required this.sessions, required this.onOpen, required this.onMenu});
 
   final List<HomeSession> sessions;
   final ValueChanged<TrainingSession> onOpen;
+  final ValueChanged<TrainingSession>? onMenu;
 
   @override
   State<_TodayCard> createState() => _TodayCardState();
@@ -259,6 +267,9 @@ class _TodayCardState extends State<_TodayCard> {
                           : 'SESSION ${i + 1} OF ${sessions.length}',
                       figure: _figureFor(i),
                       onOpen: () => widget.onOpen(sessions[i].session),
+                      onMenu: widget.onMenu == null
+                          ? null
+                          : () => widget.onMenu!(sessions[i].session),
                     ),
                   ),
                   if (sessions.length > 1)
@@ -309,12 +320,14 @@ class _TodayPage extends StatelessWidget {
     required this.tag,
     required this.figure,
     required this.onOpen,
+    this.onMenu,
   });
 
   final HomeSession session;
   final String tag;
   final String figure;
   final VoidCallback onOpen;
+  final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -325,6 +338,7 @@ class _TodayPage extends StatelessWidget {
         : '$minutes min · ${session.moves} moves';
     return GestureDetector(
       onTap: onOpen,
+      onLongPress: onMenu,
       behavior: HitTestBehavior.opaque,
       child: LayoutBuilder(builder: (context, constraints) {
         // 206px in the design (on a 336px card); narrower cards shrink it.

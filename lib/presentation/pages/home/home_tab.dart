@@ -6,6 +6,7 @@ import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../progress/calendar_page.dart';
 import '../session_flow/session_preview_page.dart';
+import '../session_flow/session_start.dart';
 import '../shell/app_shell.dart';
 import '../training_session/training_sessions_page.dart';
 import 'home_page.dart';
@@ -25,6 +26,14 @@ class HomeTab extends StatelessWidget {
       BuildContext context, TrainingSession session) async {
     final history = context.read<TrainingHistoryCubit>();
     await openSessionPreview(context, session);
+    await history.load();
+  }
+
+  /// Long-press on the Today card: Zoorkhaneh mode, then refresh history.
+  Future<void> _openSessionMenu(
+      BuildContext context, TrainingSession session) async {
+    final history = context.read<TrainingHistoryCubit>();
+    await showSessionPlayMenu(context, session);
     await history.load();
   }
 
@@ -56,6 +65,7 @@ class HomeTab extends StatelessWidget {
         builder: (context, state) => HomePage(
           sessions: homeSessionsFrom(state),
           onOpenSession: (s) => _openSession(context, s),
+          onSessionMenu: (s) => _openSessionMenu(context, s),
           onOpenAllSessions: () => _openAllSessions(context),
           onOpenProgress: () => AppShell.of(context).select(progressTab),
           onOpenCalendar: () => _openCalendar(context),

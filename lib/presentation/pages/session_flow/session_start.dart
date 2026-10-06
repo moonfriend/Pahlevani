@@ -44,3 +44,34 @@ Future<void> startSession(
   );
   unawaited(sessions.loadInitialStatuses());
 }
+
+/// A session's own play actions, from a long-press on a session card:
+/// Zoorkhaneh mode lives here rather than in the preview.
+Future<void> showSessionPlayMenu(
+    BuildContext context, TrainingSession session) async {
+  final zoorkhaneh = await showModalBottomSheet<bool>(
+    context: context,
+    shape: const RoundedRectangleBorder(),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(session.title,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.repeat_rounded),
+            title: const Text('Play in Zoorkhaneh mode'),
+            subtitle: const Text('Each move loops until you go on'),
+            onTap: () => Navigator.pop(sheetContext, true),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (zoorkhaneh == true && context.mounted) {
+    await startSession(context, session, PlayerMode.zoorkhaneh);
+  }
+}
