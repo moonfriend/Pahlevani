@@ -12,11 +12,8 @@ import 'package:pahlevani/presentation/widgets/download/media_download_dialog.da
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
-import 'package:pahlevani/core/theme/pahlevani_colors.dart';
-import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
-import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
@@ -32,14 +29,19 @@ import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
-import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
-import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
-import 'package:pahlevani/presentation/widgets/player/learning_mode_prompt.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_palette.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_typography.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
+import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
+import 'package:pahlevani/presentation/widgets/kashi/learning_sheet.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
+import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,10 +69,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   late MoveProgressCubit _progress;
 
   /// Bumped on every restart so everything below the page (stage, video
-  /// widget and its controller, track list) is rebuilt from scratch.
+  /// widget and its controller) is rebuilt from scratch.
   int _playerGeneration = 0;
-  final _trackListKey = GlobalKey<_TrackListState>();
   final _precachedUrls = <String>{};
+
+  /// The effective Morshed's name for the top bar; null until known (or
+  /// when there is no roster), and then the label is simply left out.
+  String? _morshedName;
 
   @override
   void initState() {
@@ -79,9 +84,24 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     _cubit = _createPlayer(_session, autoStart: true);
     _progress = MoveProgressCubit(_cubit.timeline);
     _cubit.loadTracks();
+    unawaited(_loadMorshedName());
     // Kept on for the whole session (not just while isPlaying) so a brief
     // pause to check form doesn't let the screen lock mid-training.
     unawaited(WakelockPlus.enable());
+  }
+
+  Future<void> _loadMorshedName() async {
+    try {
+      final catalog = getIt<AudioCatalogRepository>();
+      final morsheds = await catalog.getMorsheds();
+      final id = effectiveMorshedId(
+          selectedId: await catalog.getSelectedMorshedId(), morsheds: morsheds);
+      final name = morsheds.where((m) => m.id == id).map((m) => m.name);
+      if (mounted && name.isNotEmpty) setState(() => _morshedName = name.first);
+    } catch (e) {
+      // Only a label: playback resolves the recording on its own.
+      AppLogger.w('Could not load the morshed name', error: e);
+    }
   }
 
   SessionPlayerCubit _createPlayer(TrainingSession session,
@@ -178,12 +198,37 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// deliberately not firing play before/alongside the pop, which raced the
   /// engine against the dialog's own dismissal on-device.
   Future<void> _promptLearningMode(
-      BuildContext context, Exercise exercise, ExerciseMedia media) async {
-    final shouldStart =
-        await showLearningModePrompt(context, exercise: exercise, media: media);
+      BuildContext context, int index, Exercise exercise) async {
+    final track = _cubit.state.tracks[index];
+    final shouldStart = await showLearningSheet(
+      context,
+      exercise: exercise,
+      media: track.media,
+      videoReady: track.videoReady,
+      targetReps: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+      actionLabel: 'Go',
+      footer: LearntToggle(exerciseId: exercise.id),
+    );
     if (shouldStart && mounted) {
       unawaited(_cubit.startCurrentTrack());
     }
+  }
+
+  /// "How to": the current move's learning sheet. Pauses first (an
+  /// explicit pause, never a toggle — opening it must always stop playback)
+  /// and leaves the session paused when it closes.
+  Future<void> _openHowTo(BuildContext context, int index) async {
+    final exercise = _cubit.exerciseAt(index);
+    if (exercise == null) return;
+    _cubit.pause();
+    final track = _cubit.state.tracks[index];
+    await showLearningSheet(
+      context,
+      exercise: exercise,
+      media: track.media,
+      videoReady: track.videoReady,
+      targetReps: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+    );
   }
 
   /// The Rep log for the counted move just played. Leaving it with Back
@@ -264,16 +309,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final accent = colors.accentFor(_session.id);
-
     return MultiBlocProvider(
       providers: [
         BlocProvider.value(value: _cubit),
         BlocProvider.value(value: _progress),
       ],
       child: Scaffold(
-        backgroundColor: colors.bg,
+        // The player is a lajvard scene, the same in both themes.
+        backgroundColor: KashiPalette.lajvard900,
         body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
           // A restart (see _restartPlayer) rebuilds the whole player subtree.
           key: ValueKey(_playerGeneration),
@@ -295,11 +338,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 _cubit.shouldPromptLearningMode) {
               final exercise = _cubit.exerciseAt(state.playingIndex);
               if (exercise != null) {
-                unawaited(_promptLearningMode(
-                    context, exercise, state.tracks[state.playingIndex].media));
+                unawaited(
+                    _promptLearningMode(context, state.playingIndex, exercise));
               }
             }
-            _trackListKey.currentState?.scrollToActive(state.playingIndex);
             // Precache each image URL at most once per player session.
             // Previously this looped all tracks on every index change, causing
             // repeated Supabase egress when the in-memory cache was full.
@@ -317,93 +359,58 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           },
           builder: (context, state) {
             if (state is PlayerLoading) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(
+                  child: CircularProgressIndicator(color: _Scene.accent));
             }
             if (state is PlayerNeedsDownload) {
-              return Column(children: [
-                _AppBar(session: _session, onEdit: () => _openEdit(context)),
-                Expanded(
-                    child:
-                        _NeedsDownload(onDownload: () => _download(context))),
-              ]);
+              return _NeedsDownload(
+                topBar: _TopBar(
+                  state: state,
+                  morshedName: _morshedName,
+                  onSelectMove: null,
+                  onEdit: () => _openEdit(context),
+                ),
+                onDownload: () => _download(context),
+              );
             }
             if (state is PlayerFailed && state.tracks.isEmpty) {
               return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
                   child: Text(state.message,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)));
+                      textAlign: TextAlign.center,
+                      style: KashiTextStyles.body.copyWith(color: _Scene.text)),
+                ),
+              );
             }
-            return Stack(children: [
-              Column(children: [
-                _AppBar(session: _session, onEdit: () => _openEdit(context)),
-                _Stage(state: state, accent: accent, cubit: _cubit),
-                _RepCounter(
-                    hasTrack: state.currentTrack != null, mode: widget.mode),
-                _ProgressBlock(state: state, cubit: _cubit),
-                // Fills the rest of the screen, extending behind the
-                // transport bar below (a transparent overlay) rather than
-                // stopping above it — see _Transport.
-                Expanded(
-                    child: _TrackList(
-                        key: _trackListKey,
-                        state: state,
-                        accent: accent,
-                        cubit: _cubit)),
-              ]),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _Transport(state: state, cubit: _cubit),
+            final index = state.playingIndex;
+            final exercise = _cubit.exerciseAt(index);
+            return _KashiPlayerView(
+              topBar: _TopBar(
+                state: state,
+                morshedName: _morshedName,
+                onSelectMove: _cubit.setIndexAndPlay,
+                onEdit: () => _openEdit(context),
               ),
-            ]);
+              stage: _Stage(state: state, cubit: _cubit),
+              title: _MoveTitle(
+                name: state.currentTrack?.title ?? '',
+                nameFa: exercise?.titleFa,
+                onHowTo:
+                    exercise == null ? null : () => _openHowTo(context, index),
+              ),
+              cues: exercise?.cues ?? const [],
+              counter: _Counter(
+                counted: _cubit.isCounted(index),
+                target: state.currentTrack?.effectiveRepetitions ?? 0,
+                starTaps: state is PlayerReady ? state.starTaps : null,
+                loopsForever: widget.mode == PlayerMode.zoorkhaneh,
+                onTap: _cubit.countRep,
+              ),
+              transport: _Transport(state: state, cubit: _cubit),
+            );
           },
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// App bar
-// ─────────────────────────────────────────────────────────────────────────────
-class _AppBar extends StatelessWidget {
-  const _AppBar({required this.session, required this.onEdit});
-  final TrainingSession session;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-        child: Row(children: [
-          _RoundBtn(
-              icon: Icons.arrow_back_rounded,
-              color: cs.onSurface,
-              onTap: () => Navigator.pop(context)),
-          const SizedBox(width: 4),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text('PLAY ALONG',
-                    style: PTextStyles.of(context)
-                        .playerOverline
-                        .copyWith(color: colors.onFaint)),
-                Text(session.title,
-                    style: PTextStyles.of(context)
-                        .appBarTitle
-                        .copyWith(color: cs.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ])),
-          _RoundBtn(
-              icon: Icons.edit_outlined, color: colors.onMuted, onTap: onEdit),
-        ]),
       ),
     );
   }
@@ -428,25 +435,19 @@ double maxStageHeight(double windowHeight) => math.max(
     );
 
 class _Stage extends StatelessWidget {
-  const _Stage(
-      {required this.state, required this.accent, required this.cubit});
+  const _Stage({required this.state, required this.cubit});
   final SessionPlayerState state;
-  final SessionAccent accent;
   final SessionPlayerCubit cubit;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-
     final track = state.currentTrack;
     final hasPhoto = track != null &&
         track.media.type == 'photo' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty;
-    // The cubit is the single place that decides local-vs-remote readiness
-    // (loadTracks() / _applyResolvedVideo in audio_player_cubit.dart) — the
-    // stage just reads the result.
+    // The queue decides local-vs-remote readiness (BuildPlaybackQueue /
+    // ResolveMoveMedia) — the stage just reads the result.
     final hasVideo = track != null &&
         track.media.type == 'video' &&
         track.media.src != null &&
@@ -459,59 +460,32 @@ class _Stage extends StatelessWidget {
         !hasVideo &&
         track.media.poster != null &&
         track.media.poster!.isNotEmpty;
-    final hasVisual = hasPhoto || hasVideo || hasVideoPoster;
 
-    return GestureDetector(
-      onTap: cubit.togglePlay,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-        // In wide, short windows (desktop, landscape tablets and phones) a
-        // full-width 16:9 stage is taller than the screen can spare and
-        // overflowed the player column. Cap its height (see maxStageHeight);
-        // AspectRatio then narrows the stage instead, keeping 16:9. On phones
-        // and tablets in portrait the width-based height is below the cap.
-        constraints: BoxConstraints(
-            maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height)),
-        // The stage matches the exercise videos' own 16:9 aspect ratio
-        // (rather than a fixed height videos had to be forced into) so a
-        // fitHeight-scaled 1280x720 track fills the box exactly, with no
-        // horizontal overflow to clip and no side cropping.
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Container(
-            // The border lives in foregroundDecoration rather than
-            // decoration: a border inside `decoration` makes Container
-            // implicitly pad its child by the border's own width
-            // (BoxDecoration.padding == border.dimensions), shrinking the
-            // Stack below by 1px on every side and leaving a ring of
-            // `accent.bg` exposed between the video canvas and the border
-            // itself — that ring was the reported side line.
-            // foregroundDecoration paints on top without touching layout,
-            // so the video/pattern/overlays now reach the true edge and
-            // the border draws directly over them with no gap.
-            decoration: BoxDecoration(
-              color: accent.bg,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(8),
-                bottom: Radius.circular(26),
-              ),
-            ),
-            foregroundDecoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(8),
-                bottom: Radius.circular(26),
-              ),
-              border: Border.all(color: colors.borderSoft),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(children: [
-              // Pattern is always the background — visible during load and on error
-              Positioned.fill(
-                  child: PersianPattern(
-                      color: accent.fg, opacity: 0.5, tileSize: 110)),
-              if (hasVideo)
-                Positioned.fill(
-                  child: _ExerciseVideo(
+    return Semantics(
+      button: true,
+      label: state.isPlaying ? 'Pause' : 'Play',
+      child: GestureDetector(
+        onTap: cubit.togglePlay,
+        child: ConstrainedBox(
+          // In wide, short windows (desktop, landscape) a full-width 16:9
+          // stage is taller than the screen can spare; cap its height (see
+          // maxStageHeight) and AspectRatio narrows it instead.
+          constraints: BoxConstraints(
+              maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height)),
+          // The exercise videos' own 16:9, so a fitHeight-scaled 1280x720
+          // track fills the box exactly with no side cropping.
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Container(
+              decoration: const BoxDecoration(color: KashiPalette.lajvard700),
+              // An inset 2px lajvard frame drawn over the media, so it never
+              // shifts the video's layout.
+              foregroundDecoration: BoxDecoration(
+                  border: Border.all(color: KashiPalette.lajvard500, width: 2)),
+              clipBehavior: Clip.hardEdge,
+              child: Stack(fit: StackFit.expand, children: [
+                if (hasVideo)
+                  _ExerciseVideo(
                     // One video widget (and follower) per move, even when
                     // two moves in a row share the same clip.
                     key: ValueKey('${track.id}|${track.media.src}'),
@@ -520,83 +494,23 @@ class _Stage extends StatelessWidget {
                     posterSrc: track.media.poster,
                     isPlaying: state.isPlaying,
                     startOffsetMs: track.videoStartOffsetMs,
-                  ),
-                )
-              else if (hasPhoto || hasVideoPoster)
-                Positioned.fill(
-                    child: buildMediaImage(
-                        (hasPhoto ? track.media.src : track.media.poster)!)),
-              // Dark gradient at bottom so text stays legible over photos/video
-              if (hasVisual)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.55)
-                        ],
-                        stops: const [0.45, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              // Exercise name — bottom left
-              Positioned(
-                left: 16,
-                bottom: 16,
-                right: 80,
-                child: Text(state.currentTrack?.title ?? '',
-                    style: PTextStyles.of(context).playerExLatin.copyWith(
-                        color: hasVisual ? Colors.white : cs.onSurface),
-                    maxLines: 2),
-              ),
-              // Paused overlay
-              if (!state.isPlaying)
-                Positioned.fill(
-                  child: ColoredBox(
-                    color: colors.scrim,
+                  )
+                else if (hasPhoto || hasVideoPoster)
+                  buildMediaImage(
+                      (hasPhoto ? track.media.src : track.media.poster)!),
+                if (state.isPlaying)
+                  const PositionedDirectional(
+                      start: 10, bottom: 10, child: _AudioWave())
+                else
+                  const ColoredBox(
+                    color: Color(0x660B1638),
                     child: Center(
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                            color: cs.surface,
-                            shape: BoxShape.circle,
-                            boxShadow: colors.shadowPop),
-                        alignment: Alignment.center,
-                        child: Icon(Icons.play_arrow_rounded,
-                            size: 34, color: cs.primary),
-                      ),
+                      child:
+                          Icon(Icons.play_arrow, size: 40, color: Colors.white),
                     ),
                   ),
-                ),
-              // Now-playing pill
-              if (state.isPlaying)
-                Positioned(
-                  right: 14,
-                  bottom: 14,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
-                    decoration: BoxDecoration(
-                        color: cs.surface,
-                        borderRadius: BorderRadius.circular(99),
-                        boxShadow: colors.shadowCard),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      _Equalizer(color: accent.fg),
-                      const SizedBox(width: 8),
-                      Text('Pause',
-                          style: TextStyle(
-                              fontFamily: PFonts.ui,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: cs.onSurface)),
-                    ]),
-                  ),
-                ),
-            ]),
+              ]),
+            ),
           ),
         ),
       ),
@@ -756,139 +670,70 @@ class _ControllerVideo implements FollowedVideo {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Rep counter — the signature moment
+// Kashi player view
 // ─────────────────────────────────────────────────────────────────────────────
-class _RepCounter extends StatefulWidget {
-  const _RepCounter({required this.hasTrack, required this.mode});
-  final bool hasTrack;
-  final PlayerMode mode;
 
-  @override
-  State<_RepCounter> createState() => _RepCounterState();
+/// Text tints on the lajvard scene (the design's pale tints; merging them
+/// into one is an open design item).
+abstract final class _Scene {
+  static const text = Color(0xFFF4EFE4);
+  static const muted = Color(0xFF9AA6D2);
+  static const chip = Color(0xFFC4CCE6);
+  static const cue = Color(0xFFDDE3F2);
+  static const accent = KashiPalette.aqua300;
 }
 
-class _RepCounterState extends State<_RepCounter>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _flash;
+/// The player's layout: progress and move count on top, the video, then the
+/// move's name, cues and star (scrolling on short screens), with the
+/// transport pinned at the bottom.
+class _KashiPlayerView extends StatelessWidget {
+  const _KashiPlayerView({
+    required this.topBar,
+    required this.stage,
+    required this.title,
+    required this.cues,
+    required this.counter,
+    required this.transport,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 420));
-    _scale = TweenSequence([
-      TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 1.28)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 35),
-      TweenSequenceItem(
-          tween: Tween(begin: 1.28, end: 1.0)
-              .chain(CurveTween(curve: Curves.easeIn)),
-          weight: 65),
-    ]).animate(_ctrl);
-    _flash = Tween(begin: 0.85, end: 0.0).animate(CurvedAnimation(
-        parent: _ctrl, curve: const Interval(0, 0.6, curve: Curves.easeOut)));
-  }
+  final Widget topBar;
+  final Widget stage;
+  final Widget title;
+  final List<String> cues;
+  final Widget counter;
+  final Widget transport;
 
-  /// A new rep: a haptic tick and a pulse of the pill.
-  void _onRepChanged() {
-    HapticFeedback.selectionClick();
-    _ctrl.forward(from: 0);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  /// Phone layout; tablet and web layouts come later.
+  static const _maxWidth = 520.0;
 
   @override
   Widget build(BuildContext context) {
-    // Rebuilds on a new rep (or move), not on every position reading.
-    return BlocConsumer<MoveProgressCubit, MoveProgress>(
-      listenWhen: (prev, cur) => prev.rep != cur.rep,
-      listener: (_, __) => _onRepChanged(),
-      buildWhen: (prev, cur) =>
-          prev.rep != cur.rep ||
-          prev.repsTotal != cur.repsTotal ||
-          prev.isKnown != cur.isKnown,
-      builder: (context, progress) => _buildPill(context, progress),
-    );
-  }
-
-  Widget _buildPill(BuildContext context, MoveProgress progress) {
-    if (!widget.hasTrack || !progress.isKnown) {
-      return const SizedBox(height: 16);
-    }
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final total = progress.repsTotal;
-    final rep = progress.rep;
-    final pillBg = colors.repDefaultBg;
-    final pillFg = colors.repDefault;
-    final glow = colors.repDefault.withValues(alpha: 0.36);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
+    return SafeArea(
       child: Center(
-        child: ScaleTransition(
-          scale: _scale,
-          child: Container(
-            decoration: BoxDecoration(
-              color: pillBg,
-              borderRadius: BorderRadius.circular(99),
-              boxShadow: [
-                BoxShadow(
-                    color: glow, blurRadius: 8, offset: const Offset(0, 2))
-              ],
-            ),
-            child: Stack(alignment: Alignment.center, children: [
-              AnimatedBuilder(
-                animation: _flash,
-                builder: (_, __) => Container(
-                  decoration: BoxDecoration(
-                    color: pillFg.withValues(alpha: _flash.value),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+            child: Column(children: [
+              topBar,
+              const SizedBox(height: 8),
+              Center(child: stage),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(children: [
+                    title,
+                    if (cues.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _Cues(cues: cues),
+                    ],
+                    const SizedBox(height: 10),
+                    counter,
+                  ]),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration:
-                        BoxDecoration(color: pillFg, shape: BoxShape.circle),
-                    alignment: Alignment.center,
-                    child: Text('$rep',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            color: pillBg)),
-                  ),
-                  const SizedBox(width: 8),
-                  RichText(
-                      text: TextSpan(
-                    style: PTextStyles.of(context)
-                        .repPill
-                        .copyWith(color: pillFg, fontSize: 13),
-                    children: [
-                      TextSpan(
-                          text: widget.mode == PlayerMode.zoorkhaneh
-                              ? 'Rep $rep'
-                              : 'Rep $rep '),
-                      if (widget.mode != PlayerMode.zoorkhaneh)
-                        TextSpan(
-                            text: 'of $total',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 12)),
-                    ],
-                  )),
-                ]),
-              ),
+              const SizedBox(height: 8),
+              transport,
             ]),
           ),
         ),
@@ -897,288 +742,208 @@ class _RepCounterState extends State<_RepCounter>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Progress block (draggable seek bar)
-// ─────────────────────────────────────────────────────────────────────────────
-class _ProgressBlock extends StatelessWidget {
-  const _ProgressBlock({required this.state, required this.cubit});
+/// Segments, "✕ Move n of N", the morshed, and a ⋮ menu (Edit session).
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.state,
+    required this.morshedName,
+    required this.onSelectMove,
+    required this.onEdit,
+  });
+
   final SessionPlayerState state;
-  final SessionPlayerCubit cubit;
-
-  static String _clock(Duration d) {
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  void _seek(Duration length, double dx, double maxWidth) {
-    if (length.inMilliseconds <= 0 || maxWidth <= 0) return;
-    final ratio = (dx / maxWidth).clamp(0.0, 1.0);
-    cubit.seekTo(
-        Duration(milliseconds: (ratio * length.inMilliseconds).round()));
-  }
+  final String? morshedName;
+  final ValueChanged<int>? onSelectMove;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-
-    // Only the time and the bar follow the move's position.
-    return BlocBuilder<MoveProgressCubit, MoveProgress>(
-      builder: (context, progress) {
-        final length = progress.length;
-        final pos = progress.position;
-        final fraction = length.inMilliseconds > 0
-            ? (pos.inMilliseconds / length.inMilliseconds).clamp(0.0, 1.0)
-            : 0.0;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
-          child: Column(children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Flexible(
-                  child: Text(state.currentTrack?.title ?? '',
-                      style: TextStyle(
-                          fontFamily: PFonts.ui,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
-                          color: cs.onSurface),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ),
-                Text('${_clock(pos)} / ${_clock(length)}',
-                    style: PTextStyles.of(context)
-                        .playerTime
-                        .copyWith(color: colors.onMuted)),
-              ],
+    final count = state.tracks.length;
+    final labelStyle = KashiTextStyles.ui.copyWith(fontSize: 12);
+    return Column(children: [
+      if (count > 0)
+        SegmentProgress(
+            count: count, current: state.playingIndex, onSelect: onSelectMove),
+      Row(children: [
+        Tooltip(
+          message: 'Close player',
+          child: InkWell(
+            onTap: () => Navigator.maybePop(context),
+            child: SizedBox(
+              height: 44,
+              child: Row(children: [
+                const Icon(Icons.close, size: 16, color: _Scene.muted),
+                const SizedBox(width: 4),
+                Text(
+                    count == 0
+                        ? 'Close'
+                        : 'Move ${state.playingIndex + 1} of $count',
+                    style: labelStyle.copyWith(color: _Scene.muted)),
+              ]),
             ),
-            const SizedBox(height: 7),
-            LayoutBuilder(
-              builder: (_, constraints) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (d) =>
-                    _seek(length, d.localPosition.dx, constraints.maxWidth),
-                onHorizontalDragUpdate: (d) =>
-                    _seek(length, d.localPosition.dx, constraints.maxWidth),
-                child: SizedBox(
-                  height: 28,
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: fraction,
-                        minHeight: 6,
-                        backgroundColor: colors.surface3,
-                        valueColor: AlwaysStoppedAnimation(colors.repDefault),
-                      ),
-                    ),
-                  ),
-                ),
+          ),
+        ),
+        const Spacer(),
+        if (morshedName != null)
+          const Icon(Icons.music_note, size: 14, color: _Scene.accent),
+        if (morshedName != null)
+          Flexible(
+            child: Text(' Morshed $morshedName',
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle.copyWith(color: _Scene.accent)),
+          ),
+        PopupMenuButton<VoidCallback>(
+          tooltip: 'More',
+          icon: const Icon(Icons.more_vert, color: _Scene.muted, size: 20),
+          shape: const RoundedRectangleBorder(),
+          onSelected: (action) => action(),
+          itemBuilder: (_) => [
+            PopupMenuItem(value: onEdit, child: const Text('Edit session')),
+          ],
+        ),
+      ]),
+    ]);
+  }
+}
+
+/// The move's name, its Farsi name, and "ⓘ How to".
+class _MoveTitle extends StatelessWidget {
+  const _MoveTitle({required this.name, this.nameFa, this.onHowTo});
+
+  final String name;
+  final String? nameFa;
+  final VoidCallback? onHowTo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Flexible(
+        child: Text(name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: KashiTextStyles.heading
+                .copyWith(fontSize: 24, color: _Scene.text)),
+      ),
+      if (nameFa != null && nameFa!.isNotEmpty) ...[
+        const SizedBox(width: 10),
+        Text(nameFa!,
+            textDirection: TextDirection.rtl,
+            style: KashiTextStyles.farsi
+                .copyWith(fontSize: 17, color: KashiPalette.yellow400)),
+      ],
+      const Spacer(),
+      if (onHowTo != null)
+        Tooltip(
+          message: 'How to',
+          child: InkWell(
+            onTap: onHowTo,
+            child: Padding(
+              // 44px hit target around the 32px outlined chip.
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                    border:
+                        Border.all(color: KashiPalette.lajvard500, width: 1.5)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.info_outline, size: 14, color: _Scene.chip),
+                  const SizedBox(width: 6),
+                  Text('How to',
+                      style: KashiTextStyles.ui.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: _Scene.chip)),
+                ]),
               ),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+class _Cues extends StatelessWidget {
+  const _Cues({required this.cues});
+
+  final List<String> cues;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      for (final cue in cues)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 5),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: SizedBox.square(
+                  dimension: 6,
+                  child: ColoredBox(color: KashiPalette.yellow400)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(cue,
+                  style: KashiTextStyles.body
+                      .copyWith(fontSize: 13, height: 1.4, color: _Scene.cue)),
             ),
           ]),
-        );
-      },
-    );
+        ),
+    ]);
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Track list
-// ─────────────────────────────────────────────────────────────────────────────
-class _TrackList extends StatefulWidget {
-  const _TrackList(
-      {super.key,
-      required this.state,
-      required this.accent,
-      required this.cubit});
-  final SessionPlayerState state;
-  final SessionAccent accent;
-  final SessionPlayerCubit cubit;
+/// The star and the line under it. Follows the move's progress, but
+/// rebuilds only on a new rep or a new second, not at audio speed.
+class _Counter extends StatelessWidget {
+  const _Counter({
+    required this.counted,
+    required this.target,
+    required this.starTaps,
+    required this.loopsForever,
+    required this.onTap,
+  });
 
-  @override
-  State<_TrackList> createState() => _TrackListState();
-}
-
-class _TrackListState extends State<_TrackList> {
-  final _scrollCtrl = ScrollController();
-  final _itemKeys = <int, GlobalKey>{};
-
-  void scrollToActive(int index) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _itemKeys[index];
-      if (key?.currentContext != null) {
-        Scrollable.ensureVisible(key!.currentContext!,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
+  final bool counted;
+  final int target;
+  final int? starTaps;
+  final bool loopsForever;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-    final tracks = widget.state.tracks;
-    final activeIndex = widget.state.playingIndex;
-    final isPlaying = widget.state.isPlaying;
-
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return ListView.builder(
-      controller: _scrollCtrl,
-      padding: EdgeInsets.fromLTRB(
-          12, 8, 12, 12 + _kTransportBarHeight + bottomInset),
-      itemCount: tracks.length,
-      itemBuilder: (context, i) {
-        _itemKeys[i] ??= GlobalKey();
-        final track = tracks[i];
-        final active = i == activeIndex;
-        final repFg = colors.repDefault;
-        final repBg = colors.repDefaultBg;
-        final exercise = widget.cubit.exerciseAt(i);
-        final lengthSeconds = trackDurationSeconds(
-          audioSeconds: exercise?.durationSeconds,
-          defaultReps: track.defaultRepetitions ?? 1,
-          reps: track.effectiveRepetitions,
-        );
-
-        return GestureDetector(
-          key: _itemKeys[i],
-          onTap: () => active
-              ? widget.cubit.togglePlay()
-              : widget.cubit.setIndexAndPlay(i),
-          child: Container(
-            height: 76,
-            margin: const EdgeInsets.only(bottom: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: active ? colors.surface2 : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: active ? widget.accent.fg : colors.surface3,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                alignment: Alignment.center,
-                child: Text('${i + 1}',
-                    style: TextStyle(
-                        fontFamily: PFonts.ui,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: active ? cs.onPrimary : colors.onMuted,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(track.title,
-                      style: TextStyle(
-                          fontFamily: PFonts.ui,
-                          fontWeight:
-                              active ? FontWeight.w700 : FontWeight.w600,
-                          fontSize: 14.5,
-                          color: active ? cs.onSurface : colors.onMuted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  Text(
-                      lengthSeconds != null
-                          ? '${_formatLength(lengthSeconds)} · ${track.effectiveRepetitions} reps'
-                          : '${track.effectiveRepetitions} reps',
-                      style: PTextStyles.of(context)
-                          .trackRowGloss
-                          .copyWith(color: colors.onFaint),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              )),
-              // ⓘ — opens the move's info page.
-              if (exercise != null)
-                GestureDetector(
-                  onTap: () {
-                    // Explicit pause, not togglePlay() — opening the info
-                    // page must always stop playback, never resume it.
-                    widget.cubit.pause();
-                    // opaque: false (not a plain MaterialPageRoute) — an
-                    // opaque route lets the Navigator skip ticking whatever
-                    // is fully covered underneath, which is this page with
-                    // its own looping video controller. That combination is
-                    // what froze the app on back-navigation; the same fix
-                    // already proven for Learning Mode's prompt applies here.
-                    Navigator.push(
-                      context,
-                      PageRouteBuilder(
-                        opaque: false,
-                        barrierColor: Colors.transparent,
-                        pageBuilder: (_, __, ___) => ExerciseInfoPage(
-                            exercise: exercise, media: track.media),
-                        transitionsBuilder: (_, animation, __, child) =>
-                            FadeTransition(opacity: animation, child: child),
-                      ),
-                    );
-                  },
-                  child: SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: Icon(Icons.info_outline_rounded,
-                        size: 18, color: colors.onFaint),
-                  ),
-                ),
-              const SizedBox(width: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                    color: repBg, borderRadius: BorderRadius.circular(99)),
-                child: Text('${track.effectiveRepetitions}×',
-                    style:
-                        PTextStyles.of(context).repChip.copyWith(color: repFg)),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 22,
-                child: active
-                    ? Icon(
-                        isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 18,
-                        color: widget.accent.fg)
-                    : const SizedBox.shrink(),
-              ),
-            ]),
-          ),
-        );
-      },
+    return BlocConsumer<MoveProgressCubit, MoveProgress>(
+      // A haptic tick on every new rep the morshed counts.
+      listenWhen: (prev, cur) => prev.rep != cur.rep,
+      listener: (_, __) => HapticFeedback.selectionClick(),
+      buildWhen: (prev, cur) =>
+          prev.rep != cur.rep ||
+          prev.isKnown != cur.isKnown ||
+          prev.length != cur.length ||
+          prev.position.inSeconds != cur.position.inSeconds,
+      builder: (context, progress) => Column(children: [
+        RepStar(
+          counted: counted,
+          target: target,
+          progress: progress,
+          starTaps: starTaps,
+          loopsForever: loopsForever,
+          onTap: onTap,
+        ),
+        const SizedBox(height: 4),
+        Text(
+            counted
+                ? 'Tap the star on every rep'
+                : 'Follow the morshed’s count',
+            textAlign: TextAlign.center,
+            style: KashiTextStyles.body
+                .copyWith(fontSize: 12.5, color: _Scene.muted)),
+      ]),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Bottom transport
-// ─────────────────────────────────────────────────────────────────────────────
-// Content height of _Transport excluding the bottom system inset (10 top
-// padding + 68 center-button height + 14 bottom padding) — _TrackList adds
-// this much bottom padding so the last row can scroll fully clear of the
-// (opaque) buttons, since the transport bar now floats over the list as a
-// transparent overlay rather than sitting below it.
-const _kTransportBarHeight = 92.0;
-
+/// ‹ · play/pause · › — circles, left-to-right even in Farsi.
 class _Transport extends StatelessWidget {
   const _Transport({required this.state, required this.cubit});
   final SessionPlayerState state;
@@ -1186,208 +951,167 @@ class _Transport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-    final atEnd = state.playingIndex >= state.tracks.length - 1;
-    // Edge-to-edge (mandatory since targetSdk 35+) draws content behind the
-    // system nav/gesture bar unless explicitly inset for — without this the
-    // transport buttons render partly behind it.
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-
-    // Transparent so track-list cards scrolling underneath stay visible —
-    // only the buttons themselves (each with its own solid background below)
-    // should read as opaque.
-    return Padding(
-      padding: EdgeInsets.fromLTRB(0, 10, 0, 14 + bottomInset),
+    final ready = state is PlayerReady;
+    return Directionality(
+      textDirection: TextDirection.ltr,
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        _TransportBtn(
-            size: 52,
-            icon: Icons.keyboard_arrow_up_rounded,
-            enabled: state.tracks.isNotEmpty,
-            colors: colors,
-            onTap: cubit.prev),
+        _CircleButton(
+          tooltip: 'Previous move',
+          icon: Icons.chevron_left,
+          onTap: ready ? cubit.prev : null,
+        ),
         const SizedBox(width: 28),
-        GestureDetector(
-          onTap: cubit.togglePlay,
-          child: Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color: cs.primary,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: colors.shadowPop,
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              state is PlayerFinished
-                  ? Icons.replay_rounded
-                  : (state.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded),
-              size: 30,
-              color: cs.onPrimary,
+        Tooltip(
+          message: state.isPlaying ? 'Pause' : 'Play',
+          child: Material(
+            color: KashiPalette.azure500,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: cubit.togglePlay,
+              child: SizedBox.square(
+                dimension: 72,
+                child: Icon(
+                    state.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 30,
+                    color: Colors.white),
+              ),
             ),
           ),
         ),
         const SizedBox(width: 28),
-        _TransportBtn(
-            size: 52,
-            icon: Icons.keyboard_arrow_down_rounded,
-            enabled: !atEnd,
-            colors: colors,
-            onTap: cubit.next),
+        _CircleButton(
+          tooltip: 'Next move',
+          icon: Icons.chevron_right,
+          // On a counted move this opens the Rep log; on the last move it
+          // finishes the session (see SessionPlayerCubit.next).
+          onTap: ready ? cubit.next : null,
+        ),
       ]),
     );
   }
 }
 
-class _TransportBtn extends StatelessWidget {
-  const _TransportBtn({
-    required this.size,
-    required this.icon,
-    required this.enabled,
-    required this.colors,
-    required this.onTap,
-  });
-  final double size;
+class _CircleButton extends StatelessWidget {
+  const _CircleButton(
+      {required this.tooltip, required this.icon, required this.onTap});
+
+  final String tooltip;
   final IconData icon;
-  final bool enabled;
-  final PahlevaniColors colors;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
+    return Tooltip(
+      message: tooltip,
       child: Opacity(
-        opacity: enabled ? 1.0 : 0.5,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: colors.surface2,
-            shape: BoxShape.circle,
-            border: Border.all(color: colors.borderSoft),
+        opacity: onTap == null ? .5 : 1,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: KashiPalette.lajvard500, width: 2),
+            ),
+            child: Icon(icon, size: 24, color: _Scene.muted),
           ),
-          alignment: Alignment.center,
-          child: Icon(icon,
-              size: 24, color: enabled ? cs.onSurface : colors.onFaint),
         ),
       ),
     );
   }
 }
 
-class _RoundBtn extends StatelessWidget {
-  const _RoundBtn(
-      {required this.icon, required this.color, required this.onTap});
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+/// The yellow audio wave chip on the video while the morshed plays.
+class _AudioWave extends StatefulWidget {
+  const _AudioWave();
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-            width: 44, height: 44, child: Icon(icon, size: 24, color: color)),
-      );
+  State<_AudioWave> createState() => _AudioWaveState();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Animated equalizer bars
-// ─────────────────────────────────────────────────────────────────────────────
-class _Equalizer extends StatefulWidget {
-  const _Equalizer({required this.color});
-  final Color color;
+class _AudioWaveState extends State<_AudioWave>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200))
+    ..repeat();
 
-  @override
-  State<_Equalizer> createState() => _EqualizerState();
-}
-
-class _EqualizerState extends State<_Equalizer> with TickerProviderStateMixin {
-  late final List<AnimationController> _ctrls;
-  late final List<Animation<double>> _anims;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrls = List.generate(
-        3,
-        (i) => AnimationController(
-            vsync: this, duration: Duration(milliseconds: 700 + i * 180))
-          ..repeat(reverse: true));
-    _anims = _ctrls
-        .map((c) => Tween(begin: 4.0, end: 14.0)
-            .animate(CurvedAnimation(parent: c, curve: Curves.easeInOut)))
-        .toList();
-  }
+  static const _bars = 12;
 
   @override
   void dispose() {
-    for (final c in _ctrls) {
-      c.dispose();
-    }
+    _controller.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 14,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: List.generate(
-              3,
-              (i) => Padding(
-                    padding: EdgeInsets.only(left: i > 0 ? 2.5 : 0),
-                    child: AnimatedBuilder(
-                      animation: _anims[i],
-                      builder: (_, __) => Container(
-                        width: 3,
-                        height: _anims[i].value,
-                        decoration: BoxDecoration(
-                            color: widget.color,
-                            borderRadius: BorderRadius.circular(2)),
-                      ),
-                    ),
-                  )),
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xBF0B1638),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: SizedBox(
+          height: 18,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (_, __) => Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < _bars; i++) ...[
+                  if (i > 0) const SizedBox(width: 2),
+                  SizedBox(
+                    width: 2,
+                    height: 4 +
+                        14 *
+                            (0.5 +
+                                0.5 *
+                                    math.sin(2 * math.pi * _controller.value +
+                                        i * 0.9)),
+                    child: const ColoredBox(color: KashiPalette.yellow400),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
-      );
-}
-
-/// Formats a track's play length for the row: seconds under a minute as "45s",
-/// otherwise "M:SS".
-String _formatLength(int seconds) {
-  if (seconds < 60) return '${seconds}s';
-  final m = seconds ~/ 60;
-  final s = seconds % 60;
-  return '$m:${s.toString().padLeft(2, '0')}';
+      ),
+    );
+  }
 }
 
 /// Shown instead of the player when some of the session's audio isn't on the
 /// device (e.g. a different Morshed was chosen since it was downloaded).
 /// Sessions are never streamed, so the only way forward is to download.
 class _NeedsDownload extends StatelessWidget {
-  const _NeedsDownload({required this.onDownload});
+  const _NeedsDownload({required this.topBar, required this.onDownload});
+
+  final Widget topBar;
   final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
+    return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.download_for_offline_outlined,
-              size: 56, color: cs.primary),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Column(children: [
+          topBar,
+          const Spacer(),
+          const Icon(Icons.download_for_offline_outlined,
+              size: 56, color: _Scene.accent),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             "This session's media isn't on this device yet. Download it to "
             'train — sessions play from the device, without streaming.',
             textAlign: TextAlign.center,
+            style: KashiTextStyles.body.copyWith(color: _Scene.text),
           ),
-          const SizedBox(height: 20),
-          FilledButton(onPressed: onDownload, child: const Text('Download')),
+          const Spacer(),
+          KashiActionButton(label: 'Download', onPressed: onDownload),
         ]),
       ),
     );

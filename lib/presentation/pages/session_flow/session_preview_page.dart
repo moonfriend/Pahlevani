@@ -346,7 +346,8 @@ class _MorshedDropdown extends StatelessWidget {
                 style: KashiTextStyles.ui
                     .copyWith(fontSize: 12, color: KashiPalette.sky300)),
             const SizedBox(width: 10),
-            const Text('♪ ', style: TextStyle(color: Colors.white)),
+            const Icon(Icons.music_note, size: 16, color: Colors.white),
+            const SizedBox(width: 4),
             Expanded(
               child: Text(current?.name ?? 'Choose',
                   overflow: TextOverflow.ellipsis,

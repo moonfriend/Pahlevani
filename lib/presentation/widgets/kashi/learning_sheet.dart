@@ -94,16 +94,17 @@ class _LearningSheet extends StatelessWidget {
               maxWidth: _maxWidth,
               maxHeight: math.max(320, screen.height * _heightFraction),
             ),
-            child: Material(
-              color: colors.raised,
-              elevation: 0,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(boxShadow: [
-                  BoxShadow(
-                      color: Color(0x80000000),
-                      blurRadius: 60,
-                      offset: Offset(0, 24)),
-                ]),
+            // The shadow sits outside the sheet, so it never shades the
+            // sheet's own surface.
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: colors.raised, boxShadow: const [
+                BoxShadow(
+                    color: Color(0x80000000),
+                    blurRadius: 60,
+                    offset: Offset(0, 24)),
+              ]),
+              child: Material(
+                type: MaterialType.transparency,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,

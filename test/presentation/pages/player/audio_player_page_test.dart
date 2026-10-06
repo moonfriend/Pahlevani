@@ -24,6 +24,8 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -178,12 +180,13 @@ void main() {
 
   // ── Full UI after tracks load ──────────────────────────────────────────────
 
-  testWidgets('shows session header after tracks load', (tester) async {
+  testWidgets('shows the move count and the current move after load',
+      (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    expect(find.text('PLAY ALONG'), findsOneWidget);
-    expect(find.text(testSession1.title), findsAtLeastNWidgets(1));
+    expect(find.text('Move 1 of 2'), findsOneWidget);
+    expect(find.text('Shena'), findsOneWidget);
   });
 
   testWidgets('enables the wakelock while the player page is active',
@@ -205,38 +208,25 @@ void main() {
     expect(await fakeWakelock.enabled, isFalse);
   });
 
-  testWidgets('shows back and edit buttons after tracks load', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
-  });
-
-  testWidgets('shows both track titles in the list', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    // testSession1 has items: Shena (pos 1) and Kabbadeh (pos 2)
-    expect(find.text('Shena'), findsWidgets);
-    expect(find.text('Kabbadeh'), findsWidgets);
-  });
-
-  testWidgets('shows track position numbers in the list', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.text('1'), findsWidgets);
-    expect(find.text('2'), findsWidgets);
-  });
-
-  testWidgets('shows prev (up) and next (down) transport buttons',
+  testWidgets('shows close, the menu and the transport after load',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+    expect(find.byTooltip('Close player'), findsOneWidget);
+    expect(find.byTooltip('More'), findsOneWidget);
+    expect(find.byTooltip('Previous move'), findsOneWidget);
+    expect(find.byTooltip('Next move'), findsOneWidget);
+  });
+
+  testWidgets('one progress segment per move', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    expect(find.byType(SegmentProgress), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-2')), findsNothing);
   });
 
   testWidgets(
@@ -256,121 +246,142 @@ void main() {
 
     // _pumpAndLoad sizes the surface to 800x900 logical pixels.
     const screenHeight = 900.0;
-    final nextBtnRect =
-        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    final nextBtnRect = tester.getRect(find.byTooltip('Next move'));
 
     expect(nextBtnRect.bottom, lessThanOrEqualTo(screenHeight - bottomInset));
   });
 
-  testWidgets(
-      'track list extends behind the transport bar instead of stopping above it',
+  testWidgets('shows pause when playback is active', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // After loadTracks, isPlaying=true.
+    expect(find.byTooltip('Pause'), findsOneWidget);
+  });
+
+  testWidgets('the star shows a dash before the move length is known',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // The transport bar is a transparent overlay floating over the track
-    // list (not a separate row below it) so scrolled cards stay visible
-    // through the gaps between its buttons — the list's own box must
-    // therefore extend past the transport row's top edge, not stop above it.
-    final listRect = tester.getRect(find.byType(ListView));
-    final nextBtnRect =
-        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
-
-    expect(listRect.bottom, greaterThan(nextBtnRect.top));
-  });
-
-  testWidgets('shows pause icon when playback is active', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    // After loadTracks, isPlaying=true → pause icons visible
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
-  });
-
-  testWidgets('rep count pill is hidden before audio duration is known',
-      (tester) async {
-    // No audio duration has been emitted by the fake, so logicalDuration stays
-    // at Duration.zero and _RepCounter renders a SizedBox.
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.textContaining('Rep 1'), findsNothing);
+    expect(find.text('–'), findsOneWidget);
   });
 
   // ── Interactions ──────────────────────────────────────────────────────────
 
-  testWidgets('tapping play/pause button toggles playback state',
-      (tester) async {
+  testWidgets('tapping play/pause toggles playback state', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // Use .last to tap the transport button, not the track-row icon (which
-    // calls setIndexAndPlay instead of togglePlay).
-    await tester.tap(find.byIcon(Icons.pause_rounded).last);
+    await tester.tap(find.byTooltip('Pause'));
     await tester.pump();
 
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    expect(find.byTooltip('Play'), findsOneWidget);
   });
 
-  testWidgets('tapping next transport button advances track', (tester) async {
+  testWidgets('tapping next advances to the next move', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.tap(find.byTooltip('Next move'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Track list still visible with no crash
-    expect(find.text('Kabbadeh'), findsWidgets);
+    expect(find.text('Move 2 of 2'), findsOneWidget);
+    expect(find.text('Kabbadeh'), findsOneWidget);
   });
 
-  testWidgets('play/pause icon shows playing after next() from a paused state',
+  testWidgets('play/pause shows playing after next() from a paused state',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
     // Pause first.
-    await tester.tap(find.byIcon(Icons.pause_rounded).last);
+    await tester.tap(find.byTooltip('Pause'));
     await tester.pump();
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    expect(find.byTooltip('Play'), findsOneWidget);
 
     // next() always resumes playback regardless of prior pause state —
-    // the icon must reflect that, not the stale paused look.
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    // the button must reflect that, not the stale paused look.
+    await tester.tap(find.byTooltip('Next move'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+    expect(find.byTooltip('Pause'), findsOneWidget);
   });
 
-  testWidgets('tapping a track list item plays that track', (tester) async {
+  testWidgets('tapping a progress segment jumps to that move', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    await tester.tap(find.text('Kabbadeh').first);
+    await tester.tap(find.byKey(const ValueKey('segment-1')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('Kabbadeh'), findsWidgets);
+    expect(find.text('Move 2 of 2'), findsOneWidget);
   });
 
-  testWidgets('tapping the info icon pauses playback', (tester) async {
+  testWidgets('How to pauses playback and opens the learning sheet',
+      (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
     // Playback auto-starts on load.
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+    expect(find.byTooltip('Pause'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.info_outline_rounded).first);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('How to'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Got it'), findsOneWidget);
 
-    // Now on the info page; go back to the player and confirm it's paused,
-    // not still playing (or — worse — resumed by a toggle).
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    await tester.tap(find.text('Got it'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byIcon(Icons.pause_rounded), findsNothing);
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    // Closed again, and paused — never resumed by a toggle.
+    expect(find.text('Got it'), findsNothing);
+    expect(find.byTooltip('Play'), findsOneWidget);
+  });
+
+  testWidgets('a counted move shows its cues and counts star taps',
+      (tester) async {
+    const shena = Exercise(
+      id: 101,
+      name: 'Shena',
+      audioFileUrl: 'https://example.com/shena.mp3',
+      repetitionsDefault: 3,
+      cues: ['Back long', 'Breathe out'],
+    );
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(40),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {101: shena},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildPage(snap));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('Back long'), findsOneWidget);
+    expect(find.text('Breathe out'), findsOneWidget);
+    expect(find.text('of 40'), findsOneWidget);
+    expect(find.text('Tap the star on every rep'), findsOneWidget);
+
+    await tester.tap(find.byType(RepStar));
+    await tester.tap(find.byType(RepStar));
+    await tester.pump();
+    expect(find.text('2'), findsOneWidget);
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
@@ -499,7 +510,7 @@ void main() {
 
   // ── Rep counter ────────────────────────────────────────────────────────────
 
-  testWidgets('rep counter pill visible when audio duration is emitted',
+  testWidgets('the star shows the time remaining once the length is known',
       (tester) async {
     late FakeAudioPlayerService capturedAudio;
     await getIt.reset();
@@ -526,8 +537,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    // Rep counter uses RichText; findRichText: true is required.
-    expect(find.textContaining('Rep', findRichText: true), findsWidgets);
+    // 3 reps of a 3-rep, 30s clip: the move lasts 30s.
+    expect(find.text('0:30'), findsOneWidget);
+    expect(find.text('remaining'), findsOneWidget);
 
     // Close the cubit synchronously (via widget disposal) BEFORE
     // _verifyInvariants runs — addTearDown callbacks fire after invariant
@@ -536,8 +548,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('rep counter pill increments from Rep 1 to Rep 2 over time',
-      (tester) async {
+  testWidgets('the time remaining follows the audio', (tester) async {
     late FakeAudioPlayerService capturedAudio;
     await getIt.reset();
     getIt.registerFactory<AudioPlayerService>(() {
@@ -564,11 +575,11 @@ void main() {
     // reading mid-way through rep 2.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
-    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+    expect(find.text('0:03'), findsOneWidget);
 
     capturedAudio.emitPosition(const Duration(milliseconds: 1500));
     await tester.pump();
-    expect(find.textContaining('Rep 2', findRichText: true), findsWidgets);
+    expect(find.text('0:01'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -600,18 +611,22 @@ void main() {
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
 
-    // The stage's "Pause" pill: a rebuilt stage would create a new widget.
-    final stagePillBefore = tester.widget(find.text('Pause'));
-    for (final ms in [200, 600, 1100, 1500, 2100]) {
+    // The stage's 16:9 box: a rebuilt stage would create a new widget.
+    final stage = find
+        .descendant(
+            of: find.byType(AudioPlayerPage),
+            matching: find.byType(AspectRatio))
+        .first;
+    final stageBefore = tester.widget(stage);
+    for (final ms in [200, 600, 1100]) {
       capturedAudio.emitPosition(Duration(milliseconds: ms));
       await tester.pump();
     }
 
-    expect(
-        identical(tester.widget(find.text('Pause')), stagePillBefore), isTrue,
+    expect(identical(tester.widget(stage), stageBefore), isTrue,
         reason: 'position readings must not rebuild the stage');
-    expect(find.text('0:02 / 0:03'), findsOneWidget,
-        reason: 'the progress time still follows the audio');
+    expect(find.text('0:01'), findsOneWidget,
+        reason: 'the star still follows the audio');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -921,7 +936,8 @@ void main() {
     // 3 reps on a 3s clip → 1s/rep.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
-    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('reps'), findsOneWidget);
 
     // A single-item session in any other mode would have auto-completed
     // (isFinished: true) once the 3s nominal target passed. Play well past
@@ -940,9 +956,9 @@ void main() {
     expect(cubit.state, isNot(isA<PlayerFinished>()),
         reason: 'zoorkhaneh mode must not auto-complete the session');
     expect(cubit.state.playingIndex, 0);
-    expect(find.textContaining('Rep 6', findRichText: true), findsWidgets);
-    expect(find.textContaining('of 3', findRichText: true), findsNothing,
-        reason: 'zoorkhaneh mode drops the "of Total" suffix');
+    expect(find.text('6'), findsOneWidget);
+    expect(find.text('of 3'), findsNothing,
+        reason: 'zoorkhaneh mode counts on, with no target shown');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -951,7 +967,7 @@ void main() {
   // ── Rep-color cleanup ──────────────────────────────────────────────────────
 
   testWidgets(
-      'a non-default rep count no longer shows the "custom" label or color',
+      'a non-default rep count sets the move length (no "custom" label)',
       (tester) async {
     final customRepsSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
@@ -993,7 +1009,8 @@ void main() {
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
 
-    expect(find.text('7×'), findsOneWidget);
+    // 7 reps of a 3-rep, 3s clip: 7s.
+    expect(find.text('0:07'), findsOneWidget);
     expect(find.textContaining('custom', findRichText: true), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1054,7 +1071,7 @@ void main() {
     testWidgets('a phone keeps the full-width stage', (tester) async {
       await openAt(tester, const Size(390, 844));
       expect(tester.takeException(), isNull);
-      expect(stageSize(tester).width, 390 - 32,
+      expect(stageSize(tester).width, 390 - 40,
           reason: 'phones are unaffected: stage spans the width minus margins');
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -1098,7 +1115,11 @@ void main() {
       expect(playerCubit(tester).state.isPlaying, isTrue);
       final cubit = playerCubit(tester);
 
-      await tester.tap(find.byIcon(Icons.edit_outlined));
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
       await tester.pumpAndSettle();
 
       expect(find.byType(EditTrainingSessionPage), findsOneWidget);
@@ -1111,7 +1132,11 @@ void main() {
       await openPlayer(tester);
       final cubit = playerCubit(tester);
 
-      await tester.tap(find.byIcon(Icons.edit_outlined));
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pump();
@@ -1130,7 +1155,11 @@ void main() {
       final oldCubit = playerCubit(tester);
       final originalReps = oldCubit.state.tracks.first.effectiveRepetitions;
 
-      await tester.tap(find.byIcon(Icons.edit_outlined));
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('+').first); // first move: one more rep
       await tester.pump();
