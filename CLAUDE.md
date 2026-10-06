@@ -210,7 +210,8 @@ lib/
 │
 ├── presentation/
 │   ├── bloc/
-│   │   ├── player/audio_player_cubit.dart          # TrainingSessionPlayerCubit
+│   │   ├── player/session_player_cubit.dart        # SessionPlayerCubit (which move, play/pause; sealed SessionPlayerState)
+│   │   ├── player/move_progress_cubit.dart         # MoveProgressCubit (position/rep — fast, kept out of the session state)
 │   │   ├── settings/settings_cubit.dart            # Theme / settings persistence
 │   │   └── training_session/
 │   │       ├── training_session_cubit.dart          # Session list + edit routing
@@ -240,7 +241,7 @@ test/
 ├── fakes/                                   # FakeTrainingSessionRepository, FakeDownloadRepository,
 │                                            # FakeAudioPlayerService, buildTestSnapshot()
 └── presentation/
-    ├── bloc/player/                          # audio_player_cubit_test
+    ├── bloc/player/                          # session_player_cubit, move_progress_cubit, move_transitions tests
     ├── bloc/settings/                        # settings_cubit_test
     ├── bloc/training_session/               # training_session_cubit_test
     ├── pages/player/                         # audio_player_page_test
@@ -278,11 +279,15 @@ Supabase tables
 
 ### Data flow (playing a session)
 ```
-DomainSnapshot
-  → buildSessionDetail(sessionId, snap)  →  SessionDetail
-    → TrainingSessionPlayerCubit.loadTracks()
-      → List<TrainingItemWithAudio>  →  AudioPlayerState  →  TrainingSessionPlayerPage
+BuildPlaybackQueue (domain use case: session moves + Morshed recordings + local files)
+  → SessionPlayerCubit  — which move, play/pause (the only authority), sealed state
+      commands ↓                    ↑ MoveTargetReached → next move
+  → MoveTimeline (domain/player) — runs the audio engine, PlaybackClock, move length/rep
+      → progress (fast)  → MoveProgressCubit → rep counter, progress bar
+      → events (rare: started/seeked/looped) + progress → VideoFollower → demo video
 ```
+Rule: fast data (position) never goes into SessionPlayerState; the video follows the
+timeline, never page rebuilds.
 
 ---
 

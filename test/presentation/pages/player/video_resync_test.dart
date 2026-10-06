@@ -3,7 +3,7 @@
 // the already-playing video to reposition. The fix hooks the two root
 // primitives that ever authoritatively reset audio position
 // (_loadSourceAtIndex, seekTo) rather than patching each button handler — see
-// AudioPlayerState.videoResyncGeneration.
+// SessionPlayerState.videoResyncGeneration.
 //
 // video_player's own fake platform test double is internal to its package
 // (not exported for downstream use), so this is a minimal from-scratch
@@ -26,7 +26,7 @@ import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
@@ -197,9 +197,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
 
     await playerCubit.seekTo(const Duration(milliseconds: 3000));
     await tester.pump();
@@ -251,9 +251,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     List<String> seeks() =>
         fakePlatform.calls.where((c) => c.startsWith('seekTo:')).toList();
     final seeksBefore = seeks().length;
@@ -374,9 +374,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
 
     // Single track, index 0 -> prev() takes the restart-to-zero branch.
     await playerCubit.prev();

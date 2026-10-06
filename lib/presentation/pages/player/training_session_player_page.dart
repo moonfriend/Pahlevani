@@ -28,7 +28,7 @@ import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
 import 'package:pahlevani/domain/player/move_timeline.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
@@ -57,7 +57,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// The session being played — starts as the widget's, and is replaced by
   /// the saved copy when the user edits the session from the player.
   late TrainingSession _session;
-  late TrainingSessionPlayerCubit _cubit;
+  late SessionPlayerCubit _cubit;
 
   /// The current move's position/rep, for the rep counter and progress bar
   /// only — kept out of the player state so the page doesn't rebuild at
@@ -82,9 +82,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     unawaited(WakelockPlus.enable());
   }
 
-  TrainingSessionPlayerCubit _createPlayer(TrainingSession session,
+  SessionPlayerCubit _createPlayer(TrainingSession session,
           {required bool autoStart}) =>
-      TrainingSessionPlayerCubit(
+      SessionPlayerCubit(
         trainingSession: session,
         mode: widget.mode,
         autoStart: autoStart,
@@ -220,19 +220,19 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       ],
       child: Scaffold(
         backgroundColor: colors.bg,
-        body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
+        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
           // A restart (see _restartPlayer) rebuilds the whole player subtree.
           key: ValueKey(_playerGeneration),
           listenWhen: (prev, cur) =>
               prev.playingIndex != cur.playingIndex ||
               (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (!prev.isFinished && cur.isFinished),
+              (prev is! PlayerFinished && cur is PlayerFinished),
           listener: (context, state) {
-            if (state.isFinished) {
+            if (state is PlayerFinished) {
               unawaited(_handleSessionFinished(context));
             }
             if (state.tracks.isNotEmpty &&
-                !state.isFinished &&
+                state is! PlayerFinished &&
                 _cubit.shouldPromptLearningMode) {
               final exercise = _cubit.exerciseAt(state.playingIndex);
               if (exercise != null) {
@@ -257,10 +257,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             }
           },
           builder: (context, state) {
-            if (state.isLoading && state.tracks.isEmpty) {
+            if (state is PlayerLoading) {
               return const Center(child: CircularProgressIndicator());
             }
-            if (state.needsDownload) {
+            if (state is PlayerNeedsDownload) {
               return Column(children: [
                 _AppBar(session: _session, onEdit: () => _openEdit(context)),
                 Expanded(
@@ -268,9 +268,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                         _NeedsDownload(onDownload: () => _download(context))),
               ]);
             }
-            if (state.errorMessage != null && state.tracks.isEmpty) {
+            if (state is PlayerFailed && state.tracks.isEmpty) {
               return Center(
-                  child: Text(state.errorMessage!,
+                  child: Text(state.message,
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.error)));
             }
@@ -297,7 +297,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 bottom: 0,
                 child: _Transport(state: state, cubit: _cubit),
               ),
-              if (state.isFinished)
+              if (state is PlayerFinished)
                 _CompletionSheet(
                   session: _session,
                   trackCount: state.tracks.length,
@@ -378,9 +378,9 @@ double maxStageHeight(double windowHeight) => math.max(
 class _Stage extends StatelessWidget {
   const _Stage(
       {required this.state, required this.accent, required this.cubit});
-  final AudioPlayerState state;
+  final SessionPlayerState state;
   final SessionAccent accent;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerCubit cubit;
 
   @override
   Widget build(BuildContext context) {
@@ -850,8 +850,8 @@ class _RepCounterState extends State<_RepCounter>
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProgressBlock extends StatelessWidget {
   const _ProgressBlock({required this.state, required this.cubit});
-  final AudioPlayerState state;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerState state;
+  final SessionPlayerCubit cubit;
 
   static String _clock(Duration d) {
     final m = d.inMinutes.remainder(60);
@@ -944,9 +944,9 @@ class _TrackList extends StatefulWidget {
       required this.state,
       required this.accent,
       required this.cubit});
-  final AudioPlayerState state;
+  final SessionPlayerState state;
   final SessionAccent accent;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerCubit cubit;
 
   @override
   State<_TrackList> createState() => _TrackListState();
@@ -1129,8 +1129,8 @@ const _kTransportBarHeight = 92.0;
 
 class _Transport extends StatelessWidget {
   const _Transport({required this.state, required this.cubit});
-  final AudioPlayerState state;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerState state;
+  final SessionPlayerCubit cubit;
 
   @override
   Widget build(BuildContext context) {
@@ -1167,7 +1167,7 @@ class _Transport extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Icon(
-              state.isFinished
+              state is PlayerFinished
                   ? Icons.replay_rounded
                   : (state.isPlaying
                       ? Icons.pause_rounded
