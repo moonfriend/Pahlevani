@@ -19,9 +19,9 @@ Future<bool> showLearningModePrompt(
   required Exercise exercise,
   required ExerciseMedia? media,
 }) async {
-  // Same scrim the rest of the player uses (_Stage's paused overlay,
-  // _CompletionSheet) rather than a flat black — theme-aware and noticeably
-  // lighter than Colors.black87.
+  // Same scrim the rest of the player uses (_Stage's paused overlay) rather
+  // than a flat black — theme-aware and noticeably lighter than
+  // Colors.black87.
   final barrierColor = Theme.of(context).extension<PahlevaniColors>()!.scrim;
   final result = await showGeneralDialog<bool>(
     context: context,

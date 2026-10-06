@@ -21,6 +21,8 @@ import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -83,6 +85,58 @@ Future<void> _pumpAndLoad(WidgetTester tester) async {
     await tester.pump();
   });
 }
+
+/// A home screen with a button that pushes the player — for flows that leave
+/// the player (Complete replaces it; Return home pops back here).
+Widget _buildLauncher(DomainSnapshot snapshot) {
+  return BlocProvider(
+    create: (_) => TrainingSessionCubit(
+      sessionRepository: FakeTrainingSessionRepository(snapshot),
+      downloadRepository: FakeDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    ),
+    child: MaterialApp(
+      theme: PahlevaniTheme.dark(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AudioPlayerPage(
+                    trainingSession: testSession1, mode: PlayerMode.athlete),
+              ),
+            ),
+            child: const Text('Open player'),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _openPlayerFromLauncher(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(800, 900));
+  addTearDown(() async {
+    await tester.binding.setSurfaceSize(null);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+  await tester.tap(find.text('Open player'));
+  await _pumpRoutes(tester);
+}
+
+/// Lets route transitions and the player's async work finish. Not
+/// pumpAndSettle: the player and the Complete screen animate continuously.
+Future<void> _pumpRoutes(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+}
+
+SessionPlayerCubit _playerCubit(WidgetTester tester) => tester
+    .element(find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+    .read<SessionPlayerCubit>();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -351,34 +405,9 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  // ── Completion sheet ───────────────────────────────────────────────────────
+  // ── Rep log + Complete ─────────────────────────────────────────────────────
 
-  testWidgets('shows completion sheet after all tracks finish', (tester) async {
-    final singleItemSnap = DomainSnapshot(
-      sessionsById: {testSession1.id: testSession1},
-      itemsBySessionId: {
-        testSession1.id: [testItem1]
-      },
-      exercisesById: {testExercise1.id: testExercise1},
-    );
-    await getIt.reset();
-    _registerFakes(singleItemSnap);
-
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
-
-    final cubit = tester
-        .element(
-            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
-        .read<SessionPlayerCubit>();
-    cubit.next(); // only 1 track → isFinished: true
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(find.text('Session complete'), findsOneWidget);
-  });
-
-  testWidgets('transport button shows replay icon when session is finished',
+  testWidgets('finishing the session opens the Complete screen',
       (tester) async {
     final singleItemSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
@@ -390,27 +419,62 @@ void main() {
     await getIt.reset();
     _registerFakes(singleItemSnap);
 
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
+    await tester.pumpWidget(_buildLauncher(singleItemSnap));
+    await _openPlayerFromLauncher(tester);
 
-    expect(find.byIcon(Icons.replay_rounded), findsNothing);
+    _playerCubit(tester).next(); // only 1 move, not counted → finished
+    await _pumpRoutes(tester);
 
-    final cubit = tester
-        .element(
-            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
-        .read<SessionPlayerCubit>();
-    cubit.next(); // only 1 track → isFinished: true
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    // The completion sheet's "Again" button also uses replay_rounded, so at
-    // least one (not exactly one) is expected once finished.
-    expect(find.byIcon(Icons.replay_rounded), findsWidgets);
-    expect(find.byIcon(Icons.pause_rounded), findsNothing,
-        reason: 'a finished session must never still show a pause icon');
+    expect(find.byType(CompletePage), findsOneWidget);
+    expect(find.text('Tile 1 is set in your shamseh.'), findsOneWidget);
+    expect(find.byType(AudioPlayerPage), findsNothing,
+        reason: 'the Complete screen replaces the player');
   });
 
-  testWidgets('completion sheet shows Done and Again buttons', (tester) async {
+  testWidgets('the run is recorded with the reps saved in the Rep log',
+      (tester) async {
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(3),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {testExercise1.id: testExercise1},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildLauncher(snap));
+    await _openPlayerFromLauncher(tester);
+
+    _playerCubit(tester).next(); // counted move → Rep log
+    await _pumpRoutes(tester);
+    expect(find.byType(RepLogPage), findsOneWidget);
+
+    await tester.tap(find.text('+'));
+    await tester.pump();
+    await tester.tap(find.text('Save and continue'));
+    await _pumpRoutes(tester);
+
+    expect(find.byType(CompletePage), findsOneWidget);
+    final history =
+        getIt<TrainingHistoryRepository>() as FakeTrainingHistoryRepository;
+    final record = history.recorded.single;
+    expect(record.sessionId, testSession1.id);
+    expect(record.movementCounts.single.count, 2,
+        reason: 'prefilled 1 from the audio (no taps), plus one');
+    expect(find.text('2'), findsWidgets,
+        reason: 'the Complete screen lists the reps logged in this run');
+  });
+
+  testWidgets('Return home leaves the Complete screen', (tester) async {
     final singleItemSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
       itemsBySessionId: {
@@ -421,48 +485,16 @@ void main() {
     await getIt.reset();
     _registerFakes(singleItemSnap);
 
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
+    await tester.pumpWidget(_buildLauncher(singleItemSnap));
+    await _openPlayerFromLauncher(tester);
+    _playerCubit(tester).next();
+    await _pumpRoutes(tester);
 
-    final cubit = tester
-        .element(
-            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
-        .read<SessionPlayerCubit>();
-    cubit.next();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('Return home'));
+    await _pumpRoutes(tester);
 
-    expect(find.text('Done'), findsOneWidget);
-    expect(find.text('Again'), findsOneWidget);
-  });
-
-  testWidgets('tapping Again replays from beginning', (tester) async {
-    final singleItemSnap = DomainSnapshot(
-      sessionsById: {testSession1.id: testSession1},
-      itemsBySessionId: {
-        testSession1.id: [testItem1]
-      },
-      exercisesById: {testExercise1.id: testExercise1},
-    );
-    await getIt.reset();
-    _registerFakes(singleItemSnap);
-
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
-
-    final cubit = tester
-        .element(
-            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
-        .read<SessionPlayerCubit>();
-    cubit.next();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    await tester.tap(find.text('Again'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(find.text('Session complete'), findsNothing);
+    expect(find.byType(CompletePage), findsNothing);
+    expect(find.text('Open player'), findsOneWidget);
   });
 
   // ── Rep counter ────────────────────────────────────────────────────────────

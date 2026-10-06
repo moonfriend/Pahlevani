@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -18,7 +19,6 @@ import 'package:pahlevani/domain/entities/training_session/session_details.dart'
 import 'package:pahlevani/domain/entities/training_session/session_duration.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
-import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
@@ -33,13 +33,14 @@ import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
+import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 import 'package:pahlevani/presentation/widgets/player/learning_mode_prompt.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
-import 'package:pahlevani/presentation/widgets/tracking/movement_count_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -213,27 +214,52 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   }
 
   /// Records this play-through in local history — always, so the calendar
-  /// view reflects every completed session. If the session contains any
-  /// trainer-flagged movement types, first asks the user to confirm/adjust
-  /// the counts (prefilled with the programmed totals); a dismissed dialog
-  /// still records the prefilled defaults rather than dropping them.
+  /// and the shamseh count every completed session — with the reps saved in
+  /// the Rep log, then replaces the player with the Complete screen (tile N
+  /// lands in the shamseh).
   Future<void> _handleSessionFinished(BuildContext context) async {
-    final defaults = detectTrackedMovements(_cubit.itemDetails);
-    List<TrackedMovementCount> counts = defaults;
-    if (defaults.isNotEmpty && mounted) {
-      final edited =
-          await showMovementCountDialog(context, defaultCounts: defaults);
-      counts = edited ?? defaults;
+    final logged = _cubit.loggedReps;
+    final tracks = _cubit.state.tracks;
+    final historyRepo = getIt<TrainingHistoryRepository>();
+    final int tileNumber;
+    try {
+      await historyRepo.recordCompletion(
+        SessionCompletionRecord(
+          id: '${_session.id}-${DateTime.now().millisecondsSinceEpoch}',
+          sessionId: _session.id,
+          sessionTitle: _session.title,
+          completedAt: DateTime.now(),
+          movementCounts: countLoggedMovements(_cubit.itemDetails, logged),
+        ),
+      );
+      tileNumber = (await historyRepo.getAllCompletions()).length;
+    } catch (e, st) {
+      AppLogger.e('Could not record the finished session',
+          error: e, stackTrace: st);
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Couldn't save this session to your history.")));
+      return;
     }
-    await getIt<TrainingHistoryRepository>().recordCompletion(
-      SessionCompletionRecord(
-        id: '${_session.id}-${DateTime.now().millisecondsSinceEpoch}',
-        sessionId: _session.id,
-        sessionTitle: _session.title,
-        completedAt: DateTime.now(),
-        movementCounts: counts,
+    // Home and Progress read the shared history cubit.
+    if (getIt.isRegistered<TrainingHistoryCubit>()) {
+      unawaited(getIt<TrainingHistoryCubit>().load());
+    }
+    if (!mounted || !context.mounted) return;
+    final loggedIndexes = logged.keys.toList()..sort();
+    unawaited(Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (completeContext) => CompletePage(
+          tileNumber: tileNumber,
+          loggedReps: [
+            for (final i in loggedIndexes)
+              if (i < tracks.length) (tracks[i].displayName, logged[i]!)
+          ],
+          onReturnHome: () => Navigator.pop(completeContext),
+        ),
       ),
-    );
+    ));
   }
 
   @override
@@ -330,13 +356,6 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 bottom: 0,
                 child: _Transport(state: state, cubit: _cubit),
               ),
-              if (state is PlayerFinished)
-                _CompletionSheet(
-                  session: _session,
-                  trackCount: state.tracks.length,
-                  onReplay: _cubit.replay,
-                  onDone: () => Navigator.pop(context),
-                ),
             ]);
           },
         ),
@@ -1255,175 +1274,6 @@ class _TransportBtn extends StatelessWidget {
           child: Icon(icon,
               size: 24, color: enabled ? cs.onSurface : colors.onFaint),
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Completion sheet
-// ─────────────────────────────────────────────────────────────────────────────
-class _CompletionSheet extends StatelessWidget {
-  const _CompletionSheet({
-    required this.session,
-    required this.trackCount,
-    required this.onReplay,
-    required this.onDone,
-  });
-
-  final TrainingSession session;
-  final int trackCount;
-  final VoidCallback onReplay;
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cs = Theme.of(context).colorScheme;
-
-    return Positioned.fill(
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(children: [
-          // Scrim
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: onDone,
-              child: AnimatedOpacity(
-                opacity: 1,
-                duration: const Duration(milliseconds: 250),
-                child: ColoredBox(color: colors.scrim),
-              ),
-            ),
-          ),
-          // Sheet slides up from bottom
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                // Drag handle
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 18),
-                  decoration: BoxDecoration(
-                      color: colors.border,
-                      borderRadius: BorderRadius.circular(9)),
-                ),
-                // Gold banner with pattern
-                Container(
-                  height: 84,
-                  decoration: BoxDecoration(
-                    color: colors.primaryBg,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Stack(alignment: Alignment.center, children: [
-                    Positioned.fill(
-                        child: PersianPattern(
-                            color: cs.primary, opacity: 0.5, tileSize: 84)),
-                    Text('خسته نباشی',
-                        style: PTextStyles.of(context)
-                            .sheetFarsi
-                            .copyWith(color: cs.primary),
-                        textDirection: TextDirection.rtl),
-                  ]),
-                ),
-                const SizedBox(height: 18),
-                Text('Session complete',
-                    style: PTextStyles.of(context)
-                        .dialogTitle
-                        .copyWith(color: cs.onSurface),
-                    textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                        text: 'You moved through all $trackCount exercises of ',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontSize: 14,
-                            color: colors.onMuted,
-                            height: 1.5),
-                      ),
-                      TextSpan(
-                        text: session.title,
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface),
-                      ),
-                      TextSpan(
-                        text: '. Khaste nabâshi — may you never tire.',
-                        style: TextStyle(
-                            fontFamily: PFonts.ui,
-                            fontSize: 14,
-                            color: colors.onMuted,
-                            height: 1.5),
-                      ),
-                    ]),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Row(children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: onDone,
-                      child: Container(
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: colors.surface2,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: colors.borderSoft),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text('Done',
-                            style: PTextStyles.of(context)
-                                .buttonLabel
-                                .copyWith(color: cs.onSurface)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: onReplay,
-                      child: Container(
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: cs.primary,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.center,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.replay_rounded,
-                              size: 20, color: cs.onPrimary),
-                          const SizedBox(width: 8),
-                          Text('Again',
-                              style: PTextStyles.of(context)
-                                  .buttonLabel
-                                  .copyWith(color: cs.onPrimary)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ]),
-              ]),
-            ),
-          ),
-        ]),
       ),
     );
   }

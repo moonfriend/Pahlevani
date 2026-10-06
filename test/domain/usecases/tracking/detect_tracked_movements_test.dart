@@ -4,6 +4,7 @@ import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
+import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
 import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
 
 const _shenoA = Exercise(
@@ -74,6 +75,40 @@ void main() {
       final result = detectTrackedMovements(items);
       expect(result.single.key, MovementKey.of(_legacyNoMovement));
       expect(result.single.displayName, 'Legacy Exercise');
+    });
+  });
+
+  group('countLoggedMovements', () {
+    test('turns logged reps into counts, by move index', () {
+      final items = [
+        _detail(position: 0, reps: 3, exercise: _meel, isTracked: true),
+        _detail(position: 1, reps: 5, exercise: _legacyNoMovement),
+      ];
+      expect(countLoggedMovements(items, {0: 7}), [
+        TrackedMovementCount(
+            key: MovementKey.of(_meel), displayName: 'میل', count: 7),
+      ]);
+    });
+
+    test('pools moves of the same movement, in first-seen order', () {
+      final items = [
+        _detail(position: 0, reps: 3, exercise: _shenoA, isTracked: true),
+        _detail(position: 1, reps: 3, exercise: _meel, isTracked: true),
+        _detail(position: 2, reps: 3, exercise: _shenoB, isTracked: true),
+      ];
+      final counts = countLoggedMovements(items, {0: 10, 1: 4, 2: 12});
+      expect(counts.map((c) => (c.key, c.count)), [
+        (MovementKey.of(_shenoA), 22),
+        (MovementKey.of(_meel), 4),
+      ]);
+    });
+
+    test('skipped moves and out-of-range indexes are left out', () {
+      final items = [
+        _detail(position: 0, reps: 3, exercise: _meel, isTracked: true),
+      ];
+      expect(countLoggedMovements(items, {}), isEmpty);
+      expect(countLoggedMovements(items, {5: 3}), isEmpty);
     });
   });
 }

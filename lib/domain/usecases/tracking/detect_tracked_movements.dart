@@ -23,3 +23,26 @@ List<TrackedMovementCount> detectTrackedMovements(List<ItemDetail> items) {
   }
   return counts.values.toList();
 }
+
+/// The reps the user confirmed in the Rep log during a run ([loggedReps], by
+/// move index into [items]), grouped by the underlying movement like
+/// [detectTrackedMovements]. Skipped moves are absent, so they add nothing.
+/// Kept in the order movements were first played.
+List<TrackedMovementCount> countLoggedMovements(
+    List<ItemDetail> items, Map<int, int> loggedReps) {
+  final counts = <MovementKey, TrackedMovementCount>{};
+  for (final MapEntry(key: index, value: reps) in loggedReps.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key))) {
+    if (index < 0 || index >= items.length) continue;
+    final exercise = items[index].exercise;
+    final key = MovementKey.of(exercise);
+    final existing = counts[key];
+    counts[key] = existing == null
+        ? TrackedMovementCount(
+            key: key,
+            displayName: exercise.titleFa ?? exercise.name,
+            count: reps)
+        : existing.copyWith(count: existing.count + reps);
+  }
+  return counts.values.toList();
+}
