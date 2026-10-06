@@ -38,6 +38,13 @@ from supabase import create_client, Client
 
 from check_session_audio_coverage import run_coverage_check
 from media_assets import MediaAsset, record_media_asset
+from movement_learning_content import (
+    MAX_CUES,
+    LearningContent,
+    lines_from_text,
+    text_from_lines,
+    variations_from_rows,
+)
 from morshed_admin import set_default_morshed
 from onboarding_cards import (
     BUILTIN_IMAGE_LABELS,
@@ -906,12 +913,14 @@ def _render_movement_photo_section(movement_id: int, mov_row: pd.Series) -> None
 def _render_movement_info_section(movement_id: int) -> None:
     st.markdown("**Info page content**")
     st.caption(
-        "Shown on the in-app move info page (opened via the ⓘ on a track). "
-        "The media shown there is whatever you set in the Video/Photo "
-        "sections above — nothing extra to upload here, just the description."
+        "Shown on the in-app move info page, the learning sheet and the "
+        "player. The media shown there is whatever you set in the Video/Photo "
+        "sections above — nothing extra to upload here. Every field is "
+        "optional: the app hides a section that has no content."
     )
     info_map = load_movement_info()
     cur_info = info_map.get(int(movement_id), {})
+    content = LearningContent.from_row(cur_info)
     with st.form(f"movement_info_{movement_id}"):
         desc = st.text_area(
             "Description",
@@ -919,19 +928,69 @@ def _render_movement_info_section(movement_id: int) -> None:
             height=160,
             help="How to perform the move — cues, technique, breathing, etc.",
         )
+        cues_text = st.text_area(
+            f"Pay attention to (up to {MAX_CUES} lines)",
+            value=text_from_lines(content.cues),
+            height=100,
+            help="One short point per line. Shown in the player under the "
+            "video and on the learning sheet. Leave empty to hide.",
+        )
+        steps_text = st.text_area(
+            "Steps (one per line)",
+            value=text_from_lines(content.steps),
+            height=120,
+            help="Numbered how-to steps on the learning card. Leave empty to hide.",
+        )
+        st.caption(
+            "Variations — Lighter → Harder, lightest first. Clear a row's "
+            "name to remove it. Leave the table empty to hide the selector."
+        )
+        variation_rows = st.data_editor(
+            pd.DataFrame(
+                [v.to_json() for v in content.variations],
+                columns=["name", "level", "reps"],
+            ),
+            num_rows="dynamic",
+            use_container_width=True,
+            key=f"movement_variations_{movement_id}",
+            column_config={
+                "name": st.column_config.TextColumn("Name", required=True),
+                "level": st.column_config.TextColumn(
+                    "Level", help='Short label, e.g. "EASIER · 4 KG"'
+                ),
+                "reps": st.column_config.NumberColumn(
+                    "Reps", min_value=0, step=1, format="%d"
+                ),
+            },
+        )
         if st.form_submit_button("💾 Save info"):
+            try:
+                new_content = LearningContent(
+                    cues=lines_from_text(cues_text),
+                    steps=lines_from_text(steps_text),
+                    variations=variations_from_rows(
+                        variation_rows.to_dict("records")
+                    ),
+                )
+                payload = new_content.to_payload()
+            except ValueError as e:
+                st.error(str(e))
+                return
             try:
                 get_client().table("movement_info").upsert(
                     {
                         "movement_id": int(movement_id),
                         "description": desc.strip() or None,
+                        **payload,
                     },
                     on_conflict="movement_id",
                 ).execute()
                 load_movement_info.clear()
                 st.success("Saved move info.")
             except Exception as e:
-                st.error(f"Could not save (is migration 0005 applied?): {e}")
+                st.error(
+                    f"Could not save (are migrations 0005 and 0042 applied?): {e}"
+                )
 
 
 def tab_movements():

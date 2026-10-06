@@ -3,6 +3,7 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/move_variation.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -170,6 +171,37 @@ void main() {
     expect(item.source.exercise.audioFileUrl, 'https://two.mp3');
     expect(item.track.defaultRepetitions, 4);
     expect(item.track.videoStartOffsetMs, 700, reason: '1000 − 300');
+  });
+
+  test("resolving the Morshed's recording keeps the move's learning content",
+      () async {
+    catalog
+      ..morsheds = const [Morshed(id: 1, name: 'One', isDefault: true)]
+      ..tracks = const [
+        MovementAudioTrack(
+            id: 1,
+            movementTypeId: 7,
+            morshedId: 1,
+            audioUrl: 'https://one.mp3'),
+      ];
+
+    final queue = await build(_snapshot(const [
+      Exercise(
+        id: 1,
+        name: 'A',
+        movementTypeId: 7,
+        cues: ['Back straight'],
+        steps: ['Lower slowly'],
+        variations: [MoveVariation(name: 'Knee shena', reps: 12)],
+      ),
+    ]));
+
+    final exercise = queue.items.single.source.exercise;
+    expect(exercise.audioFileUrl, 'https://one.mp3');
+    expect(exercise.cues, ['Back straight']);
+    expect(exercise.steps, ['Lower slowly']);
+    expect(exercise.variations,
+        const [MoveVariation(name: 'Knee shena', reps: 12)]);
   });
 
   test('no curated recording → the exercise keeps its own audio', () async {

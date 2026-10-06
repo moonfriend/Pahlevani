@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
+import 'package:pahlevani/data/dtos/movement_info_row.dart';
 import 'package:pahlevani/data/models/hive_type_ids.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/move_variation.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
@@ -179,6 +183,19 @@ class HiveExercise extends HiveObject {
   @HiveField(18)
   final int? movementTypeId;
 
+  // Kashi learning content (migration 0042). Nullable so boxes written
+  // before these fields existed read as "no content".
+  @HiveField(19)
+  final List<String>? cues;
+
+  @HiveField(20)
+  final List<String>? steps;
+
+  /// Variations as JSON text rather than a nested Hive type: a small,
+  /// read-only list doesn't justify spending a type ID and an adapter.
+  @HiveField(21)
+  final String? variationsJson;
+
   HiveExercise({
     required this.id,
     required this.name,
@@ -194,6 +211,9 @@ class HiveExercise extends HiveObject {
     this.videoUrl,
     this.videoAnchorMs,
     this.movementTypeId,
+    this.cues,
+    this.steps,
+    this.variationsJson,
   });
 
   // audioFileUrl/durationSeconds/audioAnchorMs are deliberately not cached
@@ -214,6 +234,14 @@ class HiveExercise extends HiveObject {
         videoUrl: e.videoUrl,
         videoAnchorMs: e.media.videoAnchorMs,
         movementTypeId: e.movementTypeId,
+        cues: e.cues,
+        steps: e.steps,
+        variationsJson: e.variations.isEmpty
+            ? null
+            : jsonEncode([
+                for (final v in e.variations)
+                  {'name': v.name, 'level': v.level, 'reps': v.reps}
+              ]),
       );
 
   Exercise toDomain() => Exercise(
@@ -226,6 +254,9 @@ class HiveExercise extends HiveObject {
         description: description,
         videoUrl: videoUrl,
         movementTypeId: movementTypeId,
+        cues: cues ?? const [],
+        steps: steps ?? const [],
+        variations: _decodeVariations(variationsJson),
         media: ExerciseMedia(
           type: mediaType ?? 'none',
           src: mediaSrc,
@@ -233,6 +264,16 @@ class HiveExercise extends HiveObject {
           videoAnchorMs: videoAnchorMs,
         ),
       );
+}
+
+/// A corrupt cache entry costs only the variations, never the whole move.
+List<MoveVariation> _decodeVariations(String? json) {
+  if (json == null) return const [];
+  try {
+    return parseMoveVariations(jsonDecode(json));
+  } on FormatException {
+    return const [];
+  }
 }
 
 @HiveType(typeId: HiveTypeIds.trainingSessionItem)

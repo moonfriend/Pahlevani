@@ -25,6 +25,9 @@ Exercise mapExercise(
       repetitionsDefault: r.repetitions,
       description: movementInfo?.description,
       videoUrl: movementInfo?.videoUrl,
+      cues: movementInfo?.cues ?? const [],
+      steps: movementInfo?.steps ?? const [],
+      variations: movementInfo?.variations ?? const [],
       movementTypeId: movement?.typeId,
       media: ExerciseMedia(
         type: movement?.mediaType ?? r.mediaType ?? 'none',

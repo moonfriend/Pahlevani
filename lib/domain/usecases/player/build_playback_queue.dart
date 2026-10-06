@@ -172,4 +172,7 @@ Exercise _withResolvedAudio(Exercise base, MovementAudioTrack track) =>
       videoUrl: base.videoUrl,
       audioAnchorMs: track.audioAnchorMs,
       movementTypeId: base.movementTypeId,
+      cues: base.cues,
+      steps: base.steps,
+      variations: base.variations,
     );

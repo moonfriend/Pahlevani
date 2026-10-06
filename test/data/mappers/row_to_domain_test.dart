@@ -5,6 +5,7 @@ import 'package:pahlevani/data/dtos/movement_row.dart';
 import 'package:pahlevani/data/dtos/training_item_row.dart';
 import 'package:pahlevani/data/dtos/training_session_row.dart';
 import 'package:pahlevani/data/mappers/row_to_domain.dart';
+import 'package:pahlevani/domain/entities/training_session/move_variation.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 
 void main() {
@@ -174,6 +175,29 @@ void main() {
       final ex = mapExercise(baseRow());
       expect(ex.description, isNull);
       expect(ex.videoUrl, isNull);
+    });
+
+    test('cues, steps and variations come from movement_info', () {
+      final ex = mapExercise(
+        baseRow(),
+        movementInfo: MovementInfoRow(
+          movementId: 10,
+          cues: const ['Back straight'],
+          steps: const ['Lower slowly'],
+          variations: const [MoveVariation(name: 'Knee shena', reps: 12)],
+        ),
+      );
+      expect(ex.cues, ['Back straight']);
+      expect(ex.steps, ['Lower slowly']);
+      expect(
+          ex.variations, const [MoveVariation(name: 'Knee shena', reps: 12)]);
+    });
+
+    test('learning content is empty when no movement_info', () {
+      final ex = mapExercise(baseRow());
+      expect(ex.cues, isEmpty);
+      expect(ex.steps, isEmpty);
+      expect(ex.variations, isEmpty);
     });
   });
 
