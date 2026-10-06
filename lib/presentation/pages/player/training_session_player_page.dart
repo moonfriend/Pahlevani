@@ -301,7 +301,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             for (final i in loggedIndexes)
               if (i < tracks.length) (tracks[i].displayName, logged[i]!)
           ],
-          onReturnHome: () => Navigator.pop(completeContext),
+          // Back to the app's first screen (the tab shell), past the
+          // session preview and any list it was opened from.
+          onReturnHome: () =>
+              Navigator.popUntil(completeContext, (route) => route.isFirst),
         ),
       ),
     ));

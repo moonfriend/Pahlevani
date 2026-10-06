@@ -34,6 +34,9 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/invite_code_signup_page.dart';
 import 'package:pahlevani/presentation/pages/home/home_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
+import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
 import 'package:pahlevani/presentation/pages/library/library_page.dart';
 import 'package:pahlevani/presentation/pages/onboarding/onboarding_page.dart';
 import 'package:pahlevani/presentation/pages/profile/profile_page.dart';
@@ -75,7 +78,13 @@ void main() {
     SharedPreferences.setMockInitialValues(_returningUser);
 
     fakeSessionRepo = FakeTrainingSessionRepository(buildTestSnapshot());
-    fakeDownloadRepo = FakeDownloadRepository();
+    // Every seeded session counts as downloaded: these journeys cover
+    // playback, and an undownloaded session would stop at the download
+    // dialog first (download before play; covered by widget tests).
+    fakeDownloadRepo = FakeDownloadRepository(initialStatuses: {
+      for (final id in buildTestSnapshot().sessionsById.keys)
+        id: DownloadStatus.downloaded,
+    });
 
     getIt.registerLazySingleton<TrainingSessionRepository>(
         () => fakeSessionRepo);
@@ -181,7 +190,7 @@ void main() {
 
   // ── Home ──────────────────────────────────────────────────────────────────
 
-  testWidgets('Home suggests the first session; Start → mode → player',
+  testWidgets('Home suggests the first session; Start → preview → player',
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
@@ -191,9 +200,7 @@ void main() {
 
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
-    expect(find.text('Choose a mode'), findsOneWidget);
-    await tester.tap(find.text('Athlete mode'));
-    await pumpPlayer(tester);
+    await startFromPreviewInAthleteMode(tester);
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
     expect(find.text('Shena'), findsWidgets);
@@ -245,6 +252,11 @@ void main() {
 
   testWidgets('overflow menu for server session shows edit-a-copy and download',
       (tester) async {
+    // Not downloaded yet, so the menu offers the download. (The fakes are
+    // shared by the whole suite — restore them for the tests after this.)
+    final downloaded = fakeDownloadRepo.initialStatuses;
+    fakeDownloadRepo.initialStatuses = {};
+    addTearDown(() => fakeDownloadRepo.initialStatuses = downloaded);
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
     await openAllSessions(tester);
@@ -254,6 +266,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Edit a copy'), findsOneWidget);
+    expect(find.text('Play in Zoorkhaneh mode'), findsOneWidget);
     // No local filesystem on web — the Download entry is hidden there
     // (see training_sessions_page.dart's kIsWeb guard).
     expect(find.text('Download'), kIsWeb ? findsNothing : findsOneWidget);
@@ -313,19 +326,15 @@ void main() {
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
     await openFirstSessionInAthleteMode(tester);
 
-    // Shena is the current track (appears in stage + transport + list).
-    expect(find.text('Shena'), findsWidgets);
-    // Kabbadeh only in the track list.
-    expect(find.text('Kabbadeh'), findsOneWidget);
-
-    // Tap the next (down-arrow) button.
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
-    await tester.pump();
-    await tester.pump();
-
-    // Now Kabbadeh is the current track.
-    expect(find.text('Kabbadeh'), findsWidgets);
+    expect(find.text('Move 1 of 2'), findsOneWidget);
     expect(find.text('Shena'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Next move'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Move 2 of 2'), findsOneWidget);
+    expect(find.text('Kabbadeh'), findsOneWidget);
   });
 
   // ── 7: Prev button no-op on first track ─────────────────────────────────────
@@ -337,17 +346,17 @@ void main() {
 
     await openFirstSessionInAthleteMode(tester);
 
-    // Tap prev (up-arrow) — disabled on first track, so nothing should change.
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
+    // Prev on the first move restarts it — the move doesn't change.
+    await tester.tap(find.byTooltip('Previous move'));
     await tester.pump();
 
-    // Still on Shena (appears multiple times as current track).
-    expect(find.text('Shena'), findsWidgets);
+    expect(find.text('Move 1 of 2'), findsOneWidget);
+    expect(find.text('Shena'), findsOneWidget);
   });
 
-  // ── 8: Completion sheet and Again button ────────────────────────────────────
+  // ── 8: Complete screen and Return home ─────────────────────────────────────
 
-  testWidgets('completion sheet appears at end and Again restarts from track 1',
+  testWidgets('finishing a session shows Complete; Return home goes Home',
       (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
@@ -355,31 +364,28 @@ void main() {
 
     await openFirstSessionInAthleteMode(tester);
 
-    // Advance to last track (track 2 of 2).
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    // Advance to the last move (2 of 2).
+    await tester.tap(find.byTooltip('Next move'));
     await tester.pump();
     await tester.pump();
 
-    // The transport "next" button is disabled on the last track, so we can't
-    // tap it to trigger isFinished. Instead, emit a short audio duration so
-    // the cubit's logical timer starts and fires next() when elapsed >= target.
-    // Kabbadeh has repetitionsDefault=1 so targetMs = duration × 1/1 = 200ms.
+    // Kabbadeh has repetitionsDefault=1: a 200ms clip ends the move, and
+    // the session with it.
     lastFakeAudioService!.emitDuration(const Duration(milliseconds: 200));
-    await tester.pump(); // flush the stream event → timer starts
-    await tester.pump(const Duration(milliseconds: 400)); // timer fires next()
-    // isFinished=true ⇒ isPlaying=false ⇒ _Equalizer disposed — can settle now.
+    await tester.pump();
+    lastFakeAudioService!.emitPosition(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    expect(find.text('Again'), findsOneWidget);
+    expect(find.byType(CompletePage), findsOneWidget);
+    expect(find.text('Tile 1 is set in your shamseh.'), findsOneWidget);
 
-    // Tapping Again replays from the beginning. replay() re-starts isPlaying,
-    // which brings back _Equalizer — cannot pumpAndSettle.
-    await tester.tap(find.text('Again'));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.text('Return home'));
+    await tester.pumpAndSettle();
 
-    // Back to track 1: Shena appears in stage + transport label + track list.
-    expect(find.text('Shena'), findsWidgets);
+    expect(find.byType(CompletePage), findsNothing);
+    expect(find.byType(HomePage), findsOneWidget,
+        reason: 'past the preview and the session list, back to Home');
   });
 
   // ── 9: Play/pause button syncs to the tap intent ────────────────────────────
@@ -480,26 +486,33 @@ void main() {
 }
 
 // Pumps enough frames for loadTracks() to complete and the player UI to render.
-// Cannot use pumpAndSettle: _Equalizer has an infinite repeat animation.
+// Cannot use pumpAndSettle: the audio wave animates while playing.
 Future<void> pumpPlayer(WidgetTester tester) async {
   await tester.pump(); // schedule loadTracks
   await tester.pump(); // complete async work
   await tester.pump(const Duration(milliseconds: 400)); // navigation animation
 }
 
-// Taps the first session card and answers the mode dialog with Athlete mode
-// ("Play straight through") — the plain playback these player tests cover.
+// Taps the first session card, then starts it from the preview in Athlete
+// mode — the plain playback these player tests cover.
 Future<void> openFirstSessionInAthleteMode(WidgetTester tester) async {
   // The outer GestureDetector for the first card is the first one inside ListView.
   final cards = find.descendant(
       of: find.byType(ListView), matching: find.byType(GestureDetector));
   await tester.tap(cards.first);
   await tester.pumpAndSettle();
+  await startFromPreviewInAthleteMode(tester);
+}
 
-  expect(find.text('Choose a mode'), findsOneWidget,
-      reason: 'opening a session must ask for a playback mode first');
-  await tester.tap(find.text('Athlete mode'));
-  // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
+// On the session preview: switch to Athlete (Learning is the default) and
+// start.
+Future<void> startFromPreviewInAthleteMode(WidgetTester tester) async {
+  expect(find.byType(SessionPreviewPage), findsOneWidget,
+      reason: 'opening a session must show its preview first');
+  await tester.tap(find.text('Athlete'));
+  await tester.pump();
+  await tester.tap(find.text('Start session'));
+  // Cannot pumpAndSettle: the audio wave animates while playing.
   await pumpPlayer(tester);
 }
 
