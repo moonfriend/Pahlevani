@@ -106,13 +106,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    // The outer GestureDetector for the first card is the first one inside ListView.
-    final listView = find.byType(ListView);
-    final cards =
-        find.descendant(of: listView, matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     expect(find.byType(AudioPlayerPage), findsOneWidget);
     // First exercise of session 1 is 'Shena'.
@@ -185,10 +179,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Open 'Beginner Warm-up' (session 1: Shena → Kabbadeh).
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Shena is the current track (appears in stage + transport + list).
     expect(find.text('Shena'), findsWidgets);
@@ -211,10 +202,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Tap prev (up-arrow) — disabled on first track, so nothing should change.
     await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
@@ -231,10 +219,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     // Advance to last track (track 2 of 2).
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
@@ -275,10 +260,7 @@ void main() {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
 
-    final cards = find.descendant(
-        of: find.byType(ListView), matching: find.byType(GestureDetector));
-    await tester.tap(cards.first);
-    await pumpPlayer(tester);
+    await openFirstSessionInAthleteMode(tester);
 
     final transportIcon =
         find.byWidgetPredicate((w) => w is Icon && w.size == 30);
@@ -306,27 +288,26 @@ void main() {
   // ── Optional login — UI-only walkthrough (no network) ───────────────────────
 
   testWidgets(
-      'login icon opens the auth page; fields, toggle and back all work',
-      (tester) async {
+      'Sign in from the header menu opens the auth page; fields, invite '
+      'sign-up and back all work', (tester) async {
     await tester.pumpWidget(const PahlevaniApp(currentBuildNumber: 1));
     await tester.pumpAndSettle();
-
-    // Anonymous state — outline icon, session list still fully usable.
-    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
     expect(find.text('Beginner Warm-up'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.person_outline_rounded));
+    // Login lives in the header's "..." menu; anonymous users see "Sign in".
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await tester.pumpAndSettle();
-
-    expect(find.text('Sign in'), findsWidgets);
-    expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
 
     // Submit stays disabled until both fields have content.
     final submitFinder = find.widgetWithText(FilledButton, 'Sign in');
+    expect(submitFinder, findsOneWidget);
     expect(tester.widget<FilledButton>(submitFinder).onPressed, isNull,
         reason: 'must not be submittable with empty fields');
 
-    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'a@b.com');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Username'), 'pahlevan');
     await tester.enterText(
         find.widgetWithText(TextField, 'Password'), 'secret123');
     await tester.pump();
@@ -334,20 +315,41 @@ void main() {
     expect(tester.widget<FilledButton>(submitFinder).onPressed, isNotNull,
         reason: 'must become submittable once both fields are filled');
 
-    // Toggle to sign-up mode — label and toggle text swap.
-    await tester.tap(find.text("Don't have an account? Create one"));
+    // Account creation is invite-only, on its own page.
+    await tester.tap(find.text('Have an invite code? Create an account'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
 
-    // Back out WITHOUT submitting — no network call, nothing to clean up.
+    // Back out twice WITHOUT submitting — no network call, nothing to clean up.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
 
     expect(find.text('Beginner Warm-up'), findsOneWidget,
         reason: 'session list must be intact after returning');
-    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget,
+
+    // Still anonymous — the menu still offers "Sign in", not "Account".
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsOneWidget,
         reason: 'still anonymous — no submit happened');
+    expect(find.text('Account'), findsNothing);
   });
+}
+
+// Taps the first session card ('Beginner Warm-up'), picks Athlete mode in the
+// mode dialog (the straight-through behaviour these journeys were written
+// for), and pumps until the player is on screen.
+Future<void> openFirstSessionInAthleteMode(WidgetTester tester) async {
+  // The outer GestureDetector for the first card is the first one inside ListView.
+  final cards = find.descendant(
+      of: find.byType(ListView), matching: find.byType(GestureDetector));
+  await tester.tap(cards.first);
+  await tester.pumpAndSettle(); // mode dialog animates in
+  await tester.tap(find.text('Athlete mode'));
+  // Cannot pumpAndSettle: _Equalizer has an infinite repeat animation.
+  await pumpPlayer(tester);
 }
 
 // Pumps enough frames for loadTracks() to complete and the player UI to render.
