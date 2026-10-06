@@ -3,7 +3,7 @@
 // the already-playing video to reposition. The fix hooks the two root
 // primitives that ever authoritatively reset audio position
 // (_loadSourceAtIndex, seekTo) rather than patching each button handler — see
-// AudioPlayerState.videoResyncGeneration.
+// SessionPlayerState.videoResyncGeneration.
 //
 // video_player's own fake platform test double is internal to its package
 // (not exported for downstream use), so this is a minimal from-scratch
@@ -26,7 +26,7 @@ import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
@@ -197,9 +197,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
 
     await playerCubit.seekTo(const Duration(milliseconds: 3000));
     await tester.pump();
@@ -251,9 +251,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     List<String> seeks() =>
         fakePlatform.calls.where((c) => c.startsWith('seekTo:')).toList();
     final seeksBefore = seeks().length;
@@ -273,6 +273,61 @@ void main() {
 
     expect(seeks().skip(seeksBefore), ['seekTo:1000', 'seekTo:4000'],
         reason: 'intermediate drag positions are skipped; the latest wins');
+
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
+  testWidgets('an audio loop realigns a drifted video (D4)', (tester) async {
+    const exercise = Exercise(
+      id: 10,
+      name: 'Video Ex',
+      audioFileUrl: 'https://audio.mp3',
+      repetitionsDefault: 1,
+      media:
+          ExerciseMedia(type: 'video', src: 'https://cdn.example.com/clip.mp4'),
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [
+          const TrainingItem(
+              id: 10001,
+              sessionId: 1,
+              exerciseId: 10,
+              position: 0,
+              prescription: RepsPresc(3)) // the 8 s clip loops 3×
+        ]
+      },
+      exercisesById: {10: exercise},
+    );
+    late FakeAudioPlayerService audio;
+    _registerFakes(snap, onAudioServiceCreated: (a) => audio = a);
+
+    await tester.binding.setSurfaceSize(const Size(800, 900));
+    await tester.pumpWidget(_buildPage(snap));
+    await tester.pump();
+    await tester.pump();
+    fakePlatform.sendInitialized(0, duration: const Duration(seconds: 10));
+    await tester.pump();
+    audio.emitDuration(const Duration(seconds: 8));
+    await tester.pump();
+    List<String> seeks() =>
+        fakePlatform.calls.where((c) => c.startsWith('seekTo:')).toList();
+
+    audio.emitPosition(const Duration(milliseconds: 7900));
+    await tester.pump();
+    final before = seeks().length;
+    // The audio wraps to the start of its clip; the fake video reports
+    // position 0, i.e. 1.5 s away from where it should be.
+    audio.emitPosition(const Duration(milliseconds: 1500));
+    await tester.pump();
+    await tester.pump();
+
+    expect(seeks().skip(before), ['seekTo:1500']);
 
     addTearDown(() async {
       await tester.binding.setSurfaceSize(null);
@@ -319,9 +374,9 @@ void main() {
     await tester.pump();
 
     final playerCubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
 
     // Single track, index 0 -> prev() takes the restart-to-zero branch.
     await playerCubit.prev();

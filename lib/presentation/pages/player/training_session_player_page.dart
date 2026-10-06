@@ -12,7 +12,6 @@ import 'package:pahlevani/presentation/widgets/download/media_download_dialog.da
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
-import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
@@ -28,7 +27,9 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/tracking/detect_tracked_movements.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/domain/player/move_timeline.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/exercise_info_page.dart';
@@ -36,6 +37,7 @@ import 'package:pahlevani/presentation/pages/training_session/edit_training_sess
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/presentation/widgets/exercise_image_provider.dart';
 import 'package:pahlevani/presentation/widgets/player/learning_mode_prompt.dart';
+import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/widgets/tracking/movement_count_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +57,12 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// The session being played — starts as the widget's, and is replaced by
   /// the saved copy when the user edits the session from the player.
   late TrainingSession _session;
-  late TrainingSessionPlayerCubit _cubit;
+  late SessionPlayerCubit _cubit;
+
+  /// The current move's position/rep, for the rep counter and progress bar
+  /// only — kept out of the player state so the page doesn't rebuild at
+  /// audio speed.
+  late MoveProgressCubit _progress;
 
   /// Bumped on every restart so everything below the page (stage, video
   /// widget and its controller, track list) is rebuilt from scratch.
@@ -68,15 +75,16 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     super.initState();
     _session = widget.trainingSession;
     _cubit = _createPlayer(_session, autoStart: true);
+    _progress = MoveProgressCubit(_cubit.timeline);
     _cubit.loadTracks();
     // Kept on for the whole session (not just while isPlaying) so a brief
     // pause to check form doesn't let the screen lock mid-training.
     unawaited(WakelockPlus.enable());
   }
 
-  TrainingSessionPlayerCubit _createPlayer(TrainingSession session,
+  SessionPlayerCubit _createPlayer(TrainingSession session,
           {required bool autoStart}) =>
-      TrainingSessionPlayerCubit(
+      SessionPlayerCubit(
         trainingSession: session,
         mode: widget.mode,
         autoStart: autoStart,
@@ -142,6 +150,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// The old player is fully closed first, so it releases the audio engine
   /// (shared app-wide on Android) before the new one loads into it.
   Future<void> _restartPlayer(TrainingSession session) async {
+    await _progress.close();
     await _cubit.close();
     if (!mounted) return;
     setState(() {
@@ -149,6 +158,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       _playerGeneration++;
       _precachedUrls.clear();
       _cubit = _createPlayer(session, autoStart: false);
+      _progress = MoveProgressCubit(_cubit.timeline);
     });
     unawaited(_cubit.loadTracks());
   }
@@ -156,6 +166,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   void dispose() {
     unawaited(WakelockPlus.disable());
+    _progress.close();
     _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
   }
@@ -202,23 +213,26 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final accent = colors.accentFor(_session.id);
 
-    return BlocProvider.value(
-      value: _cubit,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: _cubit),
+        BlocProvider.value(value: _progress),
+      ],
       child: Scaffold(
         backgroundColor: colors.bg,
-        body: BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>(
+        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
           // A restart (see _restartPlayer) rebuilds the whole player subtree.
           key: ValueKey(_playerGeneration),
           listenWhen: (prev, cur) =>
               prev.playingIndex != cur.playingIndex ||
               (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (!prev.isFinished && cur.isFinished),
+              (prev is! PlayerFinished && cur is PlayerFinished),
           listener: (context, state) {
-            if (state.isFinished) {
+            if (state is PlayerFinished) {
               unawaited(_handleSessionFinished(context));
             }
             if (state.tracks.isNotEmpty &&
-                !state.isFinished &&
+                state is! PlayerFinished &&
                 _cubit.shouldPromptLearningMode) {
               final exercise = _cubit.exerciseAt(state.playingIndex);
               if (exercise != null) {
@@ -243,10 +257,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             }
           },
           builder: (context, state) {
-            if (state.isLoading && state.tracks.isEmpty) {
+            if (state is PlayerLoading) {
               return const Center(child: CircularProgressIndicator());
             }
-            if (state.needsDownload) {
+            if (state is PlayerNeedsDownload) {
               return Column(children: [
                 _AppBar(session: _session, onEdit: () => _openEdit(context)),
                 Expanded(
@@ -254,9 +268,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                         _NeedsDownload(onDownload: () => _download(context))),
               ]);
             }
-            if (state.errorMessage != null && state.tracks.isEmpty) {
+            if (state is PlayerFailed && state.tracks.isEmpty) {
               return Center(
-                  child: Text(state.errorMessage!,
+                  child: Text(state.message,
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.error)));
             }
@@ -264,7 +278,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               Column(children: [
                 _AppBar(session: _session, onEdit: () => _openEdit(context)),
                 _Stage(state: state, accent: accent, cubit: _cubit),
-                _RepCounter(state: state, mode: widget.mode),
+                _RepCounter(
+                    hasTrack: state.currentTrack != null, mode: widget.mode),
                 _ProgressBlock(state: state, cubit: _cubit),
                 // Fills the rest of the screen, extending behind the
                 // transport bar below (a transparent overlay) rather than
@@ -282,7 +297,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 bottom: 0,
                 child: _Transport(state: state, cubit: _cubit),
               ),
-              if (state.isFinished)
+              if (state is PlayerFinished)
                 _CompletionSheet(
                   session: _session,
                   trackCount: state.tracks.length,
@@ -363,9 +378,9 @@ double maxStageHeight(double windowHeight) => math.max(
 class _Stage extends StatelessWidget {
   const _Stage(
       {required this.state, required this.accent, required this.cubit});
-  final AudioPlayerState state;
+  final SessionPlayerState state;
   final SessionAccent accent;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerCubit cubit;
 
   @override
   Widget build(BuildContext context) {
@@ -445,13 +460,14 @@ class _Stage extends StatelessWidget {
               if (hasVideo)
                 Positioned.fill(
                   child: _ExerciseVideo(
-                    key: ValueKey(track.media.src),
+                    // One video widget (and follower) per move, even when
+                    // two moves in a row share the same clip.
+                    key: ValueKey('${track.id}|${track.media.src}'),
+                    timeline: cubit.timeline,
                     path: track.media.src!,
                     posterSrc: track.media.poster,
                     isPlaying: state.isPlaying,
                     startOffsetMs: track.videoStartOffsetMs,
-                    resyncGeneration: state.videoResyncGeneration,
-                    resyncPositionMs: state.videoResyncPositionMs,
                   ),
                 )
               else if (hasPhoto || hasVideoPoster)
@@ -552,64 +568,21 @@ Widget buildMediaImage(String src) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Video/audio sync — a constant one-time offset (see
-// TrainingItemWithAudio.videoStartOffsetMs) so the video's "sarzarb"/main
-// beat lines up with the audio's, applied once when the video starts.
-// Deliberately not re-applied on every loop (v1 scope, see plan): re-seeking
-// video_player on a timer is a real jank risk (seekTo triggers a genuine
-// buffering pause on Android, not an instant jump), so drift across many
-// loops is an accepted limitation for now rather than something to build
-// continuous correction for.
-//
-// Discrete, user-initiated repositioning (a seek-bar drag, restarting the
-// track) is a different, cheaper case — see computeVideoResyncTargetMs below,
-// driven by AudioPlayerState.videoResyncGeneration.
-// ─────────────────────────────────────────────────────────────────────────────
-({int? seekToMs, int? delayMs}) computeVideoSyncPlan(
-    int? startOffsetMs, int videoDurationMs) {
-  if (startOffsetMs == null || videoDurationMs <= 0) {
-    return (seekToMs: null, delayMs: null);
-  }
-  if (startOffsetMs >= 0) {
-    // Modulo handles an anchor beyond one loop length — start partway into
-    // the current loop iteration rather than failing to seek at all.
-    return (seekToMs: startOffsetMs % videoDurationMs, delayMs: null);
-  }
-  // Audio's beat lands later in its own file than video's does, so video
-  // needs to wait at frame 0, not seek to a negative position.
-  return (seekToMs: null, delayMs: -startOffsetMs);
-}
-
-/// Video position (ms, wrapped into [0, videoDurationMs)) that corresponds to
-/// the audio being at [audioLoopPositionMs] within its current loop. Used
-/// only for discrete resyncs — every place AudioPlayerState authoritatively
-/// (re)establishes audio position (a fresh source load, or a mid-track seek)
-/// bumps videoResyncGeneration, and _ExerciseVideo applies exactly one seek
-/// in response. Never called on a timer, so this doesn't reintroduce the
-/// continuous-reseek jank risk noted above computeVideoSyncPlan.
-int computeVideoResyncTargetMs(
-    int audioLoopPositionMs, int? startOffsetMs, int videoDurationMs) {
-  if (videoDurationMs <= 0) return 0;
-  final raw = audioLoopPositionMs + (startOffsetMs ?? 0);
-  return ((raw % videoDurationMs) + videoDurationMs) % videoDurationMs;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Exercise demonstration video — muted, looping, local-file only. Play/pause
-// follows the audio cubit's isPlaying (the audio guidance drives the actual
-// timeline; this is a silent visual companion, not an independently
-// controlled player), so it never exposes its own transport controls.
+// Exercise demonstration video — muted, looping, local-file only. It follows
+// the move's audio through a VideoFollower (alignment on start, seek and
+// loop; play/pause from the session); this widget only owns the controller
+// and renders it, so it never exposes its own transport controls.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ExerciseVideo extends StatefulWidget {
   const _ExerciseVideo({
     super.key,
+    required this.timeline,
     required this.path,
     required this.isPlaying,
     this.posterSrc,
     this.startOffsetMs,
-    this.resyncGeneration = 0,
-    this.resyncPositionMs = 0,
   });
+  final MoveTimeline timeline;
   final String path;
   final bool isPlaying;
 
@@ -618,12 +591,9 @@ class _ExerciseVideo extends StatefulWidget {
   /// would otherwise be showing one layer up, so mounting hands off from
   /// poster to live video with no blank/static frame in between.
   final String? posterSrc;
-  final int? startOffsetMs;
 
-  /// Bumped by the cubit every time audio position is authoritatively reset
-  /// (a fresh load or a seek) — see AudioPlayerState.videoResyncGeneration.
-  final int resyncGeneration;
-  final int resyncPositionMs;
+  /// Video anchor − audio anchor, see [videoAlignment].
+  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -631,31 +601,18 @@ class _ExerciseVideo extends StatefulWidget {
 
 class _ExerciseVideoState extends State<_ExerciseVideo> {
   late final VideoPlayerController _controller;
+  late final VideoFollower _follower;
   bool _ready = false;
-
-  // Set in initState so a resync that was already in flight when this widget
-  // mounted doesn't immediately re-fire on top of the cold-start sync plan.
-  late int _lastAppliedResyncGeneration;
-
-  // True from the moment initialize() succeeds until the computed sync plan
-  // (seek or delay) has been fully applied. _Stage rebuilds far more often
-  // than once — every ~200ms audio tick — and didUpdateWidget reacts to
-  // each one by auto-playing whenever isPlaying=true but the controller
-  // isn't yet playing. Without this guard, a rebuild landing during the
-  // sync window (which _ready alone doesn't prevent, since it becomes true
-  // immediately on initialize(), before the plan is even computed) races
-  // straight past a pending seek or delay and starts playback from
-  // position 0 immediately — confirmed live: a real negative offset that
-  // should have delayed play() by ~1.3s instead started right away.
-  bool _syncPending = true;
 
   @override
   void initState() {
     super.initState();
-    _lastAppliedResyncGeneration = widget.resyncGeneration;
+    _follower = VideoFollower(
+        timeline: widget.timeline, startOffsetMs: widget.startOffsetMs)
+      ..setPlaying(widget.isPlaying);
     // dart:io's File doesn't exist on web — video_player_web only supports
     // networkUrl()/asset(). widget.path is the remote R2 URL there (the
-    // cubit never resolves a local cache path on web), so this streams
+    // player never resolves a local cache path on web), so this streams
     // directly rather than downloading first, matching normal browser
     // video behavior.
     //
@@ -675,35 +632,11 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     _controller
       ..setLooping(true)
       ..setVolume(0)
-      ..initialize().then((_) async {
+      ..initialize().then((_) {
         if (!mounted) return;
         setState(() => _ready = true);
-        final durationMs = _controller.value.duration.inMilliseconds;
-
-        // Videos are on the device before the session plays, so the widget
-        // only mounts when a track starts (audio at the start of its loop):
-        // apply the anchor-based seek-or-delay plan, including the
-        // negative-offset "wait at frame 0" behavior a live exercise
-        // (Shena Sar Navazi) relies on. Later repositioning is a discrete
-        // resync in didUpdateWidget.
-        final plan = computeVideoSyncPlan(widget.startOffsetMs, durationMs);
-        AppLogger.d('video sync (cold start): startOffsetMs='
-            '${widget.startOffsetMs} videoDurationMs=$durationMs '
-            '-> seekToMs=${plan.seekToMs} delayMs=${plan.delayMs}');
-        if (plan.seekToMs != null) {
-          await _controller.seekTo(Duration(milliseconds: plan.seekToMs!));
-          if (!mounted) return;
-        }
-        if (plan.delayMs != null) {
-          unawaited(Future.delayed(Duration(milliseconds: plan.delayMs!), () {
-            if (!mounted) return;
-            _syncPending = false;
-            if (widget.isPlaying) unawaited(_controller.play());
-          }));
-          return;
-        }
-        _syncPending = false;
-        if (widget.isPlaying) unawaited(_controller.play());
+        // Aligns to wherever the audio is by now, then follows it.
+        _follower.attach(_ControllerVideo(_controller));
       }).catchError((_) {
         // Corrupt/unreadable local file — fail silently, same as a broken
         // image falls back to errorBuilder rather than crashing the stage.
@@ -713,52 +646,14 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void didUpdateWidget(covariant _ExerciseVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_ready || _syncPending) return;
-    if (widget.resyncGeneration != _lastAppliedResyncGeneration) {
-      // A discrete resync (restart, seek-bar drag) — apply exactly one seek,
-      // never on a timer, so this doesn't reintroduce the continuous-reseek
-      // jank risk noted above computeVideoSyncPlan. Only consume the
-      // generation once actually applied — if the controller isn't ready
-      // (guarded above), the next rebuild (already happening on every audio
-      // position update) retries rather than silently dropping it.
-      _lastAppliedResyncGeneration = widget.resyncGeneration;
-      final targetMs = computeVideoResyncTargetMs(widget.resyncPositionMs,
-          widget.startOffsetMs, _controller.value.duration.inMilliseconds);
-      unawaited(_seekVideo(targetMs));
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      _follower.setPlaying(widget.isPlaying);
     }
-    if (widget.isPlaying && !_controller.value.isPlaying) {
-      _controller.play();
-    } else if (!widget.isPlaying && _controller.value.isPlaying) {
-      _controller.pause();
-    }
-  }
-
-  bool _seekInFlight = false;
-  int? _pendingSeekMs;
-
-  /// Seeks the video with at most one native seek in flight; targets that
-  /// arrive meanwhile replace each other and only the latest is applied.
-  /// A seek-bar drag resyncs on every drag update (~60/s), and each native
-  /// seek is expensive (a real re-buffer on Android) — firing them all,
-  /// overlapping, only adds load and lands on stale positions.
-  Future<void> _seekVideo(int targetMs) async {
-    if (_seekInFlight) {
-      _pendingSeekMs = targetMs;
-      return;
-    }
-    _seekInFlight = true;
-    try {
-      await _controller.seekTo(Duration(milliseconds: targetMs));
-    } finally {
-      _seekInFlight = false;
-    }
-    final next = _pendingSeekMs;
-    _pendingSeekMs = null;
-    if (next != null && mounted) await _seekVideo(next);
   }
 
   @override
   void dispose() {
+    _follower.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -768,9 +663,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
     if (!_ready || !_controller.value.isInitialized) {
       // Keep showing the same poster _Stage would otherwise render one
       // layer up, instead of leaving the stage blank/static (the only
-      // thing behind it, PersianPattern, doesn't animate) — this is the
-      // window that used to read as "frozen" between a background download
-      // finishing and this controller actually becoming ready to show frames.
+      // thing behind it, PersianPattern, doesn't animate).
       final poster = widget.posterSrc;
       return (poster != null && poster.isNotEmpty)
           ? buildMediaImage(poster)
@@ -790,12 +683,32 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   }
 }
 
+/// [FollowedVideo] backed by a video_player controller.
+class _ControllerVideo implements FollowedVideo {
+  _ControllerVideo(this._controller);
+  final VideoPlayerController _controller;
+
+  @override
+  Duration get duration => _controller.value.duration;
+  @override
+  bool get isPlaying => _controller.value.isPlaying;
+  @override
+  Future<Duration> position() async =>
+      await _controller.position ?? _controller.value.position;
+  @override
+  Future<void> play() => _controller.play();
+  @override
+  Future<void> pause() => _controller.pause();
+  @override
+  Future<void> seekTo(Duration position) => _controller.seekTo(position);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Rep counter — the signature moment
 // ─────────────────────────────────────────────────────────────────────────────
 class _RepCounter extends StatefulWidget {
-  const _RepCounter({required this.state, required this.mode});
-  final AudioPlayerState state;
+  const _RepCounter({required this.hasTrack, required this.mode});
+  final bool hasTrack;
   final PlayerMode mode;
 
   @override
@@ -807,8 +720,6 @@ class _RepCounterState extends State<_RepCounter>
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
   late final Animation<double> _flash;
-
-  int _lastRep = 0;
 
   @override
   void initState() {
@@ -829,27 +740,10 @@ class _RepCounterState extends State<_RepCounter>
         parent: _ctrl, curve: const Interval(0, 0.6, curve: Curves.easeOut)));
   }
 
-  int _computeRep(AudioPlayerState s) {
-    if (s.logicalDuration.inMilliseconds <= 0) return 1;
-    final total = s.currentTrack?.effectiveRepetitions ?? 1;
-    final secondsPerRep = s.logicalDuration.inMilliseconds / total / 1000;
-    if (secondsPerRep <= 0) return 1;
-    return ((s.logicalPosition.inMilliseconds / 1000) / secondsPerRep).floor() +
-        1;
-  }
-
-  @override
-  void didUpdateWidget(_RepCounter old) {
-    super.didUpdateWidget(old);
-    final total = widget.state.currentTrack?.effectiveRepetitions ?? 1;
-    final rawRep = _computeRep(widget.state);
-    final rep =
-        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
-    if (_lastRep != 0 && rep != _lastRep) {
-      HapticFeedback.selectionClick();
-      _ctrl.forward(from: 0);
-    }
-    _lastRep = rep;
+  /// A new rep: a haptic tick and a pulse of the pill.
+  void _onRepChanged() {
+    HapticFeedback.selectionClick();
+    _ctrl.forward(from: 0);
   }
 
   @override
@@ -860,16 +754,25 @@ class _RepCounterState extends State<_RepCounter>
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.state;
-    if (s.currentTrack == null || s.logicalDuration.inMilliseconds == 0) {
+    // Rebuilds on a new rep (or move), not on every position reading.
+    return BlocConsumer<MoveProgressCubit, MoveProgress>(
+      listenWhen: (prev, cur) => prev.rep != cur.rep,
+      listener: (_, __) => _onRepChanged(),
+      buildWhen: (prev, cur) =>
+          prev.rep != cur.rep ||
+          prev.repsTotal != cur.repsTotal ||
+          prev.isKnown != cur.isKnown,
+      builder: (context, progress) => _buildPill(context, progress),
+    );
+  }
+
+  Widget _buildPill(BuildContext context, MoveProgress progress) {
+    if (!widget.hasTrack || !progress.isKnown) {
       return const SizedBox(height: 16);
     }
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final track = s.currentTrack!;
-    final total = track.effectiveRepetitions;
-    final rawRep = _computeRep(s);
-    final rep =
-        widget.mode == PlayerMode.zoorkhaneh ? rawRep : rawRep.clamp(1, total);
+    final total = progress.repsTotal;
+    final rep = progress.rep;
     final pillBg = colors.repDefaultBg;
     final pillFg = colors.repDefault;
     final glow = colors.repDefault.withValues(alpha: 0.36);
@@ -947,8 +850,8 @@ class _RepCounterState extends State<_RepCounter>
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProgressBlock extends StatelessWidget {
   const _ProgressBlock({required this.state, required this.cubit});
-  final AudioPlayerState state;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerState state;
+  final SessionPlayerCubit cubit;
 
   static String _clock(Duration d) {
     final m = d.inMinutes.remainder(60);
@@ -956,72 +859,78 @@ class _ProgressBlock extends StatelessWidget {
     return '$m:$s';
   }
 
-  void _seek(double dx, double maxWidth) {
-    final dur = state.logicalDuration;
-    if (dur.inMilliseconds <= 0 || maxWidth <= 0) return;
+  void _seek(Duration length, double dx, double maxWidth) {
+    if (length.inMilliseconds <= 0 || maxWidth <= 0) return;
     final ratio = (dx / maxWidth).clamp(0.0, 1.0);
-    cubit.seekTo(Duration(milliseconds: (ratio * dur.inMilliseconds).round()));
+    cubit.seekTo(
+        Duration(milliseconds: (ratio * length.inMilliseconds).round()));
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
     final cs = Theme.of(context).colorScheme;
-    final dur = state.logicalDuration;
-    final pos = state.logicalPosition;
-    final progress = dur.inMilliseconds > 0
-        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
-      child: Column(children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Flexible(
-              child: Text(state.currentTrack?.title ?? '',
-                  style: TextStyle(
-                      fontFamily: PFonts.ui,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: cs.onSurface),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+    // Only the time and the bar follow the move's position.
+    return BlocBuilder<MoveProgressCubit, MoveProgress>(
+      builder: (context, progress) {
+        final length = progress.length;
+        final pos = progress.position;
+        final fraction = length.inMilliseconds > 0
+            ? (pos.inMilliseconds / length.inMilliseconds).clamp(0.0, 1.0)
+            : 0.0;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
+          child: Column(children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(state.currentTrack?.title ?? '',
+                      style: TextStyle(
+                          fontFamily: PFonts.ui,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: cs.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                Text('${_clock(pos)} / ${_clock(length)}',
+                    style: PTextStyles.of(context)
+                        .playerTime
+                        .copyWith(color: colors.onMuted)),
+              ],
             ),
-            Text('${_clock(pos)} / ${_clock(dur)}',
-                style: PTextStyles.of(context)
-                    .playerTime
-                    .copyWith(color: colors.onMuted)),
-          ],
-        ),
-        const SizedBox(height: 7),
-        LayoutBuilder(
-          builder: (_, constraints) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) => _seek(d.localPosition.dx, constraints.maxWidth),
-            onHorizontalDragUpdate: (d) =>
-                _seek(d.localPosition.dx, constraints.maxWidth),
-            child: SizedBox(
-              height: 28,
-              child: Align(
-                alignment: Alignment.center,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: colors.surface3,
-                    valueColor: AlwaysStoppedAnimation(colors.repDefault),
+            const SizedBox(height: 7),
+            LayoutBuilder(
+              builder: (_, constraints) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) =>
+                    _seek(length, d.localPosition.dx, constraints.maxWidth),
+                onHorizontalDragUpdate: (d) =>
+                    _seek(length, d.localPosition.dx, constraints.maxWidth),
+                child: SizedBox(
+                  height: 28,
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: fraction,
+                        minHeight: 6,
+                        backgroundColor: colors.surface3,
+                        valueColor: AlwaysStoppedAnimation(colors.repDefault),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ]),
+          ]),
+        );
+      },
     );
   }
 }
@@ -1035,9 +944,9 @@ class _TrackList extends StatefulWidget {
       required this.state,
       required this.accent,
       required this.cubit});
-  final AudioPlayerState state;
+  final SessionPlayerState state;
   final SessionAccent accent;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerCubit cubit;
 
   @override
   State<_TrackList> createState() => _TrackListState();
@@ -1220,8 +1129,8 @@ const _kTransportBarHeight = 92.0;
 
 class _Transport extends StatelessWidget {
   const _Transport({required this.state, required this.cubit});
-  final AudioPlayerState state;
-  final TrainingSessionPlayerCubit cubit;
+  final SessionPlayerState state;
+  final SessionPlayerCubit cubit;
 
   @override
   Widget build(BuildContext context) {
@@ -1258,7 +1167,7 @@ class _Transport extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Icon(
-              state.isFinished
+              state is PlayerFinished
                   ? Icons.replay_rounded
                   : (state.isPlaying
                       ? Icons.pause_rounded

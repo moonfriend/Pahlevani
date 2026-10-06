@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pahlevani/presentation/bloc/player/playback_clock.dart';
+import 'package:pahlevani/domain/player/playback_clock.dart';
 
 Duration ms(int v) => Duration(milliseconds: v);
 
@@ -29,6 +29,19 @@ void main() {
       clock.onEnginePosition(ms(p));
     }
     expect(clock.logicalPosition, ms(27000));
+  });
+
+  test('wrapCount counts engine wraps only — not seeks or our own restarts',
+      () {
+    expect(clock.wrapCount, 0);
+    clock.onEnginePosition(ms(9800));
+    clock.onEnginePosition(ms(150)); // the engine looped
+    expect(clock.wrapCount, 1);
+    clock.seekTo(ms(500)); // a user seek back
+    clock.onEnginePosition(ms(500));
+    clock.restartLoop(ms(4000)); // we restarted the clip ourselves
+    clock.onEnginePosition(ms(0));
+    expect(clock.wrapCount, 1);
   });
 
   test('small backward jitter is not mistaken for a loop', () {

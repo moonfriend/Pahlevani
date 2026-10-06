@@ -17,7 +17,7 @@ import 'package:pahlevani/domain/repositories/tracking/training_history_reposito
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
@@ -368,9 +368,9 @@ void main() {
     await _pumpAndLoad(tester);
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     cubit.next(); // only 1 track → isFinished: true
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -396,9 +396,9 @@ void main() {
     expect(find.byIcon(Icons.replay_rounded), findsNothing);
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     cubit.next(); // only 1 track → isFinished: true
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -425,9 +425,9 @@ void main() {
     await _pumpAndLoad(tester);
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     cubit.next();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -451,9 +451,9 @@ void main() {
     await _pumpAndLoad(tester);
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     cubit.next();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -542,6 +542,49 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets(
+      'audio position readings update the progress, but never rebuild the '
+      'stage (where the demo video lives)', (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+
+    // The stage's "Pause" pill: a rebuilt stage would create a new widget.
+    final stagePillBefore = tester.widget(find.text('Pause'));
+    for (final ms in [200, 600, 1100, 1500, 2100]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
+
+    expect(
+        identical(tester.widget(find.text('Pause')), stagePillBefore), isTrue,
+        reason: 'position readings must not rebuild the stage');
+    expect(find.text('0:02 / 0:03'), findsOneWidget,
+        reason: 'the progress time still follows the audio');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   // ── Notification command routing (end-to-end through UI) ─────────────────
 
   testWidgets('skipNext notification command advances player to next track',
@@ -559,9 +602,9 @@ void main() {
 
     // The cubit is accessible via the BlocConsumer in the tree.
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     expect(cubit.state.playingIndex, 1);
   });
 
@@ -583,9 +626,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     expect(cubit.state.playingIndex, 0);
   });
 
@@ -859,10 +902,10 @@ void main() {
     }
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    expect(cubit.state.isFinished, isFalse,
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
+    expect(cubit.state, isNot(isA<PlayerFinished>()),
         reason: 'zoorkhaneh mode must not auto-complete the session');
     expect(cubit.state.playingIndex, 0);
     expect(find.textContaining('Rep 6', findRichText: true), findsWidgets);
@@ -990,10 +1033,10 @@ void main() {
   // ── Edit from the player ───────────────────────────────────────────────────
 
   group('Edit from the player', () {
-    TrainingSessionPlayerCubit playerCubit(WidgetTester tester) => tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+    SessionPlayerCubit playerCubit(WidgetTester tester) => tester
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
 
     // As in the app, the session list is loaded (the editor reads the
     // session's moves from it) and shares the repository the player loads
@@ -1100,9 +1143,9 @@ void main() {
       expect(find.textContaining("isn't on this device"), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Download'), findsOneWidget);
       final cubit = tester
-          .element(find.byType(
-              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-          .read<TrainingSessionPlayerCubit>();
+          .element(
+              find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+          .read<SessionPlayerCubit>();
       expect(cubit.state.isPlaying, isFalse);
     });
 
@@ -1132,10 +1175,10 @@ void main() {
 
       expect(find.textContaining("isn't on this device"), findsNothing);
       final cubit = tester
-          .element(find.byType(
-              BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-          .read<TrainingSessionPlayerCubit>();
-      expect(cubit.state.needsDownload, isFalse);
+          .element(
+              find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+          .read<SessionPlayerCubit>();
+      expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
       expect(cubit.state.tracks, isNotEmpty);
     });
   });

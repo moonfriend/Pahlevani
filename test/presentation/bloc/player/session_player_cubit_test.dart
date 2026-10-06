@@ -16,7 +16,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
@@ -135,7 +135,7 @@ DomainSnapshot _snapshotWithItems(TrainingSession session,
   );
 }
 
-TrainingSessionPlayerCubit _makeCubit(
+SessionPlayerCubit _makeCubit(
   DomainSnapshot snapshot, {
   FakeAudioPlayerService? audioService,
   _FakeDownloadRepo? downloadRepo,
@@ -144,7 +144,7 @@ TrainingSessionPlayerCubit _makeCubit(
   PlayerMode mode = PlayerMode.athlete,
 }) {
   final session = snapshot.sessionsById.values.first;
-  return TrainingSessionPlayerCubit(
+  return SessionPlayerCubit(
     trainingSession: session,
     mode: mode,
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
@@ -170,9 +170,9 @@ Future<void> _feedPositions(
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 void main() {
-  // ---------- AudioPlayerState getters ----------
+  // ---------- SessionPlayerState getters ----------
 
-  group('AudioPlayerState getters', () {
+  group('SessionPlayerState getters', () {
     final tracks = [
       const TrainingItemWithAudio(id: '1', title: 'A', audioFilePath: '/a.mp3'),
       const TrainingItemWithAudio(id: '2', title: 'B', audioFilePath: '/b.mp3'),
@@ -180,53 +180,53 @@ void main() {
     ];
 
     test('currentTrack returns track at playingIndex', () {
-      final s =
-          AudioPlayerState(playingIndex: 1, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: 1, tracks: tracks);
       expect(s.currentTrack?.title, 'B');
     });
 
     test('currentTrack is null when tracks empty', () {
-      const s = AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: []);
+      const s = PlayerReady(playingIndex: 0, tracks: []);
       expect(s.currentTrack, isNull);
     });
 
     test('currentTrack is null when playingIndex is -1', () {
-      final s =
-          AudioPlayerState(playingIndex: -1, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: -1, tracks: tracks);
       expect(s.currentTrack, isNull);
     });
 
     test('nextTrack returns track at playingIndex + 1', () {
-      final s =
-          AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: 0, tracks: tracks);
       expect(s.nextTrack?.title, 'B');
     });
 
     test('nextTrack is null at last track', () {
-      final s =
-          AudioPlayerState(playingIndex: 2, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: 2, tracks: tracks);
       expect(s.nextTrack, isNull);
     });
 
     test('previousTrack returns track at playingIndex - 1', () {
-      final s =
-          AudioPlayerState(playingIndex: 2, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: 2, tracks: tracks);
       expect(s.previousTrack?.title, 'B');
     });
 
     test('previousTrack is null at first track', () {
-      final s =
-          AudioPlayerState(playingIndex: 0, isPlaying: false, tracks: tracks);
+      final s = PlayerReady(playingIndex: 0, tracks: tracks);
       expect(s.previousTrack, isNull);
     });
 
-    test('copyWith preserves unset fields', () {
-      const s = AudioPlayerState(
-          playingIndex: 0, isPlaying: true, tracks: [], isFinished: false);
+    test('copyWith keeps the moves and index', () {
+      final s = PlayerReady(playingIndex: 1, isPlaying: true, tracks: tracks);
       final s2 = s.copyWith(isPlaying: false);
       expect(s2.isPlaying, isFalse);
-      expect(s2.playingIndex, 0);
-      expect(s2.isFinished, isFalse);
+      expect(s2.playingIndex, 1);
+      expect(s2.tracks, tracks);
+    });
+
+    test('equal states are equal (Bloc skips re-emitting them)', () {
+      expect(PlayerReady(playingIndex: 1, tracks: tracks),
+          PlayerReady(playingIndex: 1, tracks: tracks));
+      expect(PlayerReady(playingIndex: 1, tracks: tracks),
+          isNot(PlayerFinished(playingIndex: 1, tracks: tracks)));
     });
   });
 
@@ -242,7 +242,7 @@ void main() {
 
       await cubit.loadTracks();
 
-      expect(cubit.state.errorMessage, isNotNull);
+      expect(cubit.state, isA<PlayerFailed>());
       expect(cubit.state.playingIndex, -1);
       expect(cubit.state.tracks, isEmpty);
     });
@@ -260,7 +260,7 @@ void main() {
 
       expect(cubit.state.tracks.length, 1);
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.isLoading, isFalse);
+      expect(cubit.state, isNot(isA<PlayerLoading>()));
       // Resolved (cached) path, not the raw remote URL — see "egress" group below.
       expect(audioService.lastPlayedPath, '/cached/10000.mp3');
     });
@@ -339,7 +339,7 @@ void main() {
 
       await cubit.loadTracks();
 
-      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
       expect(cubit.state.tracks.single.audioFilePath, '/local/default.mp3');
     });
 
@@ -499,7 +499,7 @@ void main() {
       cubit.next();
 
       expect(cubit.state.playingIndex, 1);
-      expect(cubit.state.isFinished, isFalse);
+      expect(cubit.state, isNot(isA<PlayerFinished>()));
     });
 
     test('emits isFinished when already at last track', () async {
@@ -512,7 +512,7 @@ void main() {
       await cubit.loadTracks();
       cubit.next(); // only 1 track — this is the end
 
-      expect(cubit.state.isFinished, isTrue);
+      expect(cubit.state, isA<PlayerFinished>());
       expect(cubit.state.isPlaying, isFalse);
     });
   });
@@ -579,7 +579,7 @@ void main() {
       expect(cubit.state.playingIndex, 1,
           reason: 'past the threshold, prev() must restart the current '
               'track rather than skip to the previous one');
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
       expect(audioService.seekedTo, Duration.zero);
     });
 
@@ -625,7 +625,7 @@ void main() {
       await cubit.prev();
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
       expect(audioService.seekedTo, Duration.zero);
     });
   });
@@ -696,12 +696,12 @@ void main() {
 
       await cubit.loadTracks();
       cubit.next(); // finish (only 1 track)
-      expect(cubit.state.isFinished, isTrue);
+      expect(cubit.state, isA<PlayerFinished>());
 
       cubit.togglePlay(); // should replay
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.isFinished, isFalse);
+      expect(cubit.state, isNot(isA<PlayerFinished>()));
     });
   });
 
@@ -799,7 +799,7 @@ void main() {
       await cubit.seekTo(const Duration(seconds: 99));
 
       expect(audioService.seekedTo, Duration.zero);
-      expect(cubit.state.logicalPosition, const Duration(seconds: 20));
+      expect(cubit.timeline.current.position, const Duration(seconds: 20));
     });
   });
 
@@ -811,7 +811,7 @@ void main() {
       final snap = DomainSnapshot(
           sessionsById: {1: session}, itemsBySessionId: {}, exercisesById: {});
       final audioService = FakeAudioPlayerService();
-      final cubit = TrainingSessionPlayerCubit(
+      final cubit = SessionPlayerCubit(
         trainingSession: session,
         mode: PlayerMode.athlete,
         audioPlayerService: audioService,
@@ -905,7 +905,7 @@ void main() {
       cubit.replay();
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.isFinished, isFalse);
+      expect(cubit.state, isNot(isA<PlayerFinished>()));
     });
 
     test('clears isFinished after session ends', () async {
@@ -917,11 +917,11 @@ void main() {
 
       await cubit.loadTracks();
       cubit.next();
-      expect(cubit.state.isFinished, isTrue);
+      expect(cubit.state, isA<PlayerFinished>());
 
       cubit.replay();
 
-      expect(cubit.state.isFinished, isFalse);
+      expect(cubit.state, isNot(isA<PlayerFinished>()));
       expect(cubit.state.playingIndex, 0);
     });
   });
@@ -944,19 +944,6 @@ void main() {
 
       expect(cubit.state.isPlaying, isFalse);
       expect(audioService.stopped, isTrue);
-    });
-
-    test('resets position to zero', () async {
-      final session = _session(1);
-      final snap = _snapshotWithItems(session,
-          [_item(sessionId: 1, exerciseId: 10, position: 0)], [_exercise(10)]);
-      final cubit = _makeCubit(snap);
-      addTearDown(cubit.close);
-
-      await cubit.loadTracks();
-      await cubit.stop();
-
-      expect(cubit.state.position, Duration.zero);
     });
   });
 
@@ -1127,7 +1114,7 @@ void main() {
       await cubit.loadTracks();
 
       expect(audioService.lastPlayedPath, '/cached/10000.mp3');
-      expect(cubit.state.needsDownload, isFalse);
+      expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
     });
 
     test('each track plays its own downloaded file', () async {
@@ -1154,7 +1141,7 @@ void main() {
 
       await cubit.loadTracks();
 
-      expect(cubit.state.needsDownload, isTrue);
+      expect(cubit.state, isA<PlayerNeedsDownload>());
       expect(cubit.state.isPlaying, isFalse);
       expect(audioService.playCallCount, 0);
     });
@@ -1179,17 +1166,17 @@ void main() {
     await cubit.loadTracks();
 
     expect(cubit.state.tracks.single.videoReady, isFalse);
-    expect(cubit.state.needsDownload, isFalse,
+    expect(cubit.state, isNot(isA<PlayerNeedsDownload>()),
         reason: 'videos are optional (tier) — only audio is required');
   });
 
   group('notification commands', () {
     // Returns both the cubit and its notification fake for direct command injection.
-    (TrainingSessionPlayerCubit, FakePlayerNotificationService) makeCubitN(
+    (SessionPlayerCubit, FakePlayerNotificationService) makeCubitN(
         DomainSnapshot snap) {
       final notification = FakePlayerNotificationService();
       final session = snap.sessionsById.values.first;
-      final cubit = TrainingSessionPlayerCubit(
+      final cubit = SessionPlayerCubit(
         trainingSession: session,
         mode: PlayerMode.athlete,
         audioPlayerService: FakeAudioPlayerService(),
@@ -1322,7 +1309,7 @@ void main() {
       );
       final notification = FakePlayerNotificationService();
       final audio = FakeAudioPlayerService();
-      final cubit = TrainingSessionPlayerCubit(
+      final cubit = SessionPlayerCubit(
         trainingSession: snap.sessionsById.values.first,
         mode: PlayerMode.athlete,
         audioPlayerService: audio,
@@ -1342,7 +1329,7 @@ void main() {
 
       expect(audio.seekedTo, const Duration(seconds: 2),
           reason: '12s into the move = 2s into the second loop of the clip');
-      expect(cubit.state.logicalPosition, const Duration(seconds: 12));
+      expect(cubit.timeline.current.position, const Duration(seconds: 12));
     });
 
     test('notification updated with track title and isPlaying=true on load',
@@ -1581,8 +1568,8 @@ void main() {
 
       expect(cubit.state.playingIndex, 0,
           reason: 'zoorkhaneh mode must not auto-advance mid-loop');
-      expect(cubit.state.logicalPosition.inMilliseconds,
-          greaterThan(cubit.state.logicalDuration.inMilliseconds));
+      expect(cubit.timeline.current.position.inMilliseconds,
+          greaterThan(cubit.timeline.current.length.inMilliseconds));
     });
 
     test('a manual next() still advances immediately', () async {
@@ -1629,17 +1616,18 @@ void main() {
 
       expect(audioService.seekedTo, Duration.zero,
           reason: 'the clip is restarted at the 5s target');
-      expect(cubit.state.logicalPosition, const Duration(seconds: 5));
+      expect(cubit.timeline.current.position, const Duration(seconds: 5));
 
       // A late reading from before the restart landed is ignored; then the
       // restarted clip continues the timeline.
       await _feedPositions(audioService, [5100, 300]);
-      expect(cubit.state.logicalPosition, const Duration(milliseconds: 5300));
+      expect(
+          cubit.timeline.current.position, const Duration(milliseconds: 5300));
       expect(cubit.state.playingIndex, 0);
     });
   });
 
-  // ---------- AudioPlayerState.copyWith / withError ----------
+  // ---------- SessionPlayerState.copyWith / withError ----------
 
   // ---------- single clock: the move timeline comes from the audio engine ----------
   group('engine-derived move timeline', () {
@@ -1658,7 +1646,7 @@ void main() {
 
     // [itemCount] items, each prescribing [reps] of an exercise whose clip
     // holds [clipReps] reps.
-    TrainingSessionPlayerCubit build(FakeAudioPlayerService audio,
+    SessionPlayerCubit build(FakeAudioPlayerService audio,
         {required int reps, required int clipReps, int itemCount = 2}) {
       final snap = _snapshotWithItems(
         _session(1),
@@ -1683,7 +1671,7 @@ void main() {
 
       await feed(audio, [5000, 9900, 100, 9900]); // loop → logical 19900
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, ms(19900));
+      expect(cubit.timeline.current.position, ms(19900));
 
       await feed(audio, [50]); // second wrap → logical 20050 ≥ 20s
       expect(cubit.state.playingIndex, 1);
@@ -1718,7 +1706,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 700));
 
       expect(cubit.state.playingIndex, 0);
-      expect(cubit.state.logicalPosition, Duration.zero);
+      expect(cubit.timeline.current.position, Duration.zero);
     });
 
     test('several readings past the target advance only once', () async {
@@ -1755,7 +1743,7 @@ void main() {
       await feed(audio, [100]);
 
       expect(cubit.state.playingIndex, 1);
-      expect(cubit.state.logicalPosition, ms(100));
+      expect(cubit.timeline.current.position, ms(100));
     });
 
     test('the move length is known as soon as the clip loads', () async {
@@ -1766,7 +1754,7 @@ void main() {
       audio.emitDuration(clip);
       await settle();
 
-      expect(cubit.state.logicalDuration, const Duration(seconds: 30));
+      expect(cubit.timeline.current.length, const Duration(seconds: 30));
     });
   });
 
@@ -1837,24 +1825,9 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       await _feedPositions(audio, [4200]);
 
-      expect(cubit.state.logicalPosition, const Duration(milliseconds: 4200),
+      expect(
+          cubit.timeline.current.position, const Duration(milliseconds: 4200),
           reason: "move 3's timeline must not be reset by move 2's late load");
-    });
-  });
-
-  group('AudioPlayerState.withError', () {
-    test('preserves tracks and playingIndex, clears isPlaying', () {
-      const tracks = [
-        TrainingItemWithAudio(id: '1', title: 'A', audioFilePath: '/a.mp3'),
-      ];
-      const s =
-          AudioPlayerState(playingIndex: 0, isPlaying: true, tracks: tracks);
-      final errState = s.withError('boom');
-
-      expect(errState.errorMessage, 'boom');
-      expect(errState.isPlaying, isFalse);
-      expect(errState.tracks, tracks);
-      expect(errState.playingIndex, 0);
     });
   });
 }

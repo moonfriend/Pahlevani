@@ -34,7 +34,7 @@ import 'package:pahlevani/domain/repositories/tracking/training_history_reposito
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
@@ -138,14 +138,14 @@ void main() {
     await Future<void>.delayed(const Duration(seconds: 3)); // playing
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    expect(cubit.state.logicalDuration, greaterThan(Duration.zero),
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
+    expect(cubit.timeline.current.length, greaterThan(Duration.zero),
         reason: 'the real audio engine should have reported the clip length');
 
     // Simulated drag: one seek per frame for ~1.5s, sweeping the timeline.
-    final total = cubit.state.logicalDuration.inMilliseconds;
+    final total = cubit.timeline.current.length.inMilliseconds;
     for (var i = 0; i < 90; i++) {
       final ratio = (i % 30) / 30;
       await cubit.seekTo(Duration(milliseconds: (total * ratio).round()));
