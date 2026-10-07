@@ -10,7 +10,6 @@ import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
-import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
@@ -18,6 +17,7 @@ import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.d
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_download_dialog_deps.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
 
@@ -74,7 +74,7 @@ final _catalogRepo = FakeAudioCatalogRepository(
 Future<List<PlayerMode>> _pump(WidgetTester tester) async {
   final started = <PlayerMode>[];
   await getIt.reset();
-  getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+  registerDownloadDialogFakes(_catalogRepo);
   addTearDown(getIt.reset);
 
   _catalogRepo.selectedMorshedId = null;
@@ -135,6 +135,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_catalogRepo.selectedMorshedId, 2);
+    // Their recordings first, then the video-sync heads-up.
+    expect(find.text("Download Sirvan's recordings"), findsOneWidget);
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Video sync heads-up'), findsOneWidget);
+    await tester.tap(find.text('Got it'));
+    await tester.pumpAndSettle();
     expect(find.text('Sirvan'), findsOneWidget);
   });
 

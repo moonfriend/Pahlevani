@@ -8,6 +8,7 @@ import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
+import '../audio_catalog/choose_morshed_flow.dart';
 import '../../bloc/auth/auth_cubit.dart';
 import '../../bloc/settings/settings_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
@@ -167,7 +168,6 @@ class _ProfilePageState extends State<ProfilePage> {
   /// names never get squeezed.
   Widget _morshedPicker(KashiColors colors) {
     final state = context.watch<AudioCatalogCubit>().state;
-    final catalog = context.read<AudioCatalogCubit>();
     return switch (state) {
       AudioCatalogLoading() => _note('Loading…', colors),
       AudioCatalogError() =>
@@ -179,7 +179,8 @@ class _ProfilePageState extends State<ProfilePage> {
         KashiSegmented<int>(
           options: [for (final m in morsheds) (m.id, m.name)],
           selected: selectedMorshedId,
-          onSelected: catalog.selectMorshed,
+          onSelected: (id) =>
+              chooseMorshed(context, morsheds.firstWhere((m) => m.id == id)),
         ),
       AudioCatalogLoaded(:final morsheds, :final selectedMorshedId) => Column(
           children: [
@@ -189,7 +190,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: KashiSegmented<int>(
                   options: [(m.id, m.name)],
                   selected: selectedMorshedId,
-                  onSelected: catalog.selectMorshed,
+                  onSelected: (id) => chooseMorshed(
+                      context, morsheds.firstWhere((m) => m.id == id)),
                 ),
               ),
           ],

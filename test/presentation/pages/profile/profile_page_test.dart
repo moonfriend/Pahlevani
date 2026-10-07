@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
@@ -17,6 +18,7 @@ import 'package:pahlevani/presentation/widgets/kashi/khatam_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_download_dialog_deps.dart';
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_training_history_repository.dart';
 
@@ -122,11 +124,20 @@ void main() {
     for (final m in _morsheds) {
       expect(find.text(m.name), findsOneWidget);
     }
-    await tester.tap(find.text('Reza'));
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump();
+    await getIt.reset();
+    registerDownloadDialogFakes(h.catalogRepo);
+    addTearDown(getIt.reset);
 
+    await tester.tap(find.text('Reza'));
+    await tester.pumpAndSettle();
     expect(h.catalogRepo.selectedMorshedId, 3);
+
+    // Same steps as the morshed picker: their recordings, then the
+    // video-sync heads-up (Reza isn't the videos' reference morshed).
+    expect(find.text("Download Reza's recordings"), findsOneWidget);
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Video sync heads-up'), findsOneWidget);
   });
 
   testWidgets('many morsheds still fit (list instead of segments)',

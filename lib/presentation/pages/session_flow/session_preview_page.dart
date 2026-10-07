@@ -15,6 +15,7 @@ import '../../../domain/repositories/download_repository.dart';
 import '../../../domain/usecases/audio_catalog/effective_morshed.dart';
 import '../../../domain/usecases/player/resolve_move_media.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
+import '../audio_catalog/choose_morshed_flow.dart';
 import '../../bloc/player/player_mode.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../../widgets/exercise_image_provider.dart';
@@ -320,7 +321,8 @@ class _MorshedDropdown extends StatelessWidget {
 
     Future<void> pick(int id) async {
       final sessions = context.read<TrainingSessionCubit>();
-      await context.read<AudioCatalogCubit>().selectMorshed(id);
+      await chooseMorshed(
+          context, state.morsheds.firstWhere((m) => m.id == id));
       await sessions.refreshAudioSelection();
     }
 
