@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'kashi/kashi_colors.dart';
+import 'kashi/kashi_palette.dart';
 import 'pahlevani_colors.dart';
 
 /// Font family constants — single source of truth.
@@ -98,18 +99,21 @@ class PTextStyles {
 class PahlevaniTheme {
   PahlevaniTheme._();
 
+  // Kashi colours on the Material scheme the pre-Kashi screens use: azure
+  // actions (primary), turquoise growth (secondary), plaster / neutral
+  // surfaces, lajvard ink.
   static ThemeData light() => _build(
         brightness: Brightness.light,
         cs: const ColorScheme.light(
-          surface: Color(0xFFFFFDF7),
-          onSurface: Color(0xFF2A2218),
-          primary: Color(0xFFA9701F),
-          onPrimary: Color(0xFFFFFAF0),
-          secondary: Color(0xFFAD4527),
-          onSecondary: Color(0xFFFFFAF0),
-          error: Color(0xFFAD4527),
-          onError: Color(0xFFFFFAF0),
-          surfaceContainer: Color(0xFFF6EEDE),
+          surface: KashiPalette.plaster100,
+          onSurface: KashiPalette.lajvard700,
+          primary: KashiPalette.azure500,
+          onPrimary: KashiPalette.white,
+          secondary: KashiPalette.turquoiseInk,
+          onSecondary: KashiPalette.white,
+          error: Color(0xFFB3261E),
+          onError: KashiPalette.white,
+          surfaceContainer: KashiPalette.plaster200,
         ),
         ext: PahlevaniColors.light,
         kashi: KashiColors.light,
@@ -118,15 +122,15 @@ class PahlevaniTheme {
   static ThemeData dark() => _build(
         brightness: Brightness.dark,
         cs: const ColorScheme.dark(
-          surface: Color(0xFF221A10),
-          onSurface: Color(0xFFF1E7D4),
-          primary: Color(0xFFE0AA4C),
-          onPrimary: Color(0xFF1C1404),
-          secondary: Color(0xFFDB7048),
-          onSecondary: Color(0xFF1C1404),
-          error: Color(0xFFDB7048),
-          onError: Color(0xFF1C1404),
-          surfaceContainer: Color(0xFF2B2114),
+          surface: KashiPalette.neutralDark700,
+          onSurface: Color(0xFFF1EBE2),
+          primary: KashiPalette.azure500,
+          onPrimary: KashiPalette.white,
+          secondary: KashiPalette.aqua300,
+          onSecondary: KashiPalette.lajvard900,
+          error: Color(0xFFF2B8B5),
+          onError: Color(0xFF601410),
+          surfaceContainer: KashiPalette.neutralDark800,
         ),
         ext: PahlevaniColors.dark,
         kashi: KashiColors.dark,
@@ -180,12 +184,12 @@ class PahlevaniTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: brightness == Brightness.dark
-            ? const Color(0xFF2B2114)
-            : const Color(0xFF2A2218),
+            ? KashiPalette.neutralDark900
+            : KashiPalette.lajvard700,
         contentTextStyle: const TextStyle(
             fontFamily: PFonts.ui,
             fontWeight: FontWeight.w600,
-            color: Color(0xFFF1E7D4)),
+            color: Color(0xFFF1EBE2)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
         behavior: SnackBarBehavior.floating,
       ),

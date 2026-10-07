@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'kashi/kashi_palette.dart';
+
 /// All non-Material-3 color tokens for the Pahlevani warm/dark palette.
 /// Access via: Theme.of(context).extension<PahlevaniColors>()!
 @immutable
@@ -44,51 +46,57 @@ class PahlevaniColors extends ThemeExtension<PahlevaniColors> {
   final List<BoxShadow> shadowCard;
   final List<BoxShadow> shadowPop;
 
-  // ── Light (warm cream) ──────────────────────────────────────────────────
+  // The pre-Kashi screens (session list, editor, path, history, auth,
+  // dialogs) still read these tokens; since 2026-10-06 they carry the Kashi
+  // palette so those screens match the redesign until each is rebuilt:
+  // plaster/neutral grounds, lajvard ink, azure for actions, yellow for
+  // counted reps, turquoise for growth.
+
+  // ── Light (plaster) ─────────────────────────────────────────────────────
   static const light = PahlevaniColors(
-    bg: Color(0xFFF4EDE0),
-    surface2: Color(0xFFF6EEDE),
-    surface3: Color(0xFFEFE4CF),
-    onMuted: Color(0xFF897C64),
-    onFaint: Color(0xFFB4A890),
-    border: Color(0xFFE6D9C0),
-    borderSoft: Color(0xFFEFE6D4),
-    primaryBg: Color(0xFFF3E6CB),
-    secondaryBg: Color(0xFFF6DCCF),
-    teal: Color(0xFF2F7D72),
-    tealBg: Color(0xFFD8ECE6),
-    repDefault: Color(0xFF2F7D52),
-    repDefaultBg: Color(0xFFD9ECDF),
-    repCustom: Color(0xFFC2641F),
-    repCustomBg: Color(0xFFF6E3CD),
-    scrim: Color(0x8C1E160C),
+    bg: KashiPalette.plaster200,
+    surface2: KashiPalette.plaster100,
+    surface3: KashiPalette.plaster300,
+    onMuted: Color(0xFF56648F),
+    onFaint: Color(0xFF8A93B0),
+    border: KashiPalette.plasterLine,
+    borderSoft: KashiPalette.plaster300,
+    primaryBg: Color(0xFFDCE3FF),
+    secondaryBg: KashiPalette.plaster300,
+    teal: KashiPalette.turquoiseInk,
+    tealBg: Color(0xFFD5ECEA),
+    repDefault: KashiPalette.lajvard700,
+    repDefaultBg: KashiPalette.yellow400,
+    repCustom: KashiPalette.azure500,
+    repCustomBg: Color(0xFFDCE3FF),
+    scrim: Color(0x9E060C1E),
     shadowCard: [
-      BoxShadow(color: Color(0x0F3C2D14), blurRadius: 2, offset: Offset(0, 1)),
-      BoxShadow(color: Color(0x123C2D14), blurRadius: 18, offset: Offset(0, 6)),
+      BoxShadow(color: Color(0x0F0B1638), blurRadius: 2, offset: Offset(0, 1)),
+      BoxShadow(color: Color(0x120B1638), blurRadius: 18, offset: Offset(0, 6)),
     ],
     shadowPop: [
-      BoxShadow(color: Color(0x2E281C0C), blurRadius: 30, offset: Offset(0, 8)),
+      BoxShadow(color: Color(0x2E0B1638), blurRadius: 30, offset: Offset(0, 8)),
     ],
   );
 
-  // ── Dark (deep warm) — DEFAULT ──────────────────────────────────────────
+  // ── Dark (neutral) ──────────────────────────────────────────────────────
   static const dark = PahlevaniColors(
-    bg: Color(0xFF161109),
-    surface2: Color(0xFF2B2114),
-    surface3: Color(0xFF352915),
-    onMuted: Color(0xFFAC9D80),
-    onFaint: Color(0xFF6F6249),
-    border: Color(0xFF36291A),
-    borderSoft: Color(0xFF2A2013),
-    primaryBg: Color(0xFF3A2C14),
-    secondaryBg: Color(0xFF3D2316),
-    teal: Color(0xFF59AB9C),
-    tealBg: Color(0xFF163029),
-    repDefault: Color(0xFF62C486),
-    repDefaultBg: Color(0xFF16301F),
-    repCustom: Color(0xFFE9924A),
-    repCustomBg: Color(0xFF3A2814),
-    scrim: Color(0xA8080502),
+    bg: KashiPalette.neutralDark800,
+    surface2: KashiPalette.neutralDark700,
+    surface3: KashiPalette.neutralDark900,
+    onMuted: Color(0xFFA39B8F),
+    onFaint: Color(0xFF6E6A63),
+    border: KashiPalette.neutralDarkLine,
+    borderSoft: Color(0xFF2A2C30),
+    primaryBg: Color(0xFF1B2348),
+    secondaryBg: KashiPalette.neutralDark900,
+    teal: KashiPalette.aqua300,
+    tealBg: Color(0xFF12302F),
+    repDefault: KashiPalette.lajvard700,
+    repDefaultBg: KashiPalette.yellow400,
+    repCustom: KashiPalette.azure500,
+    repCustomBg: Color(0xFF1B2348),
+    scrim: Color(0x9E060C1E),
     shadowCard: [
       BoxShadow(color: Color(0x4D000000), blurRadius: 2, offset: Offset(0, 1)),
       BoxShadow(color: Color(0x57000000), blurRadius: 22, offset: Offset(0, 8)),

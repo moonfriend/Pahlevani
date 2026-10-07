@@ -207,8 +207,9 @@ class _LadderPickerState extends State<LadderPicker> {
                       ? Icons.check_circle_rounded
                       : Icons.circle_outlined,
                   size: 20,
+                  // Turquoise (the theme's secondary): growth in Kashi.
                   color: isChecked
-                      ? Colors.green
+                      ? colors.secondary
                       : (isActive
                           ? colors.onSurfaceVariant
                           : colors.outlineVariant),
