@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
@@ -111,5 +112,16 @@ void main() {
         footer: const Text('learnt toggle'));
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('learnt toggle'), findsOneWidget);
+  });
+
+  testWidgets('a move without a video or photo shows the illustration',
+      (tester) async {
+    await _open(tester, exercise: const Exercise(id: 1, name: 'Charkh'));
+    final assets = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((i) => i.image)
+        .whereType<AssetImage>()
+        .map((a) => a.assetName);
+    expect(assets, contains(KashiAssets.pahlevanMale));
   });
 }

@@ -5,6 +5,7 @@ import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
 import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -341,6 +342,20 @@ void main() {
     // Closed again, and paused — never resumed by a toggle.
     expect(find.text('Got it'), findsNothing);
     expect(find.byTooltip('Play'), findsOneWidget);
+  });
+
+  testWidgets('a move without a video or photo shows the illustration',
+      (tester) async {
+    // The seed exercises have no media at all.
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final assets = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((i) => i.image)
+        .whereType<AssetImage>()
+        .map((a) => a.assetName);
+    expect(assets, contains(KashiAssets.pahlevanMale));
   });
 
   testWidgets('a counted move shows its cues and counts star taps',

@@ -10,6 +10,7 @@ import '../exercise_image_provider.dart';
 import '../player/exercise_demo_video_player.dart';
 import 'kashi_action_button.dart';
 import 'kashi_labels.dart';
+import 'move_placeholder.dart';
 
 /// The move's learning card as a centred sheet over a session or the
 /// player: the video on top, the name with its reps, the points to pay
@@ -170,8 +171,10 @@ class _MediaHeader extends StatelessWidget {
               Image(
                 image: ExerciseImageProvider(still),
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
+                errorBuilder: (_, __, ___) => const MovePlaceholder(),
+              )
+            else
+              const MovePlaceholder(),
             PositionedDirectional(
               top: 10,
               end: 10,

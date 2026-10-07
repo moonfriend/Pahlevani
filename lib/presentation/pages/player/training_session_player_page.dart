@@ -39,6 +39,7 @@ import 'package:pahlevani/core/theme/kashi/kashi_typography.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/widgets/kashi/learning_sheet.dart';
+import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
@@ -500,7 +501,10 @@ class _Stage extends StatelessWidget {
                   )
                 else if (hasPhoto || hasVideoPoster)
                   buildMediaImage(
-                      (hasPhoto ? track.media.src : track.media.poster)!),
+                      (hasPhoto ? track.media.src : track.media.poster)!)
+                else
+                  // No video or photo for this move yet.
+                  const MovePlaceholder(),
                 if (state.isPlaying)
                   const PositionedDirectional(
                       start: 10, bottom: 10, child: _AudioWave())
