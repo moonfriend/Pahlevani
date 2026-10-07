@@ -43,7 +43,8 @@ Future<void> openSessionPreview(
 /// What you are about to do, and with which morshed: the session's header
 /// with a framed still, the morshed dropdown, the move list (REPS marks a
 /// move a trainer flagged for counting; tapping a move opens its learning
-/// sheet), how to start (Learning by default, or Athlete) and Start.
+/// sheet), how to start (Educational = Learning mode, the default; or Only
+/// follow along = Athlete mode) and Start.
 ///
 /// Zoorkhaneh mode is not offered here; it lives in the session's own menu.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
@@ -145,8 +146,10 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
               children: [
                 KashiSegmented<PlayerMode>(
                   options: const [
-                    (PlayerMode.learning, 'Learning'),
-                    (PlayerMode.athlete, 'Athlete'),
+                    // Educational pauses before each move not yet learnt
+                    // (Learning mode); the other just plays along.
+                    (PlayerMode.learning, 'Educational'),
+                    (PlayerMode.athlete, 'Only follow along'),
                   ],
                   selected: _mode,
                   onSelected: (mode) => setState(() => _mode = mode),

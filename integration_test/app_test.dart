@@ -504,12 +504,12 @@ Future<void> openFirstSessionInAthleteMode(WidgetTester tester) async {
   await startFromPreviewInAthleteMode(tester);
 }
 
-// On the session preview: switch to Athlete (Learning is the default) and
+// On the session preview: switch to "Only follow along" (Athlete; the default is Educational) and
 // start.
 Future<void> startFromPreviewInAthleteMode(WidgetTester tester) async {
   expect(find.byType(SessionPreviewPage), findsOneWidget,
       reason: 'opening a session must show its preview first');
-  await tester.tap(find.text('Athlete'));
+  await tester.tap(find.text('Only follow along'));
   await tester.pump();
   await tester.tap(find.text('Start session'));
   // Cannot pumpAndSettle: the audio wave animates while playing.

@@ -60,6 +60,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   KashiSegmented<String>(
                     options: const [('en', 'English'), ('fa', 'فارسی')],
                     selected: 'en',
+                    // Not available until the translations exist.
+                    dimmed: const {'fa'},
                     onSelected: (value) {
                       if (value == 'fa') {
                         _comingSoon('فارسی arrives with the translations.');

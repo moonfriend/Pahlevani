@@ -148,6 +148,18 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
+  testWidgets('فارسی looks inactive until the translations exist',
+      (tester) async {
+    await _pump(tester);
+    final opacity = tester.widget<Opacity>(find
+        .ancestor(of: find.text('فارسی'), matching: find.byType(Opacity))
+        .first);
+    expect(opacity.opacity, lessThan(1));
+    expect(
+        find.ancestor(of: find.text('English'), matching: find.byType(Opacity)),
+        findsNothing);
+  });
+
   for (final size in const [Size(320, 568), Size(1440, 900)]) {
     testWidgets('lays out without overflow at $size', (tester) async {
       await _pump(tester, size: size, sessions: 3);

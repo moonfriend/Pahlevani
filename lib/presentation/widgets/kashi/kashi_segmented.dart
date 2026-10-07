@@ -11,6 +11,7 @@ class KashiSegmented<T> extends StatelessWidget {
     required this.options,
     required this.selected,
     required this.onSelected,
+    this.dimmed = const {},
   });
 
   /// (value, label) pairs, in display order.
@@ -19,6 +20,10 @@ class KashiSegmented<T> extends StatelessWidget {
 
   /// `null` disables the control.
   final ValueChanged<T>? onSelected;
+
+  /// Options shown greyed out as not available yet. They still respond to
+  /// a tap, so the screen can explain why.
+  final Set<T> dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +40,7 @@ class KashiSegmented<T> extends StatelessWidget {
                 child: _Option(
                   label: label,
                   isSelected: value == selected,
+                  dimmed: dimmed.contains(value),
                   onTap: onSelected == null ? null : () => onSelected!(value),
                   colors: colors,
                 ),
@@ -53,10 +59,12 @@ class _Option extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.colors,
+    this.dimmed = false,
   });
 
   final String label;
   final bool isSelected;
+  final bool dimmed;
   final VoidCallback? onTap;
   final KashiColors colors;
 
@@ -73,7 +81,7 @@ class _Option extends StatelessWidget {
           child: SizedBox(
             height: 44,
             child: Center(
-              child: Text(
+              child: _maybeDim(Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -84,11 +92,14 @@ class _Option extends StatelessWidget {
                           ? colors.textPrimary
                           : colors.textMuted,
                 ),
-              ),
+              )),
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _maybeDim(Widget child) =>
+      dimmed ? Opacity(opacity: .4, child: child) : child;
 }

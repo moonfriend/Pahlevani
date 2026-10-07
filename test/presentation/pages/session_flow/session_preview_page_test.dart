@@ -138,7 +138,8 @@ void main() {
     expect(find.text('Sirvan'), findsOneWidget);
   });
 
-  testWidgets('starts in Learning mode by default; Athlete when chosen',
+  testWidgets(
+      'starts Educational (Learning mode) by default; Only follow along = Athlete',
       (tester) async {
     final started = await _pump(tester);
 
@@ -146,7 +147,7 @@ void main() {
     await tester.pump();
     expect(started, [PlayerMode.learning]);
 
-    await tester.tap(find.text('Athlete'));
+    await tester.tap(find.text('Only follow along'));
     await tester.pump();
     await tester.tap(find.text('Start session'));
     await tester.pump();
