@@ -17,6 +17,8 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
+import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
@@ -32,6 +34,8 @@ import '../test/fakes/fake_audio_player_service.dart';
 import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
+import '../test/fakes/fake_learnt_exercises_repository.dart';
+import '../test/fakes/fake_training_history_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
 import '../test/fakes/fake_version_gate_repository.dart';
 import '../test/fakes/test_seed_data.dart';
@@ -82,6 +86,12 @@ void main() {
     // implementation is the correct desktop/test fallback.
     getIt.registerSingleton<PlayerNotificationService>(
         NoOpNotificationService());
+    // Player page reads both: Learnt toggle on the info page (player modes)
+    // and completed-session logging.
+    getIt.registerLazySingleton<LearntExercisesRepository>(
+        () => FakeLearntExercisesRepository());
+    getIt.registerLazySingleton<TrainingHistoryRepository>(
+        () => FakeTrainingHistoryRepository());
   });
 
   tearDownAll(() async => getIt.reset());
