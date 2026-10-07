@@ -97,6 +97,9 @@ class JustAudioPlayerService implements AudioPlayerService {
   Future<void> setLooping(bool loop) =>
       _player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
 
+  @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
+
   // _player is the singleton PahlevaniAudioHandler's player, not owned by
   // this wrapper — disposing it here would kill audio for every future
   // session. Stop playback instead; the player itself lives for the app's

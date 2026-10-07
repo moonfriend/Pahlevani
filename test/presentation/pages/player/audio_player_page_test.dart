@@ -344,6 +344,36 @@ void main() {
     expect(find.byTooltip('Play'), findsOneWidget);
   });
 
+  testWidgets('tapping the audio wave mutes; tapping again unmutes',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+
+    expect(_playerCubit(tester).state.isMuted, isTrue);
+    expect(find.byTooltip('Unmute'), findsOneWidget);
+    expect(find.byTooltip('Pause'), findsOneWidget,
+        reason: 'muting must not pause the session');
+
+    await tester.tap(find.byTooltip('Unmute'));
+    await tester.pump();
+    expect(_playerCubit(tester).state.isMuted, isFalse);
+  });
+
+  testWidgets('the muted sign stays visible while paused', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+
+    expect(find.byTooltip('Unmute'), findsOneWidget);
+  });
+
   testWidgets('a move without a video or photo shows the illustration',
       (tester) async {
     // The seed exercises have no media at all.

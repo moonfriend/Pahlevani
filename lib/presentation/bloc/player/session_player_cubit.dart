@@ -51,6 +51,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   /// Reps confirmed in the Rep log during this run, by move index.
   final Map<int, int> _loggedReps = {};
 
+  /// The user's mute choice, kept across moves for this play-through.
+  bool _muted = false;
+
   late final StreamSubscription<MoveEvent> _moveEventSub;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
@@ -209,6 +212,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
       tracks: moves,
       playingIndex: index,
       isPlaying: play,
+      isMuted: _muted,
       waitingForGo: !play && !_startsOnItsOwn(index),
     ));
     return _load(index, play: play);
@@ -268,6 +272,14 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
       case FinishSession():
         _finish();
     }
+  }
+
+  /// Silences or restores the morshed's audio; playback keeps running.
+  Future<void> toggleMute() async {
+    _muted = !_muted;
+    await _timeline.setMuted(_muted);
+    final s = state;
+    if (s is PlayerReady && !isClosed) emit(s.copyWith(isMuted: _muted));
   }
 
   /// A star tap on a counted move: one more rep counted by the user.

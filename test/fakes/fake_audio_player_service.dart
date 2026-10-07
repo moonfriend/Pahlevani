@@ -15,6 +15,7 @@ class FakeAudioPlayerService implements AudioPlayerService {
   bool paused = false;
   bool resumed = false;
   bool looping = false;
+  double volume = 1;
   bool disposed = false;
   Duration? seekedTo;
   int playCallCount = 0;
@@ -114,6 +115,11 @@ class FakeAudioPlayerService implements AudioPlayerService {
   @override
   Future<void> setLooping(bool loop) async {
     looping = loop;
+  }
+
+  @override
+  Future<void> setVolume(double v) async {
+    volume = v;
   }
 
   @override

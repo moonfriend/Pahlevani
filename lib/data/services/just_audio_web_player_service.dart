@@ -75,6 +75,9 @@ class JustAudioWebPlayerService implements AudioPlayerService {
       _player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
 
   @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
+
+  @override
   Future<void> dispose() => _player.dispose();
 
   /// True when [path] is a remote URL (dispatched via `setUrl`) rather than

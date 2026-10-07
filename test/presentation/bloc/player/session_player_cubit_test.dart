@@ -2012,4 +2012,71 @@ void main() {
       expect(audio.resumed, isFalse);
     });
   });
+
+  // ---------- mute ----------
+
+  group('mute', () {
+    SessionPlayerCubit build(FakeAudioPlayerService audio) => _makeCubit(
+          _snapshotWithItems(
+            _session(1),
+            [
+              _item(sessionId: 1, exerciseId: 10, position: 0),
+              _item(sessionId: 1, exerciseId: 11, position: 1),
+            ],
+            [_exercise(10), _exercise(11)],
+          ),
+          audioService: audio,
+        );
+
+    test('a player starts unmuted, even on an engine left muted', () async {
+      final audio = FakeAudioPlayerService()..volume = 0;
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      expect(audio.volume, 1);
+      expect(cubit.state.isMuted, isFalse);
+    });
+
+    test('toggleMute silences the morshed and keeps playing', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      await cubit.toggleMute();
+
+      expect(audio.volume, 0);
+      expect(cubit.state.isMuted, isTrue);
+      expect(cubit.state.isPlaying, isTrue);
+    });
+
+    test('mute stays on for the next move', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+      await cubit.toggleMute();
+
+      cubit.next();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isMuted, isTrue);
+      expect(audio.volume, 0);
+    });
+
+    test('toggling again restores the sound', () async {
+      final audio = FakeAudioPlayerService();
+      final cubit = build(audio);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      await cubit.toggleMute();
+      await cubit.toggleMute();
+
+      expect(audio.volume, 1);
+      expect(cubit.state.isMuted, isFalse);
+    });
+  });
 }

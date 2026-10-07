@@ -152,6 +152,11 @@ class MoveTimeline {
   int _generation = 0;
   bool _closed = false;
 
+  /// 0 while muted. Re-applied on every load, and reset to full for every
+  /// new timeline: on native platforms the engine is shared app-wide, so a
+  /// mute must never leak into the next session.
+  double _volume = 1;
+
   MoveTimeline(this._engine) {
     _positionSub = _engine.onPositionChanged.listen(_onEnginePosition);
     _durationSub = _engine.onDurationChanged.listen(_onEngineDuration);
@@ -159,6 +164,7 @@ class MoveTimeline {
     // engine reports stopped→playing on every loop, which would fight the
     // session's own play/pause intent.
     unawaited(_engine.setLooping(true));
+    unawaited(_engine.setVolume(_volume));
   }
 
   Stream<MoveProgress> get progress => _progress.stream;
@@ -175,6 +181,7 @@ class MoveTimeline {
     bool superseded() => _closed || generation != _generation;
     _startNewMove(spec);
     _playing = play;
+    unawaited(_engine.setVolume(_volume));
     try {
       if (spec.audioPath.isEmpty) {
         throw StateError('Audio source path is empty');
@@ -198,6 +205,12 @@ class MoveTimeline {
       await _engine.stop();
       rethrow;
     }
+  }
+
+  /// Silences (or restores) the morshed's audio; playback keeps running.
+  Future<void> setMuted(bool muted) {
+    _volume = muted ? 0 : 1;
+    return _engine.setVolume(_volume);
   }
 
   /// Continues the current move after a pause.

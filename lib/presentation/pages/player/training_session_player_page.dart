@@ -505,15 +505,24 @@ class _Stage extends StatelessWidget {
                 else
                   // No video or photo for this move yet.
                   const MovePlaceholder(),
-                if (state.isPlaying)
-                  const PositionedDirectional(
-                      start: 10, bottom: 10, child: _AudioWave())
-                else
+                if (!state.isPlaying)
                   const ColoredBox(
                     color: Color(0x660B1638),
                     child: Center(
                       child:
                           Icon(Icons.play_arrow, size: 40, color: Colors.white),
+                    ),
+                  ),
+                // The morshed's wave while playing; tap it to mute. Muted,
+                // it stays visible (red, struck through) even when paused.
+                if (state.isPlaying || state.isMuted)
+                  PositionedDirectional(
+                    start: 10,
+                    bottom: 10,
+                    child: _AudioWave(
+                      muted: state.isMuted,
+                      animate: state.isPlaying && !state.isMuted,
+                      onTap: cubit.toggleMute,
                     ),
                   ),
               ]),
@@ -1033,9 +1042,15 @@ class _CircleButton extends StatelessWidget {
   }
 }
 
-/// The yellow audio wave chip on the video while the morshed plays.
+/// The audio wave chip on the video: yellow bars moving with the morshed;
+/// a tap mutes. Muted, the bars turn red and still, struck through.
 class _AudioWave extends StatefulWidget {
-  const _AudioWave();
+  const _AudioWave(
+      {required this.muted, required this.animate, required this.onTap});
+
+  final bool muted;
+  final bool animate;
+  final VoidCallback onTap;
 
   @override
   State<_AudioWave> createState() => _AudioWaveState();
@@ -1044,10 +1059,30 @@ class _AudioWave extends StatefulWidget {
 class _AudioWaveState extends State<_AudioWave>
     with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1200))
-    ..repeat();
+      vsync: this, duration: const Duration(milliseconds: 1200));
 
   static const _bars = 12;
+  static const _muteRed = Color(0xFFE5484D);
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_AudioWave old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.animate && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.animate && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
 
   @override
   void dispose() {
@@ -1057,38 +1092,77 @@ class _AudioWaveState extends State<_AudioWave>
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xBF0B1638),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: SizedBox(
-          height: 18,
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (_, __) => Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var i = 0; i < _bars; i++) ...[
-                  if (i > 0) const SizedBox(width: 2),
-                  SizedBox(
-                    width: 2,
-                    height: 4 +
-                        14 *
-                            (0.5 +
-                                0.5 *
-                                    math.sin(2 * math.pi * _controller.value +
-                                        i * 0.9)),
-                    child: const ColoredBox(color: KashiPalette.yellow400),
-                  ),
-                ],
-              ],
+    final color = widget.muted ? _muteRed : KashiPalette.yellow400;
+    final bars = AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) => Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < _bars; i++) ...[
+            if (i > 0) const SizedBox(width: 2),
+            SizedBox(
+              width: 2,
+              height: 4 +
+                  14 *
+                      (0.5 +
+                          0.5 *
+                              math.sin(
+                                  2 * math.pi * _controller.value + i * 0.9)),
+              child: ColoredBox(color: color),
+            ),
+          ],
+        ],
+      ),
+    );
+    return Tooltip(
+      message: widget.muted ? 'Unmute' : 'Mute',
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          // A 44px-tall hit target around the small chip.
+          padding: const EdgeInsets.only(top: 18),
+          child: ColoredBox(
+            color: const Color(0xBF0B1638),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: SizedBox(
+                height: 18,
+                child: widget.muted
+                    ? CustomPaint(
+                        foregroundPainter: const _StrikePainter(_muteRed),
+                        child: bars)
+                    : bars,
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// The "sound off" line drawn over the muted wave.
+class _StrikePainter extends CustomPainter {
+  const _StrikePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawLine(
+      Offset(0, size.height),
+      Offset(size.width, 0),
+      Paint()
+        ..color = color
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_StrikePainter old) => old.color != color;
 }
 
 /// Shown instead of the player when some of the session's audio isn't on the

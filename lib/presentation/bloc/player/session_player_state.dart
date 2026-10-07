@@ -13,6 +13,7 @@ sealed class SessionPlayerState extends Equatable {
     this.tracks = const [],
     this.playingIndex = 0,
     this.isPlaying = false,
+    this.isMuted = false,
   });
 
   final List<TrainingItemWithAudio> tracks;
@@ -20,6 +21,9 @@ sealed class SessionPlayerState extends Equatable {
 
   /// The user's intent; the only authority on play/pause.
   final bool isPlaying;
+
+  /// The morshed's audio is silenced (playback keeps running).
+  final bool isMuted;
 
   TrainingItemWithAudio? get currentTrack =>
       playingIndex >= 0 && playingIndex < tracks.length
@@ -37,7 +41,7 @@ sealed class SessionPlayerState extends Equatable {
           : null;
 
   @override
-  List<Object?> get props => [tracks, playingIndex, isPlaying];
+  List<Object?> get props => [tracks, playingIndex, isPlaying, isMuted];
 }
 
 /// Building the session's moves.
@@ -58,6 +62,7 @@ final class PlayerReady extends SessionPlayerState {
     required super.tracks,
     required super.playingIndex,
     super.isPlaying,
+    super.isMuted,
     this.waitingForGo = false,
     this.starTaps,
   });
@@ -71,11 +76,16 @@ final class PlayerReady extends SessionPlayerState {
   /// audio's count.
   final int? starTaps;
 
-  PlayerReady copyWith({bool? isPlaying, bool? waitingForGo, int? starTaps}) =>
+  PlayerReady copyWith(
+          {bool? isPlaying,
+          bool? isMuted,
+          bool? waitingForGo,
+          int? starTaps}) =>
       PlayerReady(
         tracks: tracks,
         playingIndex: playingIndex,
         isPlaying: isPlaying ?? this.isPlaying,
+        isMuted: isMuted ?? this.isMuted,
         waitingForGo: waitingForGo ?? this.waitingForGo,
         starTaps: starTaps ?? this.starTaps,
       );
