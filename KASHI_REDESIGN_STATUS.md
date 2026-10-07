@@ -27,6 +27,18 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
     `SessionPlayerCubit` (`PlayerMode`).
 - Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
 
+## 2026-10-07: fixes from the first device look
+- Rep log + KB sizes "missing": the app ran against **production** (`env/supabase.active.env` was
+  the prod file). Staging has 0040–0042, media sizes and 3 counted moves (Morning Ritual).
+- Calendar: tap a day → its sessions, times and reps (`pages/progress/day_detail.dart`).
+- Video progress bar on tap (`VideoScrubBar`) in the player (tap no longer pauses) and the sheet.
+- `MovePlaceholder` (pahlevan illustration) for moves without video/photo.
+- Mute: tap the wave (`AudioPlayerService.setVolume`, `SessionPlayerCubit.toggleMute`).
+- Toggle labels: Educational / Only follow along. Profile فارسی greyed (`KashiSegmented.dimmed`).
+- `chooseMorshed()` behind every morshed picker: recordings download + video-sync heads-up.
+- Old screens recoloured via the old theme tokens (colours only).
+- Unused, still in the old style: `widgets/playlist_card.dart` and the 4 kept player widgets.
+
 ## 2026-10-06: session flow done (A1–A4)
 Built on the refactored player (`SessionPlayerCubit`); the player and session list are now ours.
 - **Move content (migration `0042_movement_info_learning_content.sql`):** `movement_info.cues` (≤3),
