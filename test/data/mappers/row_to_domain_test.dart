@@ -77,7 +77,8 @@ void main() {
       expect(ex.repetitionsDefault, 5);
     });
 
-    test('audioFileUrl is always null from mapExercise (resolved later, '
+    test(
+        'audioFileUrl is always null from mapExercise (resolved later, '
         'at playback time, by _withResolvedAudio)', () {
       final ex = mapExercise(baseRow());
       expect(ex.audioFileUrl, isNull);

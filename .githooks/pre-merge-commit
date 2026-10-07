@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-merge-commit hook. Git runs this before creating a merge commit, which
+# the pre-commit hook does not cover — merges were how format drift reached
+# main. Runs the same format + analyze checks as pre-commit.
+exec "$(dirname "$0")/pre-commit"
