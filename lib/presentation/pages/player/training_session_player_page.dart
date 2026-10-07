@@ -42,6 +42,7 @@ import 'package:pahlevani/presentation/widgets/kashi/learning_sheet.dart';
 import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 
@@ -438,13 +439,55 @@ double maxStageHeight(double windowHeight) => math.max(
           windowHeight - _fixedControlsHeight),
     );
 
-class _Stage extends StatelessWidget {
+class _Stage extends StatefulWidget {
   const _Stage({required this.state, required this.cubit});
   final SessionPlayerState state;
   final SessionPlayerCubit cubit;
 
   @override
+  State<_Stage> createState() => _StageState();
+}
+
+class _StageState extends State<_Stage> {
+  /// Tapping the video shows its progress bar for a while; play/pause is
+  /// the transport's job.
+  bool _showProgress = false;
+  Timer? _hideProgress;
+
+  static const _progressVisibleFor = Duration(seconds: 3);
+
+  void _toggleProgress() {
+    if (_showProgress) {
+      _hideProgress?.cancel();
+      setState(() => _showProgress = false);
+    } else {
+      setState(() => _showProgress = true);
+      _scheduleHide();
+    }
+  }
+
+  void _scheduleHide() {
+    _hideProgress?.cancel();
+    _hideProgress = Timer(_progressVisibleFor, () {
+      if (mounted) setState(() => _showProgress = false);
+    });
+  }
+
+  void _seek(Duration position) {
+    unawaited(widget.cubit.seekTo(position));
+    _scheduleHide();
+  }
+
+  @override
+  void dispose() {
+    _hideProgress?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
+    final cubit = widget.cubit;
     final track = state.currentTrack;
     final hasPhoto = track != null &&
         track.media.type == 'photo' &&
@@ -467,9 +510,9 @@ class _Stage extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: state.isPlaying ? 'Pause' : 'Play',
+      label: 'Show progress',
       child: GestureDetector(
-        onTap: cubit.togglePlay,
+        onTap: _toggleProgress,
         child: ConstrainedBox(
           // In wide, short windows (desktop, landscape) a full-width 16:9
           // stage is taller than the screen can spare; cap its height (see
@@ -515,10 +558,42 @@ class _Stage extends StatelessWidget {
                   ),
                 // The morshed's wave while playing; tap it to mute. Muted,
                 // it stays visible (red, struck through) even when paused.
+                if (_showProgress)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x000B1638), Color(0xCC0B1638)],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 6),
+                        // Its own builder: position readings rebuild only
+                        // the bar, never the stage with the video in it.
+                        child: BlocBuilder<MoveProgressCubit, MoveProgress>(
+                          buildWhen: (a, b) =>
+                              a.position.inSeconds != b.position.inSeconds ||
+                              a.length != b.length,
+                          builder: (context, progress) => VideoScrubBar(
+                            position: progress.position,
+                            duration: progress.length,
+                            onSeek: _seek,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (state.isPlaying || state.isMuted)
                   PositionedDirectional(
                     start: 10,
-                    bottom: 10,
+                    // Moves up out of the progress bar's way.
+                    top: _showProgress ? 10 : null,
+                    bottom: _showProgress ? null : 10,
                     child: _AudioWave(
                       muted: state.isMuted,
                       animate: state.isPlaying && !state.isMuted,

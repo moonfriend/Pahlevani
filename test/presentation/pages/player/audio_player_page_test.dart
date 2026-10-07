@@ -27,6 +27,7 @@ import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -342,6 +343,62 @@ void main() {
     // Closed again, and paused — never resumed by a toggle.
     expect(find.text('Got it'), findsNothing);
     expect(find.byTooltip('Play'), findsOneWidget);
+  });
+
+  group('video progress bar', () {
+    Future<FakeAudioPlayerService> open(WidgetTester tester) async {
+      late FakeAudioPlayerService audio;
+      await getIt.reset();
+      _registerFakes(buildTestSnapshot());
+      getIt.unregister<AudioPlayerService>();
+      getIt.registerFactory<AudioPlayerService>(
+          () => audio = FakeAudioPlayerService());
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      audio.emitDuration(const Duration(seconds: 30));
+      await tester.pump();
+      return audio;
+    }
+
+    Finder stage() => find.bySemanticsLabel('Show progress');
+
+    testWidgets('tapping the video shows the bar and keeps playing',
+        (tester) async {
+      await open(tester);
+      expect(find.byType(VideoScrubBar), findsNothing);
+
+      await tester.tap(stage());
+      await tester.pump();
+
+      expect(find.byType(VideoScrubBar), findsOneWidget);
+      expect(find.byTooltip('Pause'), findsOneWidget,
+          reason: 'tapping the video no longer pauses');
+    });
+
+    testWidgets('the bar hides itself after a few seconds', (tester) async {
+      await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.byType(VideoScrubBar), findsNothing);
+    });
+
+    testWidgets('tapping the bar skips within the move', (tester) async {
+      final audio = await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+
+      final track = tester.getRect(find.byKey(VideoScrubBar.trackKey));
+      await tester
+          .tapAt(Offset(track.left + track.width * .5, track.center.dy));
+      await tester.pump();
+
+      expect(audio.seekedTo, isNotNull);
+      expect(audio.seekedTo!.inSeconds, closeTo(15, 1),
+          reason: 'half of a 30s move');
+    });
   });
 
   testWidgets('tapping the audio wave mutes; tapping again unmutes',

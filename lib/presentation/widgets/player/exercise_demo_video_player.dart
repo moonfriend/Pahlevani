@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import 'kashi/video_scrub_bar.dart';
+
 /// Standalone demonstration-video player, shared by the ⓘ info page and
 /// Learning Mode's pre-track prompt — plays with its own original audio and
 /// exposes a visible play/pause control, since in both places it's the only
 /// thing making sound (the underlying track audio hasn't started yet).
 /// Tap-to-play rather than autoplay, so opening either surface never starts
-/// audio the user didn't ask for.
+/// audio the user didn't ask for. A tap also shows a progress bar for a few
+/// seconds to skip through the video.
 class ExerciseDemoVideoPlayer extends StatefulWidget {
   const ExerciseDemoVideoPlayer({super.key, required this.src});
   final String src;
@@ -22,6 +26,11 @@ class ExerciseDemoVideoPlayer extends StatefulWidget {
 class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
   late final VideoPlayerController _controller;
   bool _ready = false;
+
+  /// A tap shows the progress bar for a while, so the user can skip.
+  bool _showProgress = false;
+  Timer? _hideProgress;
+  static const _progressVisibleFor = Duration(seconds: 3);
 
   @override
   void initState() {
@@ -58,10 +67,25 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
     } else {
       _controller.play();
     }
+    _revealProgress();
+  }
+
+  void _revealProgress() {
+    setState(() => _showProgress = true);
+    _hideProgress?.cancel();
+    _hideProgress = Timer(_progressVisibleFor, () {
+      if (mounted) setState(() => _showProgress = false);
+    });
+  }
+
+  void _seek(Duration position) {
+    _controller.seekTo(position);
+    _revealProgress();
   }
 
   @override
   void dispose() {
+    _hideProgress?.cancel();
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
@@ -104,6 +128,29 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                             : Icons.play_arrow_rounded,
                         color: Colors.white,
                         size: 32),
+                  ),
+                ),
+              if (_ready && _showProgress)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x000B1638), Color(0xCC0B1638)],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 16, 14, 6),
+                      child: VideoScrubBar(
+                        position: _controller.value.position,
+                        duration: _controller.value.duration,
+                        onSeek: _seek,
+                      ),
+                    ),
                   ),
                 ),
             ],
