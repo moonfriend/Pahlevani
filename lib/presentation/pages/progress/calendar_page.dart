@@ -5,9 +5,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
+import '../../../domain/entities/tracking/session_completion_record.dart';
+import '../../../domain/usecases/tracking/training_history_aggregations.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
 import 'calendar_month.dart';
+import 'day_detail.dart';
 import 'month_navigation.dart';
 
 /// Each day is one cell of the splash wall; a trained day gets the yellow
@@ -30,9 +33,11 @@ class _CalendarPageState extends State<CalendarPage>
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
     final state = context.watch<TrainingHistoryCubit>().state;
-    final completions = state is TrainingHistoryLoaded
-        ? state.completions.map((c) => c.completedAt).toList()
-        : const <DateTime>[];
+    final records = state is TrainingHistoryLoaded
+        ? state.completions
+        : const <SessionCompletionRecord>[];
+    final completions = records.map((c) => c.completedAt).toList();
+    final selected = selectedDate;
 
     return Scaffold(
       backgroundColor: colors.ground,
@@ -79,8 +84,18 @@ class _CalendarPageState extends State<CalendarPage>
                       trainedDays: completions.toSet()),
                   onPrevious: previousMonth(completions),
                   onNext: nextMonth(completions),
+                  selectedDay: selectedDay,
+                  onDayTap: selectDay,
                 ),
-                const SizedBox(height: 14),
+                if (selected != null) ...[
+                  const SizedBox(height: 18),
+                  DayDetail(
+                    date: selected,
+                    records:
+                        groupCompletionsByDay(records)[selected] ?? const [],
+                  ),
+                ],
+                const SizedBox(height: 18),
                 Text(
                   'Train every day and the month becomes the tile wall from '
                   'the splash.',

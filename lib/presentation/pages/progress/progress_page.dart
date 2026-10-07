@@ -13,6 +13,7 @@ import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/shamseh.dart';
 import 'calendar_month.dart';
+import 'day_detail.dart';
 import 'month_navigation.dart';
 
 enum _View { shamseh, calendar }
@@ -115,8 +116,18 @@ class _ProgressPageState extends State<ProgressPage>
                                 trainedDays: completions.toSet()),
                             onPrevious: previousMonth(completions),
                             onNext: nextMonth(completions),
+                            selectedDay: selectedDay,
+                            onDayTap: selectDay,
                           ),
                   ),
+                  if (!isShamseh && selectedDate != null) ...[
+                    const SizedBox(height: 18),
+                    DayDetail(
+                      date: selectedDate!,
+                      records: groupCompletionsByDay(records)[selectedDate] ??
+                          const [],
+                    ),
+                  ],
                   if (isShamseh) ...[
                     const SizedBox(height: 10),
                     _RingLegend(tilesLaid: records.length),

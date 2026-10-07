@@ -24,6 +24,8 @@ class KashiMonthCalendar extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.tileSize = 46,
+    this.selectedDay,
+    this.onDayTap,
   });
 
   final DateTime month;
@@ -33,6 +35,12 @@ class KashiMonthCalendar extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final double tileSize;
+
+  /// The highlighted day of [month], if any.
+  final int? selectedDay;
+
+  /// A tap on a day of [month] (not on the padding days around it).
+  final ValueChanged<int>? onDayTap;
 
   static const _weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -87,9 +95,7 @@ class KashiMonthCalendar extends StatelessWidget {
             ),
             Wrap(
               children: [
-                for (final cell in cells)
-                  KashiDayTile(
-                      day: cell.day, state: cell.state, size: tileSize),
+                for (final cell in cells) _tile(cell, colors),
               ],
             ),
             const SizedBox(height: 14),
@@ -105,6 +111,26 @@ class KashiMonthCalendar extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(CalendarCell cell, KashiColors colors) {
+    final tile = KashiDayTile(day: cell.day, state: cell.state, size: tileSize);
+    final day = cell.day;
+    if (day == null || onDayTap == null) return tile;
+    return Semantics(
+      button: true,
+      selected: day == selectedDay,
+      child: GestureDetector(
+        onTap: () => onDayTap!(day),
+        child: Container(
+          foregroundDecoration: day == selectedDay
+              ? BoxDecoration(
+                  border: Border.all(color: colors.action, width: 2))
+              : null,
+          child: tile,
         ),
       ),
     );

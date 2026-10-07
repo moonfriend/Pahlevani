@@ -101,6 +101,20 @@ void main() {
       expect(find.text('Your shamseh'), findsOneWidget);
     });
 
+    testWidgets('in the calendar view, tapping a day shows what was done',
+        (tester) async {
+      final cubit = await _cubitWith(tester, records);
+      await _pump(tester, cubit, ProgressPage(now: () => _today));
+      await tester.tap(find.byTooltip('Show calendar'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('21'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Monday 21 September'), findsOneWidget);
+      expect(find.text('Full Pahlevani'), findsOneWidget);
+    });
+
     testWidgets('no history yet: empty shamseh and a friendly hint',
         (tester) async {
       final cubit = await _cubitWith(tester, const []);
