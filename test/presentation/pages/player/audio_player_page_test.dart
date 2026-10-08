@@ -375,6 +375,39 @@ void main() {
           reason: 'tapping the video no longer pauses');
     });
 
+    testWidgets(
+        'the first tap shows a pause button on the video; it pauses, then '
+        'plays again', (tester) async {
+      await open(tester);
+      expect(find.bySemanticsLabel('Pause video'), findsNothing);
+
+      await tester.tap(stage());
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Pause video'));
+      await tester.pump();
+
+      expect(_playerCubit(tester).state.isPlaying, isFalse);
+      expect(find.byType(VideoScrubBar), findsOneWidget,
+          reason: 'paused, the controls stay up');
+
+      await tester.tap(find.bySemanticsLabel('Play video'));
+      await tester.pump();
+      expect(_playerCubit(tester).state.isPlaying, isTrue);
+    });
+
+    testWidgets('while paused the controls do not hide', (tester) async {
+      await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Pause video'));
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 5));
+
+      expect(find.bySemanticsLabel('Play video'), findsOneWidget);
+      expect(find.byType(VideoScrubBar), findsOneWidget);
+    });
+
     testWidgets('the bar hides itself after a few seconds', (tester) async {
       await open(tester);
       await tester.tap(stage());

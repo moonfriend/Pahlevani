@@ -473,6 +473,14 @@ class _StageState extends State<_Stage> {
     });
   }
 
+  /// The video's own pause/play button; while playing, the controls then
+  /// hide again after a while.
+  void _togglePlay() {
+    widget.cubit.togglePlay();
+    setState(() => _showProgress = true);
+    _scheduleHide();
+  }
+
   void _seek(Duration position) {
     unawaited(widget.cubit.seekTo(position));
     _scheduleHide();
@@ -489,6 +497,7 @@ class _StageState extends State<_Stage> {
     final state = widget.state;
     final cubit = widget.cubit;
     final track = state.currentTrack;
+    final controlsVisible = _showProgress || !state.isPlaying;
     final hasPhoto = track != null &&
         track.media.type == 'photo' &&
         track.media.src != null &&
@@ -548,17 +557,38 @@ class _StageState extends State<_Stage> {
                 else
                   // No video or photo for this move yet.
                   const MovePlaceholder(),
-                if (!state.isPlaying)
-                  const ColoredBox(
-                    color: Color(0x660B1638),
+                // Controls: a tap on the video shows them for a while;
+                // while paused they stay up.
+                if (controlsVisible)
+                  ColoredBox(
+                    color: const Color(0x660B1638),
                     child: Center(
-                      child:
-                          Icon(Icons.play_arrow, size: 40, color: Colors.white),
+                      child: Semantics(
+                        button: true,
+                        label: state.isPlaying ? 'Pause video' : 'Play video',
+                        child: Material(
+                          color: const Color(0x990B1638),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: _togglePlay,
+                            child: SizedBox.square(
+                              dimension: 56,
+                              child: Icon(
+                                  state.isPlaying
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  size: 32,
+                                  color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 // The morshed's wave while playing; tap it to mute. Muted,
                 // it stays visible (red, struck through) even when paused.
-                if (_showProgress)
+                if (controlsVisible)
                   Positioned(
                     left: 0,
                     right: 0,
@@ -592,8 +622,8 @@ class _StageState extends State<_Stage> {
                   PositionedDirectional(
                     start: 10,
                     // Moves up out of the progress bar's way.
-                    top: _showProgress ? 10 : null,
-                    bottom: _showProgress ? null : 10,
+                    top: controlsVisible ? 10 : null,
+                    bottom: controlsVisible ? null : 10,
                     child: _AudioWave(
                       muted: state.isMuted,
                       animate: state.isPlaying && !state.isMuted,
