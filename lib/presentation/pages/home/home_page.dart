@@ -19,6 +19,7 @@ import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_rep_tile.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/shamseh.dart';
+import '../../widgets/kashi/swipe_scroll_behavior.dart';
 
 /// A session as the Today card shows it.
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
@@ -251,6 +252,7 @@ class _TodayCardState extends State<_TodayCard> {
             : Stack(
                 children: [
                   PageView.builder(
+                    scrollBehavior: const SwipeScrollBehavior(),
                     controller: _pages,
                     itemCount: sessions.length,
                     onPageChanged: (i) => setState(() => _index = i),

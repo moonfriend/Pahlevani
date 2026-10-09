@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -149,6 +150,14 @@ void main() {
 
       await tester.tap(find.text('Start'));
       expect(calls.opened.single.id, 2);
+    });
+
+    testWidgets('a mouse drag swipes too (desktop and web)', (tester) async {
+      await _pump(tester);
+      await tester.drag(find.text('Session 1'), const Offset(-300, 0),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(find.text('SESSION 2 OF 3'), findsOneWidget);
     });
 
     testWidgets('shows at most five sessions', (tester) async {

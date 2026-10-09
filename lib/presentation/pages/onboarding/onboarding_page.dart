@@ -9,6 +9,7 @@ import '../../../domain/entities/onboarding/onboarding_card.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/khatam_window.dart';
 import '../../widgets/kashi/shamseh.dart';
+import '../../widgets/kashi/swipe_scroll_behavior.dart';
 
 /// The first-open cards (morshed, counting, shamseh by default) — no sign-up
 /// and no fitness questions. The cards come from the admin panel, so there
@@ -118,6 +119,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                   Expanded(
                     child: PageView.builder(
+                      scrollBehavior: const SwipeScrollBehavior(),
                       controller: _pages,
                       itemCount: _cards.length,
                       onPageChanged: (i) => setState(() => _index = i),
