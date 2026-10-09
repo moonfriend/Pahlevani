@@ -45,6 +45,7 @@ import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dar
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
+import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -323,102 +324,128 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         BlocProvider.value(value: _cubit),
         BlocProvider.value(value: _progress),
       ],
-      child: Scaffold(
-        // The player is a lajvard scene, the same in both themes.
-        backgroundColor: KashiPalette.lajvard900,
-        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
-          // A restart (see _restartPlayer) rebuilds the whole player subtree.
-          key: ValueKey(_playerGeneration),
-          listenWhen: (prev, cur) =>
-              prev.playingIndex != cur.playingIndex ||
-              (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (prev is! PlayerFinished && cur is PlayerFinished) ||
-              (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
-          listener: (context, state) {
-            if (state is PlayerLoggingReps) {
-              unawaited(_showRepLog(context, state));
-              return;
-            }
-            if (state is PlayerFinished) {
-              unawaited(_handleSessionFinished(context));
-            }
-            if (state.tracks.isNotEmpty &&
-                state is! PlayerFinished &&
-                _cubit.shouldPromptLearningMode) {
-              final exercise = _cubit.exerciseAt(state.playingIndex);
-              if (exercise != null) {
-                unawaited(
-                    _promptLearningMode(context, state.playingIndex, exercise));
-              }
-            }
-            // Precache each image URL at most once per player session.
-            // Previously this looped all tracks on every index change, causing
-            // repeated Supabase egress when the in-memory cache was full.
-            for (final track in state.tracks) {
-              final src = track.media.src;
-              if (track.media.type == 'photo' &&
-                  src != null &&
-                  src.isNotEmpty &&
-                  !src.startsWith('/') &&
-                  _precachedUrls.add(src)) {
-                precacheImage(ExerciseImageProvider(src), context,
-                    onError: (_, __) {});
-              }
-            }
-          },
-          builder: (context, state) {
-            if (state is PlayerLoading) {
-              return const Center(
-                  child: CircularProgressIndicator(color: _Scene.accent));
-            }
-            if (state is PlayerNeedsDownload) {
-              return _NeedsDownload(
-                topBar: _TopBar(
-                  state: state,
-                  morshedName: _morshedName,
-                  onSelectMove: null,
-                  onEdit: () => _openEdit(context),
-                ),
-                onDownload: () => _download(context),
-              );
-            }
-            if (state is PlayerFailed && state.tracks.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(state.message,
-                      textAlign: TextAlign.center,
-                      style: KashiTextStyles.body.copyWith(color: _Scene.text)),
-                ),
-              );
-            }
-            final index = state.playingIndex;
-            final exercise = _cubit.exerciseAt(index);
-            return _KashiPlayerView(
-              topBar: _TopBar(
-                state: state,
-                morshedName: _morshedName,
-                onSelectMove: _cubit.setIndexAndPlay,
-                onEdit: () => _openEdit(context),
-              ),
-              stage: _Stage(state: state, cubit: _cubit),
-              title: _MoveTitle(
-                name: state.currentTrack?.title ?? '',
-                nameFa: exercise?.titleFa,
-                onHowTo:
-                    exercise == null ? null : () => _openHowTo(context, index),
-              ),
-              cues: exercise?.cues ?? const [],
-              counter: _Counter(
-                counted: _cubit.isCounted(index),
-                target: state.currentTrack?.effectiveRepetitions ?? 0,
-                starTaps: state is PlayerReady ? state.starTaps : null,
-                loopsForever: widget.mode == PlayerMode.zoorkhaneh,
-                onTap: _cubit.countRep,
-              ),
-              transport: _Transport(state: state, cubit: _cubit),
-            );
-          },
+      // Space counts a rep, like tapping the star (the design's keyboard
+      // shortcut on web and desktop).
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.space): _cubit.countRep,
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            // The player is a lajvard scene, the same in both themes.
+            backgroundColor: KashiPalette.lajvard900,
+            body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
+              // A restart (see _restartPlayer) rebuilds the whole player subtree.
+              key: ValueKey(_playerGeneration),
+              listenWhen: (prev, cur) =>
+                  prev.playingIndex != cur.playingIndex ||
+                  (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
+                  (prev is! PlayerFinished && cur is PlayerFinished) ||
+                  (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
+              listener: (context, state) {
+                if (state is PlayerLoggingReps) {
+                  unawaited(_showRepLog(context, state));
+                  return;
+                }
+                if (state is PlayerFinished) {
+                  unawaited(_handleSessionFinished(context));
+                }
+                if (state.tracks.isNotEmpty &&
+                    state is! PlayerFinished &&
+                    _cubit.shouldPromptLearningMode) {
+                  final exercise = _cubit.exerciseAt(state.playingIndex);
+                  if (exercise != null) {
+                    unawaited(_promptLearningMode(
+                        context, state.playingIndex, exercise));
+                  }
+                }
+                // Precache each image URL at most once per player session.
+                // Previously this looped all tracks on every index change, causing
+                // repeated Supabase egress when the in-memory cache was full.
+                for (final track in state.tracks) {
+                  final src = track.media.src;
+                  if (track.media.type == 'photo' &&
+                      src != null &&
+                      src.isNotEmpty &&
+                      !src.startsWith('/') &&
+                      _precachedUrls.add(src)) {
+                    precacheImage(ExerciseImageProvider(src), context,
+                        onError: (_, __) {});
+                  }
+                }
+              },
+              builder: (context, state) {
+                if (state is PlayerLoading) {
+                  return const Center(
+                      child: CircularProgressIndicator(color: _Scene.accent));
+                }
+                if (state is PlayerNeedsDownload) {
+                  return _NeedsDownload(
+                    topBar: _TopBar(
+                      state: state,
+                      morshedName: _morshedName,
+                      onSelectMove: null,
+                      onEdit: () => _openEdit(context),
+                    ),
+                    onDownload: () => _download(context),
+                  );
+                }
+                if (state is PlayerFailed && state.tracks.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(state.message,
+                          textAlign: TextAlign.center,
+                          style: KashiTextStyles.body
+                              .copyWith(color: _Scene.text)),
+                    ),
+                  );
+                }
+                final index = state.playingIndex;
+                final exercise = _cubit.exerciseAt(index);
+                final layout = KashiLayout.of(context);
+                return _KashiPlayerView(
+                  topBar: _TopBar(
+                    state: state,
+                    morshedName: _morshedName,
+                    onSelectMove: _cubit.setIndexAndPlay,
+                    onEdit: () => _openEdit(context),
+                  ),
+                  stage: _Stage(state: state, cubit: _cubit),
+                  title: _MoveTitle(
+                    name: state.currentTrack?.title ?? '',
+                    nameFa: exercise?.titleFa,
+                    onHowTo: exercise == null
+                        ? null
+                        : () => _openHowTo(context, index),
+                    fontSize: switch (layout) {
+                      KashiLayout.phone => 24,
+                      KashiLayout.tablet => 30,
+                      KashiLayout.web => 36,
+                    },
+                  ),
+                  cues: exercise?.cues ?? const [],
+                  counter: _Counter(
+                    counted: _cubit.isCounted(index),
+                    target: state.currentTrack?.effectiveRepetitions ?? 0,
+                    starTaps: state is PlayerReady ? state.starTaps : null,
+                    loopsForever: widget.mode == PlayerMode.zoorkhaneh,
+                    onTap: _cubit.countRep,
+                    size: switch (layout) {
+                      KashiLayout.phone => RepStar.phoneSize,
+                      KashiLayout.tablet => 260,
+                      KashiLayout.web => 300,
+                    },
+                    mentionSpace: layout.isWide,
+                  ),
+                  transport: _Transport(
+                      state: state, cubit: _cubit, stacked: layout.isTablet),
+                  layout: layout,
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -436,11 +463,21 @@ const double _maxStageHeightFraction = 0.42;
 /// windows (phones in landscape) get a smaller stage instead of overflowing.
 const double _fixedControlsHeight = 240;
 
-/// The stage's height cap for a window of [windowHeight].
-double maxStageHeight(double windowHeight) => math.max(
+/// In the web layout the controls sit beside the stage, so the video may
+/// take most of the height (about 520px of 900 in the design); only the top
+/// bar, the move's name and its cues stay under or above it.
+const double _wideStageHeightFraction = 0.6;
+const double _wideFixedHeight = 230;
+
+/// The stage's height cap for a window of [windowHeight]; [wide] for the
+/// web layout.
+double maxStageHeight(double windowHeight, {bool wide = false}) => math.max(
       0,
-      math.min(windowHeight * _maxStageHeightFraction,
-          windowHeight - _fixedControlsHeight),
+      wide
+          ? math.min(windowHeight * _wideStageHeightFraction,
+              windowHeight - _wideFixedHeight)
+          : math.min(windowHeight * _maxStageHeightFraction,
+              windowHeight - _fixedControlsHeight),
     );
 
 class _Stage extends StatefulWidget {
@@ -531,7 +568,8 @@ class _StageState extends State<_Stage> {
           // stage is taller than the screen can spare; cap its height (see
           // maxStageHeight) and AspectRatio narrows it instead.
           constraints: BoxConstraints(
-              maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height)),
+              maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height,
+                  wide: KashiLayout.of(context).isWide)),
           // The exercise videos' own 16:9, so a fitHeight-scaled 1280x720
           // track fills the box exactly with no side cropping.
           child: AspectRatio(
@@ -808,9 +846,13 @@ abstract final class _Scene {
   static const accent = KashiPalette.aqua300;
 }
 
-/// The player's layout: progress and move count on top, the video, then the
-/// move's name, cues and star (scrolling on short screens), with the
-/// transport pinned at the bottom.
+/// The player's layout, per [KashiLayout]:
+/// - phone: progress and move count on top, the video, then the move's name,
+///   cues and star (scrolling on short screens), with the transport pinned
+///   at the bottom;
+/// - tablet: the same, with the star and the transport side by side;
+/// - web: the video with the name and cues (in a row) on the left, the star
+///   and the transport on the right.
 class _KashiPlayerView extends StatelessWidget {
   const _KashiPlayerView({
     required this.topBar,
@@ -819,6 +861,7 @@ class _KashiPlayerView extends StatelessWidget {
     required this.cues,
     required this.counter,
     required this.transport,
+    required this.layout,
   });
 
   final Widget topBar;
@@ -827,44 +870,132 @@ class _KashiPlayerView extends StatelessWidget {
   final List<String> cues;
   final Widget counter;
   final Widget transport;
+  final KashiLayout layout;
 
-  /// Phone layout; tablet and web layouts come later.
-  static const _maxWidth = 520.0;
+  static const _phoneMaxWidth = 520.0;
+  static const _tabletMaxWidth = 900.0;
+  static const _webMaxWidth = 1600.0;
+
+  /// The web layout's right column (star and transport).
+  static const _webControlsWidth = 380.0;
 
   @override
   Widget build(BuildContext context) {
+    final (maxWidth, padding) = switch (layout) {
+      KashiLayout.phone => (
+          _phoneMaxWidth,
+          const EdgeInsets.fromLTRB(20, 10, 20, 16)
+        ),
+      KashiLayout.tablet => (
+          _tabletMaxWidth,
+          const EdgeInsets.fromLTRB(32, 24, 32, 24)
+        ),
+      KashiLayout.web => (
+          _webMaxWidth,
+          const EdgeInsets.fromLTRB(48, 24, 48, 32)
+        ),
+    };
     return SafeArea(
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          constraints: BoxConstraints(maxWidth: maxWidth),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+            padding: padding,
             child: Column(children: [
               topBar,
-              const SizedBox(height: 8),
-              Center(child: stage),
+              SizedBox(height: layout.isPhone ? 8 : 16),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Column(children: [
-                    title,
-                    if (cues.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      _Cues(cues: cues),
-                    ],
-                    const SizedBox(height: 10),
-                    counter,
-                  ]),
-                ),
+                child: switch (layout) {
+                  KashiLayout.phone => _phone(),
+                  KashiLayout.tablet => _tablet(),
+                  KashiLayout.web => _web(),
+                },
               ),
-              const SizedBox(height: 8),
-              transport,
             ]),
           ),
         ),
       ),
     );
   }
+
+  Widget _phone() => Column(children: [
+        Center(child: stage),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(children: [
+              title,
+              if (cues.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _Cues(cues: cues),
+              ],
+              const SizedBox(height: 10),
+              counter,
+            ]),
+          ),
+        ),
+        const SizedBox(height: 8),
+        transport,
+      ]);
+
+  Widget _tablet() => Column(children: [
+        Center(child: stage),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(top: 16),
+            child: Column(children: [
+              title,
+              if (cues.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _Cues(cues: cues),
+              ],
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  counter,
+                  const SizedBox(width: 48),
+                  transport,
+                ],
+              ),
+            ]),
+          ),
+        ),
+      ]);
+
+  Widget _web() => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(alignment: Alignment.topLeft, child: stage),
+                  const SizedBox(height: 20),
+                  title,
+                  if (cues.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _Cues(cues: cues, inRow: true),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 40),
+          SizedBox(
+            width: _webControlsWidth,
+            child: Center(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [counter, const SizedBox(height: 32), transport],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
 }
 
 /// Segments, "✕ Move n of N", the morshed, and a ⋮ menu (Edit session).
@@ -933,30 +1064,39 @@ class _TopBar extends StatelessWidget {
 
 /// The move's name, its Farsi name, and "ⓘ How to".
 class _MoveTitle extends StatelessWidget {
-  const _MoveTitle({required this.name, this.nameFa, this.onHowTo});
+  const _MoveTitle(
+      {required this.name, this.nameFa, this.onHowTo, this.fontSize = 24});
 
   final String name;
   final String? nameFa;
   final VoidCallback? onHowTo;
 
+  /// 24 on phones; the design's tablet and web headings are larger.
+  final double fontSize;
+
   @override
   Widget build(BuildContext context) {
+    // The names take the free space (ellipsizing a long name), which pushes
+    // How to to the end of the row.
     return Row(children: [
-      Flexible(
-        child: Text(name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: KashiTextStyles.heading
-                .copyWith(fontSize: 24, color: _Scene.text)),
+      Expanded(
+        child: Row(children: [
+          Flexible(
+            child: Text(name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: KashiTextStyles.heading
+                    .copyWith(fontSize: fontSize, color: _Scene.text)),
+          ),
+          if (nameFa != null && nameFa!.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            Text(nameFa!,
+                textDirection: TextDirection.rtl,
+                style: KashiTextStyles.farsi.copyWith(
+                    fontSize: fontSize * .7, color: KashiPalette.yellow400)),
+          ],
+        ]),
       ),
-      if (nameFa != null && nameFa!.isNotEmpty) ...[
-        const SizedBox(width: 10),
-        Text(nameFa!,
-            textDirection: TextDirection.rtl,
-            style: KashiTextStyles.farsi
-                .copyWith(fontSize: 17, color: KashiPalette.yellow400)),
-      ],
-      const Spacer(),
       if (onHowTo != null)
         Tooltip(
           message: 'How to',
@@ -988,34 +1128,47 @@ class _MoveTitle extends StatelessWidget {
   }
 }
 
+/// The move's "pay attention to" points: one under another, or side by
+/// side ([inRow], the web layout).
 class _Cues extends StatelessWidget {
-  const _Cues({required this.cues});
+  const _Cues({required this.cues, this.inRow = false});
 
   final List<String> cues;
+  final bool inRow;
 
   @override
   Widget build(BuildContext context) {
+    if (inRow) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final (i, cue) in cues.indexed) ...[
+          if (i > 0) const SizedBox(width: 24),
+          Expanded(child: _cue(cue, fontSize: 14.5)),
+        ],
+      ]);
+    }
     return Column(children: [
       for (final cue in cues)
         Padding(
           padding: const EdgeInsets.only(bottom: 5),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: SizedBox.square(
-                  dimension: 6,
-                  child: ColoredBox(color: KashiPalette.yellow400)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(cue,
-                  style: KashiTextStyles.body
-                      .copyWith(fontSize: 13, height: 1.4, color: _Scene.cue)),
-            ),
-          ]),
+          child: _cue(cue),
         ),
     ]);
   }
+
+  Widget _cue(String cue, {double fontSize = 13}) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: SizedBox.square(
+              dimension: 6, child: ColoredBox(color: KashiPalette.yellow400)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(cue,
+              style: KashiTextStyles.body.copyWith(
+                  fontSize: fontSize, height: 1.4, color: _Scene.cue)),
+        ),
+      ]);
 }
 
 /// The star and the line under it. Follows the move's progress, but
@@ -1027,6 +1180,8 @@ class _Counter extends StatelessWidget {
     required this.starTaps,
     required this.loopsForever,
     required this.onTap,
+    this.size = RepStar.phoneSize,
+    this.mentionSpace = false,
   });
 
   final bool counted;
@@ -1034,6 +1189,10 @@ class _Counter extends StatelessWidget {
   final int? starTaps;
   final bool loopsForever;
   final VoidCallback onTap;
+  final double size;
+
+  /// Says Space also counts (keyboards: the web layout).
+  final bool mentionSpace;
 
   @override
   Widget build(BuildContext context) {
@@ -1054,11 +1213,14 @@ class _Counter extends StatelessWidget {
           starTaps: starTaps,
           loopsForever: loopsForever,
           onTap: onTap,
+          size: size,
         ),
         const SizedBox(height: 4),
         Text(
             counted
-                ? 'Tap the star on every rep'
+                ? mentionSpace
+                    ? 'Tap the star, or press space, on every rep'
+                    : 'Tap the star on every rep'
                 : 'Follow the morshed’s count',
             textAlign: TextAlign.center,
             style: KashiTextStyles.body
@@ -1070,51 +1232,68 @@ class _Counter extends StatelessWidget {
 
 /// ‹ · play/pause · › — circles, left-to-right even in Farsi.
 class _Transport extends StatelessWidget {
-  const _Transport({required this.state, required this.cubit});
+  const _Transport(
+      {required this.state, required this.cubit, this.stacked = false});
   final SessionPlayerState state;
   final SessionPlayerCubit cubit;
+
+  /// Play/pause above ‹ › (the tablet layout, beside the star).
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
     final ready = state is PlayerReady;
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        _CircleButton(
-          tooltip: 'Previous move',
-          icon: Icons.chevron_left,
-          onTap: ready ? cubit.prev : null,
-        ),
-        const SizedBox(width: 28),
-        Tooltip(
-          message: state.isPlaying ? 'Pause' : 'Play',
-          child: Material(
-            color: KashiPalette.azure500,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: cubit.togglePlay,
-              child: SizedBox.square(
-                dimension: 72,
-                child: Icon(
-                    state.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 30,
-                    color: Colors.white),
-              ),
-            ),
+    final previous = _CircleButton(
+      tooltip: 'Previous move',
+      icon: Icons.chevron_left,
+      onTap: ready ? cubit.prev : null,
+    );
+    final next = _CircleButton(
+      tooltip: 'Next move',
+      icon: Icons.chevron_right,
+      // On a counted move this opens the Rep log; on the last move it
+      // finishes the session (see SessionPlayerCubit.next).
+      onTap: ready ? cubit.next : null,
+    );
+    final playPause = Tooltip(
+      message: state.isPlaying ? 'Pause' : 'Play',
+      child: Material(
+        color: KashiPalette.azure500,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: cubit.togglePlay,
+          child: SizedBox.square(
+            dimension: 72,
+            child: Icon(
+                state.isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+                size: 30,
+                color: Colors.white),
           ),
         ),
-        const SizedBox(width: 28),
-        _CircleButton(
-          tooltip: 'Next move',
-          icon: Icons.chevron_right,
-          // On a counted move this opens the Rep log; on the last move it
-          // finishes the session (see SessionPlayerCubit.next).
-          onTap: ready ? cubit.next : null,
-        ),
-      ]),
+      ),
+    );
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: stacked
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              playPause,
+              const SizedBox(height: 16),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                previous,
+                const SizedBox(width: 20),
+                next,
+              ]),
+            ])
+          : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              previous,
+              const SizedBox(width: 28),
+              playPause,
+              const SizedBox(width: 28),
+              next,
+            ]),
     );
   }
 }

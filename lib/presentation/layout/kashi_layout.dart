@@ -42,5 +42,6 @@ enum KashiLayout {
       forWidth(MediaQuery.sizeOf(context).width);
 
   bool get isPhone => this == phone;
+  bool get isTablet => this == tablet;
   bool get isWide => this == web;
 }

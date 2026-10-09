@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
@@ -519,6 +520,41 @@ void main() {
     await tester.tap(find.byType(RepStar));
     await tester.pump();
     expect(find.text('2'), findsOneWidget);
+  });
+
+  testWidgets('Space counts a rep, like tapping the star (keyboards)',
+      (tester) async {
+    const shena = Exercise(
+        id: 101,
+        name: 'Shena',
+        audioFileUrl: 'https://example.com/shena.mp3',
+        repetitionsDefault: 3);
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(40),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {101: shena},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildPage(snap));
+    await _pumpAndLoad(tester);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(find.text('3'), findsOneWidget);
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
@@ -1213,6 +1249,64 @@ void main() {
       expect(stageSize(tester).width, 390 - 40,
           reason: 'phones are unaffected: stage spans the width minus margins');
 
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    Rect rectOf(WidgetTester tester, Finder f) => tester.getRect(f.first);
+    final stage = find.descendant(
+        of: find.byType(AudioPlayerPage), matching: find.byType(AspectRatio));
+    final star = find.byType(RepStar);
+    final play = find.byTooltip('Pause');
+
+    testWidgets(
+        'How to sits at the end of the title row, under the stage\'s '
+        'right edge', (tester) async {
+      await openAt(tester, const Size(834, 1194));
+      expect(rectOf(tester, find.byTooltip('How to')).right,
+          closeTo(rectOf(tester, stage).right, 1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('phone: the star under the stage, the transport under the star',
+        (tester) async {
+      await openAt(tester, const Size(390, 844));
+      expect(
+          rectOf(tester, star).top, greaterThan(rectOf(tester, stage).bottom));
+      expect(
+          rectOf(tester, play).top, greaterThan(rectOf(tester, star).bottom));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets(
+        'tablet: the star and the transport side by side under the stage',
+        (tester) async {
+      await openAt(tester, const Size(834, 1194));
+      expect(tester.takeException(), isNull);
+      final starRect = rectOf(tester, star);
+      final playRect = rectOf(tester, play);
+      expect(starRect.top, greaterThan(rectOf(tester, stage).bottom));
+      expect(playRect.left, greaterThan(starRect.right));
+      expect(
+          playRect.center.dy, inInclusiveRange(starRect.top, starRect.bottom));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets(
+        'web: the stage on the left, a bigger star and the transport on the '
+        'right', (tester) async {
+      await openAt(tester, const Size(1440, 900));
+      expect(tester.takeException(), isNull);
+      final stageRect = rectOf(tester, stage);
+      final starRect = rectOf(tester, star);
+      expect(starRect.left, greaterThan(stageRect.right));
+      expect(starRect.width, greaterThanOrEqualTo(260));
+      expect(stageRect.height, greaterThan(450),
+          reason: 'the video takes most of the height, as in the design');
+      expect(rectOf(tester, play).top, greaterThan(starRect.bottom));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });

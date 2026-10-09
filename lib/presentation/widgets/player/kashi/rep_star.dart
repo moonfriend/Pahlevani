@@ -24,7 +24,7 @@ class RepStar extends StatelessWidget {
     this.starTaps,
     this.loopsForever = false,
     this.onTap,
-    this.size = 184,
+    this.size = phoneSize,
   });
 
   final bool counted;
@@ -36,6 +36,9 @@ class RepStar extends StatelessWidget {
   /// A star tap on a counted move. Ignored on other moves.
   final VoidCallback? onTap;
   final double size;
+
+  /// The phone layout's star; tablet and web pass a larger [size].
+  static const double phoneSize = 184;
 
   /// Dots around the star: one per target rep, smaller above 48.
   static ({int count, double size}) dotsFor({required int target}) =>
