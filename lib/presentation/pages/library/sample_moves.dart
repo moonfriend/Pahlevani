@@ -1,25 +1,13 @@
 import '../../../core/theme/kashi/kashi_assets.dart';
+import '../../../domain/entities/training_session/move_variation.dart';
+
+export '../../../domain/entities/training_session/move_variation.dart';
 
 // PLACEHOLDER DATA — the moves catalog the Library and learning card need
 // (steps, Lighter/Harder variations, cues, Farsi names) doesn't exist in
 // the data model yet (see the Kashi redesign plan, "Data the design needs").
 // These are the handoff prototype's sample moves so the screens can be built
 // and reviewed now; replace with a real catalog when it lands.
-
-/// A Lighter/Harder step of a move.
-class MoveVariation {
-  const MoveVariation({
-    required this.name,
-    required this.level,
-    required this.reps,
-  });
-
-  final String name;
-
-  /// e.g. "EASIER · 4 KG".
-  final String level;
-  final int reps;
-}
 
 /// A move as the Library and learning card show it.
 class SampleMove {

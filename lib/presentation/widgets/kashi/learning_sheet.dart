@@ -10,6 +10,7 @@ import '../exercise_image_provider.dart';
 import '../player/exercise_demo_video_player.dart';
 import 'kashi_action_button.dart';
 import 'kashi_labels.dart';
+import 'kashi_variation_selector.dart';
 import 'move_placeholder.dart';
 
 /// The move's learning card as a centred sheet over a session or the
@@ -199,14 +200,29 @@ class _MediaHeader extends StatelessWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+/// The name with its reps, the Lighter / Harder selector (when the move has
+/// variations) and the cues. The reps tag follows the chosen variation.
+class _Body extends StatefulWidget {
   const _Body({required this.exercise, required this.target});
 
   final Exercise exercise;
   final int? target;
 
   @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  /// The standard variation sits in the middle of the list.
+  late int _variation = widget.exercise.variations.length ~/ 2;
+
+  @override
   Widget build(BuildContext context) {
+    final exercise = widget.exercise;
+    final variations = exercise.variations;
+    final reps = variations.isEmpty
+        ? widget.target
+        : variations[_variation].reps ?? widget.target;
     final colors = Theme.of(context).extension<KashiColors>()!;
     final description = exercise.description?.trim();
     final hasCues = exercise.cues.isNotEmpty;
@@ -229,9 +245,17 @@ class _Body extends StatelessWidget {
                     textDirection: TextDirection.rtl,
                     style: KashiTextStyles.farsi
                         .copyWith(fontSize: 15, color: colors.farsiAccent)),
-              if (target != null) KashiRepsTag(count: target),
+              if (reps != null) KashiRepsTag(count: reps),
             ],
           ),
+          if (variations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            KashiVariationSelector(
+              variations: variations,
+              index: _variation,
+              onChanged: (i) => setState(() => _variation = i),
+            ),
+          ],
           if (hasCues) ...[
             const SizedBox(height: 12),
             const KashiSectionLabel('Pay attention to'),

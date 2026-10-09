@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/move_variation.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 import 'package:pahlevani/presentation/widgets/kashi/learning_sheet.dart';
 
@@ -63,6 +64,45 @@ void main() {
     for (final cue in ['Back long', 'Breathe out', 'One rep per beat']) {
       expect(find.text(cue), findsOneWidget);
     }
+  });
+
+  group('Lighter / Harder', () {
+    const shena = Exercise(id: 1, name: 'Shena', variations: [
+      MoveVariation(name: 'Knee shena', level: 'EASIER', reps: 12),
+      MoveVariation(name: 'Shena', level: 'STANDARD', reps: 20),
+      MoveVariation(name: 'Sar Navazi', level: 'HARDER', reps: 30),
+    ]);
+
+    testWidgets('starts on the standard (middle) variation', (tester) async {
+      await _open(tester, exercise: shena, targetReps: 40);
+      expect(find.text('Lighter'), findsOneWidget);
+      expect(find.text('Harder'), findsOneWidget);
+      expect(find.text('STANDARD'), findsOneWidget);
+      expect(find.text('20 reps'), findsOneWidget);
+    });
+
+    testWidgets('Harder and Lighter step through; the reps follow',
+        (tester) async {
+      await _open(tester, exercise: shena, targetReps: 40);
+
+      await tester.tap(find.text('Harder'));
+      await tester.pump();
+      expect(find.text('Sar Navazi'), findsOneWidget);
+      expect(find.text('30 reps'), findsOneWidget);
+
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.text('Lighter'));
+        await tester.pump();
+      }
+      expect(find.text('Knee shena'), findsOneWidget);
+      expect(find.text('12 reps'), findsOneWidget);
+    });
+
+    testWidgets('a move without variations has no selector', (tester) async {
+      await _open(tester,
+          exercise: const Exercise(id: 1, name: 'Charkh', cues: ['Spin']));
+      expect(find.text('Lighter'), findsNothing);
+    });
   });
 
   testWidgets('a move that is not counted has no reps tag', (tester) async {
