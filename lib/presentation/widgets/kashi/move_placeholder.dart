@@ -14,7 +14,7 @@ class MovePlaceholder extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.only(top: 8),
           child: Image(
-            image: AssetImage(KashiAssets.pahlevanMale),
+            image: AssetImage(KashiAssets.pahlevanFemale),
             fit: BoxFit.contain,
             alignment: Alignment.bottomCenter,
           ),
