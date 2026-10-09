@@ -58,8 +58,9 @@ Future<_Calls> _pump(
   Size size = const Size(360, 740),
   ThemeData? theme,
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   final repo = FakeTrainingHistoryRepository();
   for (final r in history) {
     await repo.recordCompletion(r);
@@ -289,5 +290,79 @@ void main() {
     test('nothing before the first load', () {
       expect(homeSessionsFrom(TrainingSessionInitial()), isEmpty);
     });
+  });
+
+  group('responsive bento', () {
+    const tablet = Size(834, 1194);
+    const web = Size(1440, 900);
+    final history = [
+      _done(DateTime(2026, 9, 16), {'Shena': 40, 'Meel Giri': 48}),
+      _done(DateTime(2026, 9, 21), {'Shena': 42, 'Meel Giri': 50}),
+    ];
+
+    Rect rectOf(WidgetTester tester, String key) =>
+        tester.getRect(find.byKey(ValueKey(key)));
+
+    testWidgets('phone: no Other sessions tile, the month strip below',
+        (tester) async {
+      await _pump(tester, history: history);
+      expect(find.byKey(const ValueKey('home-other-sessions')), findsNothing);
+      expect(find.byKey(const ValueKey('home-month-strip')), findsOneWidget);
+    });
+
+    testWidgets(
+        'tablet: Today (2 columns) beside the shamseh; the rep cards and '
+        'Other sessions share the next row; the month strip below',
+        (tester) async {
+      await _pump(tester, size: tablet, history: history);
+      expect(tester.takeException(), isNull);
+
+      final today = rectOf(tester, 'home-today');
+      final shamseh = rectOf(tester, 'home-shamseh');
+      final other = rectOf(tester, 'home-other-sessions');
+      expect(shamseh.top, today.top);
+      expect(today.width, greaterThan(shamseh.width * 1.8));
+      expect(other.top, greaterThan(today.bottom));
+      expect(tester.getRect(find.text('Shena · last')).top,
+          lessThan(other.bottom));
+      expect(rectOf(tester, 'home-month-strip').top, greaterThan(other.bottom));
+      expect(find.byKey(const ValueKey('home-calendar')), findsNothing);
+    });
+
+    testWidgets(
+        'web: Today, shamseh and the month calendar on one row; Other '
+        'sessions offers the next sessions', (tester) async {
+      final calls = await _pump(tester, size: web, history: history);
+      expect(tester.takeException(), isNull);
+
+      final today = rectOf(tester, 'home-today');
+      expect(rectOf(tester, 'home-shamseh').top, today.top);
+      expect(rectOf(tester, 'home-calendar').top, today.top);
+      expect(find.byKey(const ValueKey('home-month-strip')), findsNothing);
+      expect(find.text('30'), findsOneWidget,
+          reason: 'the calendar tile numbers the days');
+
+      final other = find.byKey(const ValueKey('home-other-sessions'));
+      expect(find.descendant(of: other, matching: find.text('Session 2')),
+          findsOneWidget);
+      expect(find.descendant(of: other, matching: find.text('Session 3')),
+          findsOneWidget);
+      await tester.tap(find.descendant(
+          of: other, matching: find.byTooltip('Start Session 3')));
+      expect(calls.opened.single.id, 3);
+    });
+
+    for (final size in const [
+      Size(600, 900),
+      Size(1100, 800),
+      Size(1101, 700),
+      Size(2560, 1440)
+    ]) {
+      testWidgets('lays out without overflow at the edge size $size',
+          (tester) async {
+        await _pump(tester, size: size, history: history);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }
