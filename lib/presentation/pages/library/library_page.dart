@@ -1,14 +1,18 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/khatam.dart';
+import '../../layout/kashi_layout.dart';
 import 'learning_card_page.dart';
 import 'sample_moves.dart';
 
-/// Every move with its video, two to a row. One colour until categories
-/// exist. Tap a move → its learning card.
+/// Every move with its video: two to a row on phones, three on tablets,
+/// four on the web layout, the thumbnails growing with the tiles. One colour
+/// until categories exist. Tap a move → its learning card.
 ///
 /// Shows [sampleMoves] (placeholder) until a moves catalog exists.
 class LibraryPage extends StatelessWidget {
@@ -24,54 +28,89 @@ class LibraryPage extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(builder: (context, constraints) {
-          // Phone: 2 columns (the design); wider screens add columns.
-          final columns = (constraints.maxWidth / 220).floor().clamp(2, 5);
-          return CustomScrollView(
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(18, 22, 18, 14),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Expanded(
-                        child: Text('Library',
-                            style: KashiTextStyles.title
-                                .copyWith(color: colors.textPrimary)),
+          final layout = KashiLayout.of(context);
+          final phone = layout.isPhone;
+          final columns = layout.bentoColumns;
+          final gap = layout.bentoGap;
+          final side = switch (layout) {
+            KashiLayout.phone => 12.0,
+            KashiLayout.tablet => 32.0,
+            KashiLayout.web => 40.0,
+          };
+          final width = math.min(constraints.maxWidth, _maxContentWidth);
+          final tileWidth = (width - 2 * side - gap * (columns - 1)) / columns;
+          // 108px on the phone's tile; wider tiles get proportionally
+          // taller thumbnails (about 200px on the web layout).
+          final thumb = phone ? 108.0 : (tileWidth * .74).clamp(108.0, 240.0);
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: phone
+                        ? const EdgeInsets.fromLTRB(18, 22, 18, 14)
+                        : EdgeInsets.fromLTRB(side, 40, side, 24),
+                    sliver: SliverToBoxAdapter(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Expanded(
+                            child: Text('Library',
+                                style: KashiTextStyles.title.copyWith(
+                                    fontSize: phone ? null : 34,
+                                    color: colors.textPrimary)),
+                          ),
+                          Text('${moves.length} moves',
+                              style: KashiTextStyles.ui.copyWith(
+                                  fontSize: phone ? 12 : 14,
+                                  color: colors.textMuted)),
+                        ],
                       ),
-                      Text('${moves.length} moves',
-                          style: KashiTextStyles.ui
-                              .copyWith(fontSize: 12, color: colors.textMuted)),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                sliver: SliverGrid.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisSpacing: 6,
-                    crossAxisSpacing: 6,
-                    mainAxisExtent: 162,
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(side, 0, side, side),
+                    sliver: SliverGrid.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        mainAxisSpacing: gap,
+                        crossAxisSpacing: gap,
+                        mainAxisExtent: thumb + 54,
+                      ),
+                      itemCount: moves.length,
+                      itemBuilder: (context, i) => _MoveTile(
+                          move: moves[i],
+                          thumbHeight: thumb,
+                          // The star window spans the thumbnail's width (the
+                          // design's 150px on the phone), so only the
+                          // corners show lajvard.
+                          starSize: phone ? 150 : tileWidth - 20),
+                    ),
                   ),
-                  itemCount: moves.length,
-                  itemBuilder: (context, i) => _MoveTile(move: moves[i]),
-                ),
+                ],
               ),
-            ],
+            ),
           );
         }),
       ),
     );
   }
+
+  /// Beyond this the grid stops growing and centres.
+  static const _maxContentWidth = 1400.0;
 }
 
 class _MoveTile extends StatelessWidget {
-  const _MoveTile({required this.move});
+  const _MoveTile(
+      {required this.move, required this.thumbHeight, required this.starSize});
 
   final SampleMove move;
+
+  /// 108 on phones, taller on wider tiles.
+  final double thumbHeight;
+  final double starSize;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +125,7 @@ class _MoveTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(
-                height: 108,
+                height: thumbHeight,
                 child: ClipRect(
                   child: ColoredBox(
                     color: colors.scene500,
@@ -95,12 +134,14 @@ class _MoveTile extends StatelessWidget {
                         // A large star window: only the corners show lajvard.
                         Center(
                           child: OverflowBox(
-                            maxWidth: 150,
-                            maxHeight: 150,
+                            maxWidth: starSize,
+                            maxHeight: starSize,
                             child: ClipPath(
                               clipper: const KhatamClipper(),
                               child: Image.asset(move.image,
-                                  width: 150, height: 150, fit: BoxFit.cover),
+                                  width: starSize,
+                                  height: starSize,
+                                  fit: BoxFit.cover),
                             ),
                           ),
                         ),

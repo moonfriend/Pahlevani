@@ -47,7 +47,43 @@ void main() {
     expect(find.text(shena.description), findsOneWidget);
   });
 
-  for (final size in const [Size(360, 740), Size(320, 568), Size(1440, 900)]) {
+  for (final (size, columns) in const [
+    (Size(390, 844), 2),
+    (Size(834, 1194), 3),
+    (Size(1440, 900), 4),
+  ]) {
+    testWidgets('$columns moves to a row at $size (the design\'s grid)',
+        (tester) async {
+      await _pump(tester, size: size);
+      final firstRowTop = tester.getRect(find.text(sampleMoves[0].name)).top;
+      final inFirstRow = sampleMoves
+          .where((m) => tester.getRect(find.text(m.name)).top == firstRowTop)
+          .length;
+      expect(inFirstRow, columns);
+    });
+  }
+
+  testWidgets('wider tiles get taller thumbnails', (tester) async {
+    await _pump(tester, size: const Size(1440, 900));
+    final name = tester.getRect(find.text(sampleMoves[0].name));
+    final tileTop = tester
+        .getRect(find
+            .ancestor(
+                of: find.text(sampleMoves[0].name),
+                matching: find.byType(InkWell))
+            .first)
+        .top;
+    expect(name.top - tileTop, greaterThan(180));
+  });
+
+  for (final size in const [
+    Size(360, 740),
+    Size(320, 568),
+    Size(600, 800),
+    Size(1100, 700),
+    Size(1440, 900),
+    Size(2560, 1440),
+  ]) {
     testWidgets('lays out without overflow at $size', (tester) async {
       await _pump(tester, size: size, theme: PahlevaniTheme.dark());
       expect(tester.takeException(), isNull);
