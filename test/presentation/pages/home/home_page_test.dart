@@ -189,6 +189,32 @@ void main() {
       expect(find.text('50'), findsOneWidget);
     });
 
+    testWidgets(
+        'more than two counted moves: only the two most-counted show, '
+        'never a third card', (tester) async {
+      await _pump(tester, history: [
+        _done(DateTime(2026, 9, 16), {'Mil 1': 50, 'Shena': 40, 'Mil 2': 5}),
+        _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
+      ]);
+      expect(find.text('Mil 1 · last'), findsOneWidget);
+      expect(find.text('Shena · last'), findsOneWidget);
+      expect(find.text('Mil 2 · last'), findsNothing);
+    });
+
+    testWidgets('tapping a rep card lists every counted move', (tester) async {
+      await _pump(tester, history: [
+        _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
+      ]);
+      await tester.tap(find.text('Shena · last'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Counted moves'), findsOneWidget);
+      expect(find.text('Mil 1 · last'), findsOneWidget);
+      expect(find.text('Shena · last'), findsOneWidget);
+      expect(find.text('Mil 2 · last'), findsOneWidget);
+      expect(find.text('6'), findsOneWidget);
+    });
+
     testWidgets('no counted moves yet: a hint instead of rep tiles',
         (tester) async {
       await _pump(tester);

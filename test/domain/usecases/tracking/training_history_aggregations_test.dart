@@ -209,4 +209,46 @@ void main() {
       expect(recentMovementCounts(const []), isEmpty);
     });
   });
+
+  group('mostCountedMovements', () {
+    TrackedMovementCount count(MovementKey key, String name, int n) =>
+        TrackedMovementCount(key: key, displayName: name, count: n);
+
+    test('orders moves by total reps, most first, with their recent counts',
+        () {
+      final records = [
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 1),
+            counts: [count(_sheno, 'Shena', 10), count(_meel, 'Meel', 30)]),
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 2),
+            counts: [count(_sheno, 'Shena', 12), count(_meel, 'Meel', 31)]),
+      ];
+
+      final top = mostCountedMovements(records);
+      expect(top.map((t) => t.key), [_meel, _sheno]);
+      expect(top.first.latest, 31);
+    });
+
+    test('equal totals: the most recently logged move first', () {
+      final records = [
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 1),
+            counts: [count(_sheno, 'Shena', 20)]),
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 2),
+            counts: [count(_meel, 'Meel', 20)]),
+      ];
+
+      expect(mostCountedMovements(records).map((t) => t.key), [_meel, _sheno]);
+    });
+
+    test('no records → nothing', () {
+      expect(mostCountedMovements(const []), isEmpty);
+    });
+  });
 }

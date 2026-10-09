@@ -121,3 +121,24 @@ List<MovementTrend> recentMovementCounts(List<SessionCompletionRecord> records,
       ),
   ];
 }
+
+/// Every tracked movement's [MovementTrend], ordered by total reps across
+/// [records] (most first) — Home shows the top two and lists the rest on
+/// demand. Equal totals keep the most recently logged movement first.
+List<MovementTrend> mostCountedMovements(
+    List<SessionCompletionRecord> records) {
+  final totals = {
+    for (final stat in computeMovementStats(records)) stat.key: stat.total,
+  };
+  final byRecency = recentMovementCounts(records);
+  final recencyRank = {
+    for (final (i, trend) in byRecency.indexed) trend.key: i,
+  };
+  return byRecency
+    ..sort((a, b) {
+      final byTotal = totals[b.key]!.compareTo(totals[a.key]!);
+      return byTotal != 0
+          ? byTotal
+          : recencyRank[a.key]!.compareTo(recencyRank[b.key]!);
+    });
+}

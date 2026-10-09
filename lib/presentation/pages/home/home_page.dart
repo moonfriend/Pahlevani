@@ -13,8 +13,10 @@ import '../../../domain/usecases/tracking/training_history_aggregations.dart';
 import '../../bloc/auth/auth_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
+import 'counted_moves_page.dart';
 import '../../widgets/kashi/kashi_day_tile.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
+import '../../widgets/kashi/kashi_rep_tile.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/shamseh.dart';
 
@@ -59,7 +61,8 @@ String homeDateLabel(DateTime d) =>
     '${_weekdays[d.weekday - 1]} · ${d.day} ${_shortMonths[d.month - 1]}';
 
 /// Home (bento): one place to start a session and glance at your practice —
-/// the Today carousel, the shamseh, the last value of each counted move and
+/// the Today carousel, the shamseh, the last value of the two most-counted
+/// moves (tap one for all of them) and
 /// this month's tiles, plus a way into the full session list.
 ///
 /// Pure UI over [sessions] and callbacks; reads [TrainingHistoryCubit] and
@@ -101,7 +104,7 @@ class HomePage extends StatelessWidget {
     final records = history is TrainingHistoryLoaded
         ? history.completions
         : const <SessionCompletionRecord>[];
-    final trends = recentMovementCounts(records);
+    final trends = mostCountedMovements(records);
     final today = now();
 
     return Scaffold(
@@ -131,29 +134,20 @@ class HomePage extends StatelessWidget {
                             tilesLaid: records.length, onTap: onOpenProgress),
                       ),
                       const SizedBox(width: _gap),
-                      Expanded(child: _RepColumn(trends: trends.take(2))),
+                      Expanded(
+                        child: _RepColumn(
+                          trends: trends.take(2),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    CountedMovesPage(trends: trends)),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                // More counted moves continue two to a row.
-                for (var i = 2; i < trends.length; i += 2) ...[
-                  const SizedBox(height: _gap),
-                  SizedBox(
-                    height: _row,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: _RepTile(trend: trends[i])),
-                        const SizedBox(width: _gap),
-                        Expanded(
-                          child: i + 1 < trends.length
-                              ? _RepTile(trend: trends[i + 1])
-                              : const SizedBox.shrink(),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
                 const SizedBox(height: _gap),
                 _MonthStrip(
                   today: today,
@@ -522,12 +516,13 @@ class _ShamsehTile extends StatelessWidget {
   }
 }
 
-/// The two 1×1 slots beside the shamseh: counted moves, or a hint when
-/// nothing has been counted yet.
+/// The two 1×1 slots beside the shamseh: the two most-counted moves, or a
+/// hint when nothing has been counted yet. Tapping either opens them all.
 class _RepColumn extends StatelessWidget {
-  const _RepColumn({required this.trends});
+  const _RepColumn({required this.trends, required this.onTap});
 
   final Iterable<MovementTrend> trends;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -536,49 +531,14 @@ class _RepColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _RepTile(trend: list[0])),
+        Expanded(child: KashiRepTile(trend: list[0], onTap: onTap)),
         const SizedBox(height: HomePage._gap),
         Expanded(
           child: list.length > 1
-              ? _RepTile(trend: list[1])
+              ? KashiRepTile(trend: list[1], onTap: onTap)
               : const SizedBox.shrink(),
         ),
       ],
-    );
-  }
-}
-
-class _RepTile extends StatelessWidget {
-  const _RepTile({required this.trend});
-
-  final MovementTrend trend;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    return ColoredBox(
-      color: colors.raised,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('${trend.displayName} · last',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: KashiTextStyles.ui
-                    .copyWith(fontSize: 12, color: colors.textPrimary)),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: AlignmentDirectional.centerStart,
-              child: Text('${trend.latest}',
-                  style: KashiTextStyles.number.copyWith(
-                      fontSize: 34, height: 1, color: colors.textPrimary)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
