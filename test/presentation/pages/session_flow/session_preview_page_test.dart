@@ -91,8 +91,13 @@ Future<List<PlayerMode>> _pump(WidgetTester tester) async {
   addTearDown(sessions.close);
   addTearDown(catalog.close);
 
-  await tester.binding.setSurfaceSize(const Size(360, 740));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // tester.view, so MediaQuery (and the layout) see this size.
+
+  tester.view.physicalSize = const Size(360, 740);
+
+  tester.view.devicePixelRatio = 1;
+
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MultiBlocProvider(
     providers: [
       BlocProvider.value(value: sessions),

@@ -12,8 +12,10 @@ final _vorod = sampleMoves.firstWhere((m) => m.id == 'vorod');
 
 Future<void> _pump(WidgetTester tester, SampleMove move,
     {Size size = const Size(360, 740), ThemeData? theme}) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // tester.view, so MediaQuery (and the layout) see this size.
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
     home: Builder(
@@ -123,8 +125,10 @@ void main() {
       Widget? footer,
     }) async {
       final results = <bool>[];
-      await tester.binding.setSurfaceSize(const Size(360, 740));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // tester.view, so MediaQuery (and the layout) see this size.
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(MaterialApp(
         theme: PahlevaniTheme.light(),
         home: Builder(
@@ -230,6 +234,122 @@ void main() {
           .whereType<AssetImage>()
           .map((a) => a.assetName);
       expect(assets, contains(KashiAssets.pahlevanFemale));
+    });
+  });
+
+  group('tablet and web layouts (600px and up)', () {
+    const shena = Exercise(
+      id: 1,
+      name: 'Shena',
+      titleFa: 'شنا',
+      description: 'A wave-like press.',
+      cues: ['Back long'],
+    );
+
+    Future<List<bool>> openWide(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final results = <bool>[];
+      await tester.pumpWidget(MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => results.add(await showLearningCard(
+                  context,
+                  LearningMove.fromExercise(shena,
+                      media: shena.media, videoReady: false, target: 40))),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return results;
+    }
+
+    testWidgets('a centred 920px two-column card: media left, text right',
+        (tester) async {
+      await openWide(tester);
+      expect(tester.takeException(), isNull);
+      final card = tester.getRect(find.byKey(const ValueKey('learning-card')));
+      expect(card.width, 920);
+      expect(card.center.dx, closeTo(720, 1));
+      final media =
+          tester.getRect(find.byKey(const ValueKey('learning-card-media')));
+      expect(media.width, 560);
+      expect(tester.getRect(find.text('Shena')).left, greaterThan(media.right));
+      expect(find.text('Back long'), findsOneWidget);
+    });
+
+    testWidgets('✕ and a tap beside the card close it without acting',
+        (tester) async {
+      final results = await openWide(tester);
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(40, 40));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+      expect(results, [false, false, true]);
+    });
+
+    testWidgets('tablet: the same two-column card, fitted to the screen',
+        (tester) async {
+      tester.view.physicalSize = const Size(834, 1194);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showLearningCard(
+                  context,
+                  LearningMove.fromExercise(shena,
+                      media: shena.media, videoReady: false)),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final card = tester.getRect(find.byKey(const ValueKey('learning-card')));
+      expect(card.width, 834 - 48);
+      expect(
+          tester
+              .getRect(find.byKey(const ValueKey('learning-card-media')))
+              .right,
+          lessThan(tester.getRect(find.text('Shena')).left));
+    });
+
+    testWidgets('the Library opens the same centred card', (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => openLibraryLearningCard(context, _shena),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byKey(const ValueKey('learning-card'))).width,
+          920);
     });
   });
 }

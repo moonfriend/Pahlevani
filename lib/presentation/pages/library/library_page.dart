@@ -79,10 +79,7 @@ class _MoveTile extends StatelessWidget {
     return Material(
       color: colors.raised,
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => LearningCardPage.sample(move)),
-        ),
+        onTap: () => openLibraryLearningCard(context, move),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(

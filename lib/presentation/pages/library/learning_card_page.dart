@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/training_session/exercise.dart';
+import '../../layout/kashi_layout.dart';
 import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/kashi_labels.dart';
@@ -96,30 +97,50 @@ class LearningMove {
   final String? videoSrc;
 }
 
-/// Opens [move]'s learning card as a full page over a session or the
-/// player. Resolves to true when the action was pressed, false when the
-/// card was left with Back — so a caller acts only once the page has fully
-/// closed. [footer] sits above the action (e.g. Learning mode's "learnt"
-/// toggle). The video starts straight away, as the design asks when the
-/// card is opened from a session.
+/// Opens [move]'s learning card over a session or the player: a full page
+/// on phones, a centred two-column card over the dimmed page on tablets and
+/// in the web layout. Resolves to true when the action was pressed, false when
+/// the card was closed (Back, ✕ or a tap beside it) — so a caller acts only
+/// once the card has fully closed. [footer] sits above the action (e.g.
+/// Learning mode's "learnt" toggle). The video starts straight away, as the
+/// design asks when the card is opened from a session.
 Future<bool> showLearningCard(
   BuildContext context,
   LearningMove move, {
   String actionLabel = 'Got it',
   Widget? footer,
 }) async {
-  final result = await Navigator.push<bool>(
+  final result = await _pushLearningCard(
     context,
-    MaterialPageRoute(
-      builder: (_) => LearningCardPage(
-        move: move,
-        actionLabel: actionLabel,
-        footer: footer,
-        autoplayVideo: true,
-      ),
+    LearningCardPage(
+      move: move,
+      actionLabel: actionLabel,
+      footer: footer,
+      autoplayVideo: true,
     ),
   );
   return result ?? false;
+}
+
+/// Opens a Library sample move's learning card, the same way.
+Future<void> openLibraryLearningCard(BuildContext context, SampleMove move) =>
+    _pushLearningCard(context, LearningCardPage.sample(move));
+
+Future<bool?> _pushLearningCard(BuildContext context, LearningCardPage page) {
+  if (KashiLayout.of(context).isPhone) {
+    return Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => page));
+  }
+  return showGeneralDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: page.move.name,
+    barrierColor: const Color(0x9E060C1E), // rgba(6,12,30,.62)
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (_, __, ___) => page,
+    transitionBuilder: (context, animation, _, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
 }
 
 /// Learn a single move: the photo (ending in the lower half of a khatam) or
@@ -187,9 +208,15 @@ class _LearningCardPageState extends State<LearningCardPage> {
     }
   }
 
+  /// The web layout's card: 920×612, the media (560px) on the left. On a
+  /// narrower tablet the card fits the screen and the media keeps its share.
+  static const _wideCardSize = Size(920, 612);
+  static const _wideMediaShare = 560 / 920;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
+    if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
     final footer = widget.footer;
     return Scaffold(
       backgroundColor: colors.ground,
@@ -230,10 +257,122 @@ class _LearningCardPageState extends State<LearningCardPage> {
     );
   }
 
+  Widget _wideCard(KashiColors colors) {
+    final footer = widget.footer;
+    final videoSrc = _move.videoSrc;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints.loose(_wideCardSize),
+          child: Material(
+            key: const ValueKey('learning-card'),
+            color: colors.raised,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    key: const ValueKey('learning-card-media'),
+                    width: constraints.maxWidth * _wideMediaShare,
+                    child: ColoredBox(
+                      color: colors.scene900,
+                      child: Stack(fit: StackFit.expand, children: [
+                        if (_videoOpen && videoSrc != null)
+                          ExerciseDemoVideoPlayer(
+                              key: ValueKey(videoSrc), src: videoSrc)
+                        else
+                          _photo(),
+                        if (!_videoOpen && videoSrc != null)
+                          Center(
+                            child: Material(
+                              color: colors.action,
+                              child: InkWell(
+                                onTap: () => setState(() => _videoOpen = true),
+                                child: SizedBox.square(
+                                  dimension: 64,
+                                  child: Icon(Icons.play_arrow_rounded,
+                                      color: colors.onAction,
+                                      size: 32,
+                                      semanticLabel: 'Play video'),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ]),
+                    ),
+                  ),
+                  Expanded(
+                    child: Stack(children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _details(colors,
+                                padding:
+                                    const EdgeInsets.fromLTRB(30, 30, 30, 12)),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(30, 0, 30, 28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (footer != null) ...[
+                                  footer,
+                                  const SizedBox(height: 10),
+                                ],
+                                KashiActionButton(
+                                    label: widget.actionLabel, onPressed: _act),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      PositionedDirectional(
+                        top: 16,
+                        end: 16,
+                        child: Material(
+                          color: colors.inset,
+                          child: IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.maybePop(context, false),
+                            icon: const Icon(Icons.close, size: 18),
+                            color: colors.textPrimary,
+                            style: IconButton.styleFrom(
+                              shape: const RoundedRectangleBorder(),
+                              fixedSize: const Size(40, 40),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The still, or the pahlevan illustration when there is none.
+  Widget _photo() {
+    final photo = _move.photo;
+    return photo == null
+        ? const MovePlaceholder()
+        : Image(
+            image: photo,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -.4),
+            errorBuilder: (_, __, ___) => const MovePlaceholder(),
+          );
+  }
+
   Widget _header(KashiColors colors) {
     final top = MediaQuery.paddingOf(context).top;
     final videoSrc = _move.videoSrc;
-    final photo = _move.photo;
     return SizedBox(
       height: _photoHeight + 8,
       child: Stack(
@@ -254,15 +393,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                     clipper: const _KhatamEdgeClipper(),
                     child: ColoredBox(
                       color: colors.scene900,
-                      child: photo == null
-                          ? const MovePlaceholder()
-                          : Image(
-                              image: photo,
-                              fit: BoxFit.cover,
-                              alignment: const Alignment(0, -.4),
-                              errorBuilder: (_, __, ___) =>
-                                  const MovePlaceholder(),
-                            ),
+                      child: _photo(),
                     ),
                   ),
           ),
@@ -315,7 +446,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
     );
   }
 
-  Widget _details(KashiColors colors) {
+  Widget _details(KashiColors colors,
+      {EdgeInsets padding = const EdgeInsets.fromLTRB(22, 0, 22, 12)}) {
     final selected = _selected;
     final reps = selected?.reps ?? _move.target;
     final nameFa = _move.nameFa;
@@ -333,7 +465,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 .copyWith(fontSize: 15, color: colors.farsiAccent)),
     ];
     return ListView(
-      padding: const EdgeInsets.fromLTRB(22, 0, 22, 12),
+      padding: padding,
       children: [
         Wrap(
           spacing: 10,

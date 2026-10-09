@@ -8,8 +8,10 @@ import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 
 Future<void> _pump(WidgetTester tester,
     {Size size = const Size(360, 740), ThemeData? theme}) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // tester.view, so MediaQuery (and the layout) see this size.
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
     home: const LibraryPage(),
