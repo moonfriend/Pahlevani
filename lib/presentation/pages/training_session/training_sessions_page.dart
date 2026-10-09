@@ -33,6 +33,7 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
 import 'package:pahlevani/features/fitness_test/presentation/pages/fitness_test_landing_page.dart';
+import 'package:pahlevani/presentation/layout/kashi_readable_width.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -325,37 +326,39 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         return Scaffold(
           backgroundColor: colors.bg,
           body: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Header(
-                  refreshing: isLoading,
-                  onRefresh: _refresh,
-                  onHistoryTap: () => _openHistory(context),
-                  onMorshedTap: () => _openMorshedPicker(context),
-                  onPathTap: () => _openPath(context),
-                  onFitnessTestTap: () => _openFitnessTest(context),
-                ),
-                if (isLoading && sessions.isEmpty)
-                  const Expanded(
-                      child: Center(child: CircularProgressIndicator()))
-                else
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: _SessionList(
-                        sessions: sessions,
-                        dlStatuses: dlStatuses,
-                        itemCounts: itemCounts,
-                        durations: durations,
-                        onOpen: (s) => openSessionPreview(context, s),
-                        onMenu: (s) => _showOverflowSheet(context, s,
-                            dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
-                        onDownload: (s) => _downloadSession(s),
+            child: KashiReadableWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Header(
+                    refreshing: isLoading,
+                    onRefresh: _refresh,
+                    onHistoryTap: () => _openHistory(context),
+                    onMorshedTap: () => _openMorshedPicker(context),
+                    onPathTap: () => _openPath(context),
+                    onFitnessTestTap: () => _openFitnessTest(context),
+                  ),
+                  if (isLoading && sessions.isEmpty)
+                    const Expanded(
+                        child: Center(child: CircularProgressIndicator()))
+                  else
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _refresh,
+                        child: _SessionList(
+                          sessions: sessions,
+                          dlStatuses: dlStatuses,
+                          itemCounts: itemCounts,
+                          durations: durations,
+                          onOpen: (s) => openSessionPreview(context, s),
+                          onMenu: (s) => _showOverflowSheet(context, s,
+                              dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
+                          onDownload: (s) => _downloadSession(s),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );

@@ -198,6 +198,29 @@ void main() {
     expect(find.text('Session B'), findsOneWidget);
   });
 
+  testWidgets('on a wide screen the list keeps a readable width, centred',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+    await cubit.fetchTrainingSessions();
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    final list = tester.getRect(find.byType(RefreshIndicator));
+    expect(list.width, lessThanOrEqualTo(760));
+    expect(list.center.dx, closeTo(720, 1));
+  });
+
   testWidgets('header title does not overflow at a narrow device width',
       (tester) async {
     // Regression test: at a realistic narrow phone width (360dp logical),

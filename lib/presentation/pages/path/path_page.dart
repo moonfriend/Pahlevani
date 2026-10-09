@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/presentation/layout/kashi_readable_width.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/path/path_node.dart';
@@ -44,57 +45,59 @@ class _PathPageState extends State<PathPage> {
                 .appBarTitle
                 .copyWith(color: cs.onSurface)),
       ),
-      body: BlocBuilder<PathCubit, PathState>(
-        builder: (context, state) {
-          if (state is PathInitial ||
-              (state is PathLoading && state.uiModel.path == null)) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final uiModel = switch (state) {
-            PathInitial() => null,
-            PathLoading(:final uiModel) => uiModel,
-            PathLoaded(:final uiModel) => uiModel,
-            PathError(:final uiModel) => uiModel,
-          };
-          final path = uiModel?.path;
-          if (path == null) {
-            final message = state is PathError ? state.message : null;
-            return Center(
-                child: Text(message ?? 'Nothing here yet.',
-                    style: TextStyle(color: colors.onMuted)));
-          }
-          if (path.nodes.isEmpty) {
-            return Center(
-                child: Text('No path nodes yet.',
-                    style: TextStyle(color: colors.onMuted)));
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            itemCount: path.nodes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final node = path.nodes[index];
-              final status =
-                  uiModel!.nodeStatuses[node.id] ?? PathNodeStatus.notStarted;
-              final completed = node.items
-                  .where((i) => uiModel.completedItemIds.contains(i.id))
-                  .length;
-              final progress =
-                  node.items.isEmpty ? 0.0 : completed / node.items.length;
-              return _PathNodeCard(
-                node: node,
-                status: status,
-                progress: progress,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PathNodeDetailPage(nodeId: node.id),
+      body: KashiReadableWidth(
+        child: BlocBuilder<PathCubit, PathState>(
+          builder: (context, state) {
+            if (state is PathInitial ||
+                (state is PathLoading && state.uiModel.path == null)) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final uiModel = switch (state) {
+              PathInitial() => null,
+              PathLoading(:final uiModel) => uiModel,
+              PathLoaded(:final uiModel) => uiModel,
+              PathError(:final uiModel) => uiModel,
+            };
+            final path = uiModel?.path;
+            if (path == null) {
+              final message = state is PathError ? state.message : null;
+              return Center(
+                  child: Text(message ?? 'Nothing here yet.',
+                      style: TextStyle(color: colors.onMuted)));
+            }
+            if (path.nodes.isEmpty) {
+              return Center(
+                  child: Text('No path nodes yet.',
+                      style: TextStyle(color: colors.onMuted)));
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: path.nodes.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final node = path.nodes[index];
+                final status =
+                    uiModel!.nodeStatuses[node.id] ?? PathNodeStatus.notStarted;
+                final completed = node.items
+                    .where((i) => uiModel.completedItemIds.contains(i.id))
+                    .length;
+                final progress =
+                    node.items.isEmpty ? 0.0 : completed / node.items.length;
+                return _PathNodeCard(
+                  node: node,
+                  status: status,
+                  progress: progress,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PathNodeDetailPage(nodeId: node.id),
+                    ),
                   ),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

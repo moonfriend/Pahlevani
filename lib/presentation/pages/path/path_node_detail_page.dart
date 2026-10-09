@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/presentation/layout/kashi_readable_width.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/path/path_item.dart';
@@ -64,42 +65,45 @@ class PathNodeDetailPage extends StatelessWidget {
                     .appBarTitle
                     .copyWith(color: cs.onSurface)),
           ),
-          body: node == null
-              ? const SizedBox.shrink()
-              : node.items.isEmpty
-                  ? Center(
-                      child: Text('Nothing here yet.',
-                          style: TextStyle(color: colors.onMuted)))
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      itemCount: node.items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = node.items[index];
-                        final completed =
-                            uiModel!.completedItemIds.contains(item.id);
-                        final sessionTitle = item is SessionPathItem
-                            ? sessionCubit
-                                .getSessionDetail(item.trainingSessionId)
-                                ?.session
-                                .title
-                            : null;
-                        return _PathItemRow(
-                          item: item,
-                          sessionTitle: sessionTitle,
-                          completed: completed,
-                          onToggle: () => context
-                              .read<PathCubit>()
-                              .toggleItemCompleted(item.id),
-                          onTap: switch (item) {
-                            SessionPathItem(:final trainingSessionId) => () =>
-                                _openSession(context, trainingSessionId),
-                            VideoPathItem() => () => _openVideo(context, item),
-                            QuotePathItem() => null,
-                          },
-                        );
-                      },
-                    ),
+          body: KashiReadableWidth(
+            child: node == null
+                ? const SizedBox.shrink()
+                : node.items.isEmpty
+                    ? Center(
+                        child: Text('Nothing here yet.',
+                            style: TextStyle(color: colors.onMuted)))
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        itemCount: node.items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = node.items[index];
+                          final completed =
+                              uiModel!.completedItemIds.contains(item.id);
+                          final sessionTitle = item is SessionPathItem
+                              ? sessionCubit
+                                  .getSessionDetail(item.trainingSessionId)
+                                  ?.session
+                                  .title
+                              : null;
+                          return _PathItemRow(
+                            item: item,
+                            sessionTitle: sessionTitle,
+                            completed: completed,
+                            onToggle: () => context
+                                .read<PathCubit>()
+                                .toggleItemCompleted(item.id),
+                            onTap: switch (item) {
+                              SessionPathItem(:final trainingSessionId) => () =>
+                                  _openSession(context, trainingSessionId),
+                              VideoPathItem() => () =>
+                                  _openVideo(context, item),
+                              QuotePathItem() => null,
+                            },
+                          );
+                        },
+                      ),
+          ),
         );
       },
     );
