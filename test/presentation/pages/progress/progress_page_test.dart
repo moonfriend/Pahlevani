@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
@@ -42,8 +43,10 @@ Future<TrainingHistoryCubit> _cubitWith(
 
 Future<void> _pump(WidgetTester tester, TrainingHistoryCubit cubit, Widget page,
     {Size size = const Size(360, 740), ThemeData? theme}) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // tester.view, so MediaQuery (and the layout) see this size.
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
     home: BlocProvider.value(value: cubit, child: page),
@@ -124,9 +127,70 @@ void main() {
       expect(find.textContaining('Counted moves appear here'), findsOneWidget);
     });
 
+    for (final size in const [Size(834, 1194), Size(1440, 900)]) {
+      testWidgets(
+          'tablet and web ($size): shamseh and calendar side by side, no '
+          'swap', (tester) async {
+        final cubit = await _cubitWith(tester, records);
+        await _pump(tester, cubit, ProgressPage(now: () => _today), size: size);
+        expect(tester.takeException(), isNull);
+
+        expect(find.text('Progress'), findsOneWidget);
+        expect(find.byTooltip('Show calendar'), findsNothing);
+        final shamseh = tester.getRect(
+            find.byWidgetPredicate((w) => w is Shamseh && w.size > 100));
+        final calendar = tester.getRect(find.text('September 2026'));
+        expect(calendar.left, greaterThan(shamseh.right));
+        expect(find.text('Ring 1 · 3 / 8'), findsOneWidget);
+        expect(find.text('Trained · 2'), findsOneWidget);
+
+        await tester.tap(find.text('21'));
+        await tester.pumpAndSettle();
+        expect(find.text('Monday 21 September'), findsOneWidget);
+      });
+    }
+
+    testWidgets('on its card the shamseh\'s empty slots stay visible',
+        (tester) async {
+      final cubit = await _cubitWith(tester, records);
+      await _pump(tester, cubit, ProgressPage(now: () => _today),
+          size: const Size(1440, 900));
+      final colors = PahlevaniTheme.light().extension<KashiColors>()!;
+      final shamseh = tester.widget<Shamseh>(
+          find.byWidgetPredicate((w) => w is Shamseh && w.size > 100));
+      expect(shamseh.palette?.empty, colors.inset,
+          reason: 'the card is raised; raised-coloured slots would vanish');
+    });
+
+    testWidgets('tablet: logged moves two to a row', (tester) async {
+      final cubit = await _cubitWith(tester, [
+        ...records,
+        SessionCompletionRecord(
+          id: 'meel',
+          sessionId: 1,
+          sessionTitle: 'S',
+          completedAt: DateTime(2026, 9, 22),
+          movementCounts: [
+            TrackedMovementCount(
+                key: MovementKey.fromValue('m:2'),
+                displayName: 'Meel Giri',
+                count: 50),
+          ],
+        ),
+      ]);
+      await _pump(tester, cubit, ProgressPage(now: () => _today),
+          size: const Size(834, 1194));
+      await tester.scrollUntilVisible(find.text('Meel Giri · last'), 80,
+          scrollable: find.byType(Scrollable).first);
+      expect(tester.getRect(find.text('Meel Giri · last')).top,
+          tester.getRect(find.text('Shena · last')).top);
+    });
+
     for (final size in const [
       Size(360, 740),
       Size(320, 568),
+      Size(600, 800),
+      Size(1100, 700),
       Size(1440, 900)
     ]) {
       testWidgets('lays out without overflow at $size', (tester) async {

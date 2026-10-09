@@ -8,6 +8,7 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/tracking/session_completion_record.dart';
 import '../../../domain/usecases/tracking/training_history_aggregations.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
+import '../../layout/kashi_layout.dart';
 import '../../widgets/kashi/kashi_day_tile.dart';
 import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
@@ -20,7 +21,9 @@ enum _View { shamseh, calendar }
 
 /// Two views in one place — the shamseh shows mastery (one tile per
 /// completed session, never resets), the calendar shows activity — plus the
-/// latest logged reps per counted move. Reads [TrainingHistoryCubit].
+/// latest logged reps per counted move. On phones a preview swaps between
+/// the two views; on tablet and web they sit side by side, with the logged
+/// moves two to a row. Reads [TrainingHistoryCubit].
 class ProgressPage extends StatefulWidget {
   const ProgressPage({super.key, this.now = DateTime.now});
 
@@ -49,6 +52,10 @@ class _ProgressPageState extends State<ProgressPage>
     final sessionsThisMonth = completions
         .where((c) => c.year == month.year && c.month == month.month)
         .length;
+    final layout = KashiLayout.of(context);
+    if (!layout.isPhone) {
+      return _wide(colors, layout, records, completions, sessionsThisMonth);
+    }
 
     return Scaffold(
       backgroundColor: colors.ground,
@@ -143,6 +150,144 @@ class _ProgressPageState extends State<ProgressPage>
         ),
       ),
     );
+  }
+
+  /// Tablet and web: a "Progress" heading, the shamseh and the calendar as
+  /// two cards side by side, the selected day under them, then the logged
+  /// moves two to a row.
+  Widget _wide(
+    KashiColors colors,
+    KashiLayout layout,
+    List<SessionCompletionRecord> records,
+    List<DateTime> completions,
+    int sessionsThisMonth,
+  ) {
+    final gap = layout.bentoGap;
+    final trends = recentMovementCounts(records);
+    return Scaffold(
+      backgroundColor: colors.ground,
+      body: SafeArea(
+        bottom: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1400),
+            child: ListView(
+              padding: layout.isWide
+                  ? const EdgeInsets.fromLTRB(40, 40, 40, 32)
+                  : const EdgeInsets.fromLTRB(32, 40, 32, 24),
+              children: [
+                Text('Progress',
+                    style: KashiTextStyles.title.copyWith(
+                        fontSize: layout.isWide ? 34 : 32,
+                        color: colors.textPrimary)),
+                const SizedBox(height: 24),
+                _panels(colors, gap, records, completions, sessionsThisMonth),
+                if (selectedDate != null) ...[
+                  SizedBox(height: gap),
+                  _Card(
+                    colors: colors,
+                    child: DayDetail(
+                      date: selectedDate!,
+                      records: groupCompletionsByDay(records)[selectedDate] ??
+                          const [],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 28),
+                const KashiSectionLabel('Logged moves'),
+                const SizedBox(height: 10),
+                if (trends.isEmpty)
+                  ..._loggedMoves(records, colors)
+                else
+                  for (var i = 0; i < trends.length; i += 2)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: gap),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: _LoggedMoveRow(trend: trends[i])),
+                          SizedBox(width: gap),
+                          Expanded(
+                            child: i + 1 < trends.length
+                                ? _LoggedMoveRow(trend: trends[i + 1])
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The shamseh and calendar cards side by side, their content sized from
+  /// the width measured here. Each card takes its own height: forcing equal
+  /// heights (IntrinsicHeight) underestimated the calendar and overflowed.
+  Widget _panels(
+    KashiColors colors,
+    double gap,
+    List<SessionCompletionRecord> records,
+    List<DateTime> completions,
+    int sessionsThisMonth,
+  ) {
+    final cardTitle =
+        KashiTextStyles.title.copyWith(fontSize: 22, color: colors.textPrimary);
+    final cardSubtitle = KashiTextStyles.ui.copyWith(
+        fontSize: 13, fontWeight: FontWeight.w400, color: colors.textMuted);
+    return LayoutBuilder(builder: (context, constraints) {
+      final inner = (constraints.maxWidth - gap) / 2 - 2 * _Card.padding;
+      final shamseh = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Your shamseh', style: cardTitle),
+          Text('${records.length} sessions · it never resets',
+              style: cardSubtitle),
+          const SizedBox(height: 16),
+          Center(
+            child: Shamseh(
+                size: math.min(380, inner - 20),
+                tilesLaid: records.length,
+                palette: ShamsehPalette.onCard(colors)),
+          ),
+          const SizedBox(height: 16),
+          Center(child: _RingLegend(tilesLaid: records.length)),
+        ],
+      );
+      final calendar = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Your calendar', style: cardTitle),
+          Text(
+              '$sessionsThisMonth sessions in '
+              '${kashiMonthLabel(month).split(' ').first}',
+              style: cardSubtitle),
+          const SizedBox(height: 16),
+          Center(
+            child: KashiMonthCalendar(
+              month: month,
+              tileSize: math.min(64, inner / 7),
+              cells: buildCalendarMonth(
+                  month: month, today: now(), trainedDays: completions.toSet()),
+              onPrevious: previousMonth(completions),
+              onNext: nextMonth(completions),
+              selectedDay: selectedDay,
+              onDayTap: selectDay,
+            ),
+          ),
+        ],
+      );
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _Card(colors: colors, child: shamseh)),
+          SizedBox(width: gap),
+          Expanded(child: _Card(colors: colors, child: calendar)),
+        ],
+      );
+    });
   }
 
   List<Widget> _loggedMoves(
@@ -316,4 +461,20 @@ class _LoggedMoveRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A raised card around one Progress panel (tablet and web).
+class _Card extends StatelessWidget {
+  const _Card({required this.colors, required this.child});
+
+  final KashiColors colors;
+  final Widget child;
+
+  static const double padding = 24;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: colors.raised,
+        child: Padding(padding: const EdgeInsets.all(padding), child: child),
+      );
 }

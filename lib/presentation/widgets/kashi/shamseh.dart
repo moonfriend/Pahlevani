@@ -55,6 +55,14 @@ class ShamsehPalette {
         ring2 = colors.tile,
         empty = colors.tileEmpty;
 
+  /// On a raised card (Progress on tablet and web): empty slots take the
+  /// inset colour, which shows on the card.
+  ShamsehPalette.onCard(KashiColors colors)
+      : centre = colors.reward,
+        ring1 = colors.shamsehRing1,
+        ring2 = colors.tile,
+        empty = colors.inset;
+
   /// On the lajvard Complete scene — the same in both themes.
   static const scene = ShamsehPalette(
     centre: KashiPalette.yellow400,
