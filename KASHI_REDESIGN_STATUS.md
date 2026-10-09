@@ -1,4 +1,4 @@
-# Kashi UX redesign — status (branch `new-ux-design`, updated 2026-10-06)
+# Kashi UX redesign — status (branch `new-ux-design`, updated 2026-10-09)
 
 Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_ui/Pahlevani_design_brand_colors.zip`
 → `design_handoff_pahlevani_v1/` (README.md, LOGIC_AND_STATE.md, `*.dc.html`, screenshots).
@@ -26,6 +26,33 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
   - The player needs no change for this: the mode is a constructor parameter of
     `SessionPlayerCubit` (`PlayerMode`).
 - Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
+
+## 2026-10-09: first test pass fixes + tablet / desktop / web layouts
+- **Fixes from the user's first test:** arch tab icons; Home shows only the two most-counted moves
+  (tap → "Counted moves" page); mouse drag swipes carousels (desktop/web); the preview's two mode
+  buttons start the session (no Start button); female placeholder; **one learning card everywhere**
+  (`pages/library/learning_card_page.dart`: Library, session preview, Learning mode's pre-move
+  prompt, the player's How to — built from the real move via `LearningMove`; the old centred
+  learning sheet is gone). Lighter/Harder shows when a move has variations (admin → Info page content).
+- **Responsive layouts** (handoff breakpoints in `lib/presentation/layout/kashi_layout.dart`: phone
+  < 600, tablet 600–1100, web > 1100, by window width — never by platform):
+  - shell: 232px side rail (with the user + session count) on web, 80px tab bar on tablet;
+  - Home: 3-column (tablet) / 4-column (web) bento on one column grid, Other sessions tile, web month
+    calendar tile;
+  - player: tablet star + transport side by side; web video left, star + transport right; **Space
+    counts a rep**;
+  - learning card: centred two-column card from 600px up;
+  - Progress: shamseh + calendar side by side, logged moves two to a row;
+  - Library: 2 / 3 / 4 columns; session preview: lajvard panel left, moves right;
+  - `KashiReadableWidth` caps the old session list and Path pages at 760px.
+- Tests: 962 unit/widget, 14 Linux integration journeys — all green. Widget tests that set a window
+  size must use `tester.view` (not `setSurfaceSize`), else MediaQuery stays 800×600 = tablet layout.
+- Not pushed (only up to 6a3c31d is on origin).
+
+### Next
+- User: manual check on Linux (resize the window across 600 / 1100 px), Android and web
+  (checklist section "Tablet, desktop and web layouts").
+- Library still on `sample_moves.dart`; Farsi/RTL via `.po` files.
 
 ## 2026-10-07: fixes from the first device look
 - Rep log + KB sizes "missing": the app ran against **production** (`env/supabase.active.env` was
