@@ -122,6 +122,6 @@ void main() {
         .map((i) => i.image)
         .whereType<AssetImage>()
         .map((a) => a.assetName);
-    expect(assets, contains(KashiAssets.pahlevanMale));
+    expect(assets, contains(KashiAssets.pahlevanFemale));
   });
 }
