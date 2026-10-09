@@ -48,7 +48,7 @@ class Exercise {
   final int? movementTypeId;
 
   /// Up to 3 "pay attention to" points, shown in the player and the
-  /// learning sheet (`movement_info.cues`). Empty when none are entered.
+  /// learning card (`movement_info.cues`). Empty when none are entered.
   final List<String> cues;
 
   /// Numbered how-to steps for the learning card. Empty when none.

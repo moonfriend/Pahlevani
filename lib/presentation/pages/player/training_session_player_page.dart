@@ -38,7 +38,7 @@ import 'package:pahlevani/core/theme/kashi/kashi_palette.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_typography.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
-import 'package:pahlevani/presentation/widgets/kashi/learning_sheet.dart';
+import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
@@ -202,12 +202,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   Future<void> _promptLearningMode(
       BuildContext context, int index, Exercise exercise) async {
     final track = _cubit.state.tracks[index];
-    final shouldStart = await showLearningSheet(
+    final shouldStart = await showLearningCard(
       context,
-      exercise: exercise,
-      media: track.media,
-      videoReady: track.videoReady,
-      targetReps: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+      LearningMove.fromExercise(
+        exercise,
+        media: track.media,
+        videoReady: track.videoReady,
+        target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+      ),
       actionLabel: 'Go',
       footer: LearntToggle(exerciseId: exercise.id),
     );
@@ -216,7 +218,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     }
   }
 
-  /// "How to": the current move's learning sheet. Pauses first (an
+  /// "How to": the current move's learning card. Pauses first (an
   /// explicit pause, never a toggle — opening it must always stop playback)
   /// and leaves the session paused when it closes.
   Future<void> _openHowTo(BuildContext context, int index) async {
@@ -224,12 +226,14 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     if (exercise == null) return;
     _cubit.pause();
     final track = _cubit.state.tracks[index];
-    await showLearningSheet(
+    await showLearningCard(
       context,
-      exercise: exercise,
-      media: track.media,
-      videoReady: track.videoReady,
-      targetReps: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+      LearningMove.fromExercise(
+        exercise,
+        media: track.media,
+        videoReady: track.videoReady,
+        target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
+      ),
     );
   }
 

@@ -81,7 +81,7 @@ class _MoveTile extends StatelessWidget {
       child: InkWell(
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => LearningCardPage(move: move)),
+          MaterialPageRoute(builder: (_) => LearningCardPage.sample(move)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(10),

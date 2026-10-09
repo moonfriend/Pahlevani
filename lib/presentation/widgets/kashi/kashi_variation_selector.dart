@@ -6,7 +6,7 @@ import '../../../domain/entities/training_session/move_variation.dart';
 
 /// Lighter ‹ | variation card | › Harder. Stays left-to-right in Farsi too
 /// (it's a stepper). Shared by the Library's learning card and the
-/// learning sheet.
+/// session learning card.
 class KashiVariationSelector extends StatelessWidget {
   const KashiVariationSelector({
     super.key,

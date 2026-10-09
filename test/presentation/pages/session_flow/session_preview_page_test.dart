@@ -13,6 +13,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
+import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
@@ -169,13 +170,17 @@ void main() {
     expect(buttons.map((b) => b.label), ['Educational', 'Only follow along']);
   });
 
-  testWidgets('tapping a move opens its learning sheet', (tester) async {
+  testWidgets('tapping a move opens the Library\'s learning card',
+      (tester) async {
     await _pump(tester);
 
     await tester.tap(find.text('Shena'));
     await tester.pumpAndSettle();
 
+    expect(find.byType(LearningCardPage), findsOneWidget);
     expect(find.text('40 reps'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Back long'), 80,
+        scrollable: find.byType(Scrollable).last);
     expect(find.text('Back long'), findsOneWidget);
     await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();

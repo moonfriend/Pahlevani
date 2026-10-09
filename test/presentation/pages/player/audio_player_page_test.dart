@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
 import 'package:pahlevani/domain/repositories/media_size_repository.dart';
@@ -323,7 +324,7 @@ void main() {
     expect(find.text('Move 2 of 2'), findsOneWidget);
   });
 
-  testWidgets('How to pauses playback and opens the learning sheet',
+  testWidgets('How to pauses playback and opens the learning card',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
@@ -334,6 +335,7 @@ void main() {
     await tester.tap(find.byTooltip('How to'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(LearningCardPage), findsOneWidget);
     expect(find.text('Got it'), findsOneWidget);
 
     await tester.tap(find.text('Got it'));
@@ -918,6 +920,8 @@ void main() {
     await _pumpAndLoad(tester);
 
     expect(find.text('Go'), findsOneWidget);
+    expect(find.byType(LearningCardPage), findsOneWidget,
+        reason: 'Learning mode shows the same card as the Library');
     expect(capturedAudio.resumed, isFalse);
     expect(capturedAudio.playCallCount, 0);
   });
@@ -981,9 +985,9 @@ void main() {
         .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
     await _pumpAndLoad(tester);
 
-    // Never plays in this test, so pumpAndSettle is safe here. Tap the
-    // barrier outside the card — the modal prompt has no back button.
-    await tester.tapAt(const Offset(10, 10));
+    // Never plays in this test, so pumpAndSettle is safe here. The
+    // learning card is a full page: leave it with its Back button.
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
 
     expect(find.text('Go'), findsNothing);

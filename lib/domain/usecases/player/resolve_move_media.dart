@@ -4,7 +4,7 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 /// Local copies of a move's photo, or video and poster, where downloaded.
 /// A video only plays when its file is on the device (or on the web, where
 /// it streams); otherwise its poster shows. Shared by the player's queue and
-/// the learning sheet so both show the same media.
+/// the learning card so both show the same media.
 class ResolveMoveMedia {
   final DownloadRepository _downloads;
 

@@ -22,7 +22,7 @@ import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/khatam.dart';
-import '../../widgets/kashi/learning_sheet.dart';
+import '../library/learning_card_page.dart';
 import 'session_start.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
@@ -43,7 +43,7 @@ Future<void> openSessionPreview(
 /// What you are about to do, and with which morshed: the session's header
 /// with a framed still, the morshed dropdown, the move list (REPS marks a
 /// move a trainer flagged for counting; tapping a move opens its learning
-/// sheet) and two start buttons: Educational (Learning mode — pauses before
+/// card) and two start buttons: Educational (Learning mode — pauses before
 /// each move not yet learnt) and Only follow along (Athlete mode).
 ///
 /// Zoorkhaneh mode is not offered here; it lives in the session's own menu.
@@ -76,12 +76,17 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
             detail.exercise.media,
             useRemoteMedia: kIsWeb);
     if (!mounted) return;
-    await showLearningSheet(
+    final seconds =
+        context.read<TrainingSessionCubit>().moveDurationSeconds(detail.item);
+    await showLearningCard(
       context,
-      exercise: detail.exercise,
-      media: media,
-      videoReady: videoReady,
-      targetReps: _countedTarget(detail),
+      LearningMove.fromExercise(
+        detail.exercise,
+        media: media,
+        videoReady: videoReady,
+        target: _countedTarget(detail),
+        minutes: seconds == null ? null : _wholeMinutes(seconds),
+      ),
     );
   }
 
@@ -170,7 +175,9 @@ int? _countedTarget(ItemDetail detail) => detail.item.isTracked
       }
     : null;
 
-String _minutes(int seconds) => '${(seconds / 60).round().clamp(1, 999)} min';
+int _wholeMinutes(int seconds) => (seconds / 60).round().clamp(1, 999);
+
+String _minutes(int seconds) => '${_wholeMinutes(seconds)} min';
 
 class _Header extends StatelessWidget {
   const _Header({

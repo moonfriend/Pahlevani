@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/pages/library/sample_moves.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
@@ -18,7 +20,7 @@ Future<void> _pump(WidgetTester tester, SampleMove move,
       builder: (context) => Scaffold(
         body: TextButton(
           onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => LearningCardPage(move: move))),
+              MaterialPageRoute(builder: (_) => LearningCardPage.sample(move))),
           child: const Text('open'),
         ),
       ),
@@ -100,4 +102,134 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('a session\'s move (showLearningCard)', () {
+    const shena = Exercise(
+      id: 1,
+      name: 'Shena',
+      titleFa: 'شنا',
+      description: 'A wave-like press.',
+      steps: ['Hands wide', 'Sweep low'],
+      cues: ['Back long', 'Breathe out'],
+    );
+
+    /// Opens the card from a button and records what it returned.
+    Future<List<bool>> open(
+      WidgetTester tester,
+      Exercise exercise, {
+      int? target,
+      int? minutes,
+      String actionLabel = 'Got it',
+      Widget? footer,
+    }) async {
+      final results = <bool>[];
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => results.add(await showLearningCard(
+                context,
+                LearningMove.fromExercise(exercise,
+                    media: exercise.media,
+                    videoReady: false,
+                    target: target,
+                    minutes: minutes),
+                actionLabel: actionLabel,
+                footer: footer,
+              )),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return results;
+    }
+
+    Future<void> scrollTo(WidgetTester tester, Finder finder) =>
+        tester.scrollUntilVisible(finder, 80,
+            scrollable: find.byType(Scrollable).first);
+
+    testWidgets(
+        'the same full-page card as the Library, with the move\'s '
+        'content: name, Farsi, reps, description, steps and cues',
+        (tester) async {
+      await open(tester, shena, target: 40, minutes: 3);
+
+      expect(find.byType(LearningCardPage), findsOneWidget);
+      expect(find.text('Shena'), findsOneWidget);
+      expect(find.text('شنا'), findsOneWidget);
+      expect(find.text('3 min'), findsOneWidget);
+      expect(find.text('40 reps'), findsOneWidget);
+      expect(find.text('A wave-like press.'), findsOneWidget);
+      for (final text in [
+        'Hands wide',
+        'Sweep low',
+        'PAY ATTENTION TO',
+        'Back long',
+        'Breathe out'
+      ]) {
+        await scrollTo(tester, find.text(text));
+        expect(find.text(text), findsOneWidget);
+      }
+    });
+
+    testWidgets('a move that is not counted has no reps tag', (tester) async {
+      await open(tester, const Exercise(id: 2, name: 'Charkh'));
+      expect(find.byType(KashiRepsTag), findsNothing);
+      expect(find.text('Lighter'), findsNothing);
+    });
+
+    testWidgets('Lighter / Harder from the move\'s variations; reps follow',
+        (tester) async {
+      await open(
+          tester,
+          const Exercise(id: 1, name: 'Shena', variations: [
+            MoveVariation(name: 'Knee shena', level: 'EASIER', reps: 12),
+            MoveVariation(name: 'Shena', level: 'STANDARD', reps: 20),
+            MoveVariation(name: 'Sar Navazi', level: 'HARDER', reps: 30),
+          ]),
+          target: 40);
+
+      expect(find.text('20 reps'), findsOneWidget);
+      await tester.tap(find.text('Harder'));
+      await tester.pump();
+      expect(find.text('30 reps'), findsOneWidget);
+    });
+
+    testWidgets('the action returns true; Back returns false', (tester) async {
+      final results = await open(tester, shena);
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LearningCardPage), findsNothing);
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(results, [true, false]);
+    });
+
+    testWidgets('a custom action label and a footer above it', (tester) async {
+      await open(tester, shena,
+          actionLabel: 'Go', footer: const Text('learnt toggle'));
+      expect(find.text('Go'), findsOneWidget);
+      expect(find.text('learnt toggle'), findsOneWidget);
+    });
+
+    testWidgets('no video or photo: the female pahlevan illustration',
+        (tester) async {
+      await open(tester, shena);
+      final assets = tester
+          .widgetList<Image>(find.byType(Image))
+          .map((i) => i.image)
+          .whereType<AssetImage>()
+          .map((a) => a.assetName);
+      expect(assets, contains(KashiAssets.pahlevanFemale));
+    });
+  });
 }
