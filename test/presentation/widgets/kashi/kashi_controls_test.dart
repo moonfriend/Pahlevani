@@ -114,6 +114,18 @@ void main() {
           KashiTabBar.inactiveLabelColor);
     });
 
+    testWidgets('every tab has a 14px arch icon', (tester) async {
+      await _pump(
+        tester,
+        KashiTabBar(labels: items, selectedIndex: 0, onSelected: (_) {}),
+      );
+
+      final arches = find
+          .byWidgetPredicate((w) => w is ClipPath && w.clipper is KashiTabArch);
+      expect(arches, findsNWidgets(items.length));
+      expect(tester.getSize(arches.first), const Size.square(14));
+    });
+
     testWidgets('reports the tapped tab', (tester) async {
       int? tapped;
       await _pump(

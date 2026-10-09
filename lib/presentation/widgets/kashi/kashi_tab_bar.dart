@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/kashi/kashi_palette.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 
-/// The lajvard tab bar (handoff default: 4-point star icons — active
-/// yellow, inactive lajvard-500, active label white).
+/// The lajvard tab bar with arch icons (the handoff's "arch" tab style —
+/// active yellow, inactive lajvard-500, active label white).
 class KashiTabBar extends StatelessWidget {
   const KashiTabBar({
     super.key,
@@ -66,9 +66,9 @@ class _Tab extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ClipPath(
-              clipper: const _FourPointStar(),
+              clipper: const KashiTabArch(),
               child: SizedBox.square(
-                dimension: 15,
+                dimension: 14,
                 child: ColoredBox(
                   color: isSelected
                       ? KashiPalette.yellow400
@@ -93,9 +93,9 @@ class _Tab extends StatelessWidget {
   }
 }
 
-/// The handoff's STAR4 polygon — the tab icon only, not a khatam.
-class _FourPointStar extends CustomClipper<Path> {
-  const _FourPointStar();
+/// The handoff's ARCH polygon — a pointed arch, the tab icon only.
+class KashiTabArch extends CustomClipper<Path> {
+  const KashiTabArch();
 
   @override
   Path getClip(Size size) {
@@ -103,16 +103,17 @@ class _FourPointStar extends CustomClipper<Path> {
     return Path()
       ..addPolygon([
         p(.5, 0),
-        p(.61, .39),
-        p(1, .5),
-        p(.61, .61),
-        p(.5, 1),
-        p(.39, .61),
-        p(0, .5),
-        p(.39, .39),
+        p(.68, .12),
+        p(.82, .30),
+        p(.90, .52),
+        p(.90, 1),
+        p(.10, 1),
+        p(.10, .52),
+        p(.18, .30),
+        p(.32, .12),
       ], true);
   }
 
   @override
-  bool shouldReclip(_FourPointStar oldClipper) => false;
+  bool shouldReclip(KashiTabArch oldClipper) => false;
 }
