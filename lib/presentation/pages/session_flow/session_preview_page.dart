@@ -21,7 +21,6 @@ import '../../bloc/training_session/training_session_cubit.dart';
 import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/kashi_labels.dart';
-import '../../widgets/kashi/kashi_segmented.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/learning_sheet.dart';
 import 'session_start.dart';
@@ -44,8 +43,8 @@ Future<void> openSessionPreview(
 /// What you are about to do, and with which morshed: the session's header
 /// with a framed still, the morshed dropdown, the move list (REPS marks a
 /// move a trainer flagged for counting; tapping a move opens its learning
-/// sheet), how to start (Educational = Learning mode, the default; or Only
-/// follow along = Athlete mode) and Start.
+/// sheet) and two start buttons: Educational (Learning mode — pauses before
+/// each move not yet learnt) and Only follow along (Athlete mode).
 ///
 /// Zoorkhaneh mode is not offered here; it lives in the session's own menu.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
@@ -62,14 +61,12 @@ class SessionPreviewPage extends StatefulWidget {
 }
 
 class _SessionPreviewPageState extends State<SessionPreviewPage> {
-  PlayerMode _mode = PlayerMode.learning;
-
-  void _start() {
+  void _start(PlayerMode mode) {
     final onStart = widget.onStart;
     if (onStart != null) {
-      onStart(context, _mode);
+      onStart(context, mode);
     } else {
-      startSession(context, widget.session, _mode);
+      startSession(context, widget.session, mode);
     }
   }
 
@@ -145,20 +142,16 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                KashiSegmented<PlayerMode>(
-                  options: const [
-                    // Educational pauses before each move not yet learnt
-                    // (Learning mode); the other just plays along.
-                    (PlayerMode.learning, 'Educational'),
-                    (PlayerMode.athlete, 'Only follow along'),
-                  ],
-                  selected: _mode,
-                  onSelected: (mode) => setState(() => _mode = mode),
-                ),
-                const SizedBox(height: 10),
                 KashiActionButton(
-                  label: 'Start session',
-                  onPressed: moves.isEmpty ? null : _start,
+                  label: 'Educational',
+                  onPressed:
+                      moves.isEmpty ? null : () => _start(PlayerMode.learning),
+                ),
+                const SizedBox(height: 8),
+                KashiActionButton(
+                  label: 'Only follow along',
+                  onPressed:
+                      moves.isEmpty ? null : () => _start(PlayerMode.athlete),
                 ),
               ],
             ),

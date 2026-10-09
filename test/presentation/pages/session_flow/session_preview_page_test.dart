@@ -14,6 +14,7 @@ import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.da
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
+import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
@@ -146,19 +147,26 @@ void main() {
   });
 
   testWidgets(
-      'starts Educational (Learning mode) by default; Only follow along = Athlete',
-      (tester) async {
+      'no Start button: Educational starts Learning mode, '
+      'Only follow along starts Athlete mode', (tester) async {
     final started = await _pump(tester);
+    expect(find.text('Start session'), findsNothing);
 
-    await tester.tap(find.text('Start session'));
+    await tester.tap(find.text('Educational'));
     await tester.pump();
     expect(started, [PlayerMode.learning]);
 
     await tester.tap(find.text('Only follow along'));
     await tester.pump();
-    await tester.tap(find.text('Start session'));
-    await tester.pump();
     expect(started, [PlayerMode.learning, PlayerMode.athlete]);
+  });
+
+  testWidgets('both start buttons share the same colour', (tester) async {
+    await _pump(tester);
+    final buttons = tester
+        .widgetList<KashiActionButton>(find.byType(KashiActionButton))
+        .toList();
+    expect(buttons.map((b) => b.label), ['Educational', 'Only follow along']);
   });
 
   testWidgets('tapping a move opens its learning sheet', (tester) async {
