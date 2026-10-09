@@ -175,12 +175,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
-    final auth = context.watch<AuthCubit>().state;
-    final email = auth is AuthAuthenticated ? auth.user.email : null;
-    // Placeholder name until profiles carry one.
-    final name = (email != null && email.contains('@'))
-        ? email.split('@').first
-        : 'Pahlevan';
+    final name = context.watch<AuthCubit>().state.displayName;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
       child: Row(

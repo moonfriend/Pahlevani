@@ -11,13 +11,18 @@ class KashiTabBar extends StatelessWidget {
     required this.labels,
     required this.selectedIndex,
     required this.onSelected,
+    this.height = phoneHeight,
   });
 
   final List<String> labels;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
-  static const double height = 62;
+  /// 62px on phones, [tabletHeight] in the tablet layout.
+  final double height;
+
+  static const double phoneHeight = 62;
+  static const double tabletHeight = 80;
   static const inactiveLabelColor = Color(0xFF8E9BC9);
 
   @override
@@ -47,6 +52,26 @@ class KashiTabBar extends StatelessWidget {
   }
 }
 
+/// One tab's arch icon: yellow when selected, lajvard-500 otherwise. Shared
+/// with the web layout's side rail.
+class KashiTabIcon extends StatelessWidget {
+  const KashiTabIcon({super.key, required this.isSelected});
+
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) => ClipPath(
+        clipper: const KashiTabArch(),
+        child: SizedBox.square(
+          dimension: 14,
+          child: ColoredBox(
+            color:
+                isSelected ? KashiPalette.yellow400 : KashiPalette.lajvard500,
+          ),
+        ),
+      );
+}
+
 class _Tab extends StatelessWidget {
   const _Tab(
       {required this.label, required this.isSelected, required this.onTap});
@@ -65,17 +90,7 @@ class _Tab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ClipPath(
-              clipper: const KashiTabArch(),
-              child: SizedBox.square(
-                dimension: 14,
-                child: ColoredBox(
-                  color: isSelected
-                      ? KashiPalette.yellow400
-                      : KashiPalette.lajvard500,
-                ),
-              ),
-            ),
+            KashiTabIcon(isSelected: isSelected),
             const SizedBox(height: 5),
             Text(
               label,

@@ -29,6 +29,8 @@ import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
+import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -167,7 +169,15 @@ class PahlevaniApp extends StatelessWidget {
           // Version gate stays outermost: an outdated app is blocked before
           // the first-open splash.
           home: VersionGate(
-            child: FirstRunGate(child: AppShell(tabs: mainTabs())),
+            child: FirstRunGate(
+              child: AppShell(
+                tabs: mainTabs(),
+                railFooter: BlocProvider.value(
+                  value: getIt<TrainingHistoryCubit>()..load(),
+                  child: const RailUser(),
+                ),
+              ),
+            ),
           ),
         ),
       ),

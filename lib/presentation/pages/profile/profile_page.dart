@@ -99,11 +99,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _header(KashiColors colors) {
-    final auth = context.watch<AuthCubit>().state;
-    final email = auth is AuthAuthenticated ? auth.user.email : null;
-    final name = (email != null && email.contains('@'))
-        ? email.split('@').first
-        : 'Pahlevan';
+    final name = context.watch<AuthCubit>().state.displayName;
 
     final history = context.watch<TrainingHistoryCubit>().state;
     final completions = history is TrainingHistoryLoaded

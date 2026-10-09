@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
+import 'package:pahlevani/presentation/widgets/kashi/kashi_side_rail.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_tab_bar.dart';
 
 int _libraryBuilds = 0;
@@ -35,8 +36,13 @@ class _CounterState extends State<_Counter> {
       );
 }
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(WidgetTester tester, {Size? window}) async {
   _libraryBuilds = 0;
+  if (window != null) {
+    tester.view.physicalSize = window;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
   await tester.pumpWidget(MaterialApp(
     theme: PahlevaniTheme.light(),
     home: AppShell(tabs: _tabs),
@@ -130,5 +136,44 @@ void main() {
     await tester.tap(find.text('go to progress'));
     await tester.pump();
     expect(find.text('progress body'), findsOneWidget);
+  });
+
+  group('responsive navigation', () {
+    testWidgets('phone: the 62px bottom tab bar', (tester) async {
+      await _pump(tester, window: const Size(390, 844));
+      expect(find.byType(KashiSideRail), findsNothing);
+      expect(tester.getSize(find.byType(KashiTabBar)).height, 62);
+    });
+
+    testWidgets('tablet: an 80px bottom tab bar', (tester) async {
+      await _pump(tester, window: const Size(834, 1194));
+      expect(find.byType(KashiSideRail), findsNothing);
+      expect(tester.getSize(find.byType(KashiTabBar)).height, 80);
+    });
+
+    testWidgets(
+        'web: a 232px side rail instead of the tab bar; it switches '
+        'tabs', (tester) async {
+      await _pump(tester, window: const Size(1440, 900));
+      expect(find.byType(KashiTabBar), findsNothing);
+      expect(tester.getSize(find.byType(KashiSideRail)).width, 232);
+
+      await tester.tap(find.text('Progress'));
+      await tester.pump();
+      expect(find.text('progress body'), findsOneWidget);
+    });
+
+    testWidgets('resizing keeps the current tab and its state', (tester) async {
+      await _pump(tester, window: const Size(1440, 900));
+      await tester.tap(find.text('Library'));
+      await tester.pump();
+      await tester.tap(find.text('library taps 0'));
+      await tester.pump();
+
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pump();
+      expect(find.byType(KashiTabBar), findsOneWidget);
+      expect(find.text('library taps 1'), findsOneWidget);
+    });
   });
 }

@@ -4,6 +4,18 @@ sealed class AuthState extends Equatable {
   const AuthState();
   @override
   List<Object?> get props => [];
+
+  /// What the app calls the user: the start of their email when signed in,
+  /// else "Pahlevan". A placeholder until profiles carry a name.
+  String get displayName {
+    final email = switch (this) {
+      AuthAuthenticated(:final user) => user.email,
+      _ => null,
+    };
+    return (email != null && email.contains('@'))
+        ? email.split('@').first
+        : 'Pahlevan';
+  }
 }
 
 class AuthChecking extends AuthState {
