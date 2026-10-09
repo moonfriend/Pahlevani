@@ -73,7 +73,8 @@ final _catalogRepo = FakeAudioCatalogRepository(
   ],
 );
 
-Future<List<PlayerMode>> _pump(WidgetTester tester) async {
+Future<List<PlayerMode>> _pump(WidgetTester tester,
+    {Size size = const Size(360, 740)}) async {
   final started = <PlayerMode>[];
   await getIt.reset();
   registerDownloadDialogFakes(_catalogRepo);
@@ -92,11 +93,8 @@ Future<List<PlayerMode>> _pump(WidgetTester tester) async {
   addTearDown(catalog.close);
 
   // tester.view, so MediaQuery (and the layout) see this size.
-
-  tester.view.physicalSize = const Size(360, 740);
-
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
-
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MultiBlocProvider(
     providers: [
@@ -191,4 +189,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Back long'), findsNothing);
   });
+
+  for (final size in const [Size(834, 1194), Size(1440, 900)]) {
+    testWidgets(
+        '$size: the session panel with the start buttons on the left, the '
+        'moves on the right', (tester) async {
+      final started = await _pump(tester, size: size);
+      expect(tester.takeException(), isNull);
+
+      final title = tester.getRect(find.text('Full Pahlevani'));
+      final educational = tester.getRect(find.text('Educational'));
+      final shena = tester.getRect(find.text('Shena'));
+      expect(shena.left, greaterThan(title.right));
+      expect(shena.left, greaterThan(educational.right));
+      expect(shena.top, lessThan(size.height / 3),
+          reason: 'the list starts at the top, beside the header');
+      expect(find.text('MOVES · TAP ONE TO WATCH HOW'), findsOneWidget);
+
+      await tester.tap(find.text('Only follow along'));
+      expect(started, [PlayerMode.athlete]);
+    });
+  }
+
+  for (final size in const [
+    Size(600, 700),
+    Size(1100, 640),
+    Size(2560, 1440)
+  ]) {
+    testWidgets('no overflow at $size', (tester) async {
+      await _pump(tester, size: size);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

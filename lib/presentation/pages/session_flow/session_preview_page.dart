@@ -22,6 +22,7 @@ import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/khatam.dart';
+import '../../layout/kashi_layout.dart';
 import '../library/learning_card_page.dart';
 import 'session_start.dart';
 
@@ -100,6 +101,43 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       for (final m in moves) sessions.moveDurationSeconds(m.item),
     ];
 
+    final totalSeconds =
+        seconds.contains(null) ? null : seconds.fold<int>(0, (a, s) => a + s!);
+    final moveRows = [
+      if (moves.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Text('This session has no moves yet.',
+              style: KashiTextStyles.body.copyWith(color: colors.textMuted)),
+        ),
+      for (var i = 0; i < moves.length; i++)
+        _MoveRow(
+          number: i + 1,
+          name: moves[i].exercise.name,
+          counted: moves[i].item.isTracked,
+          seconds: seconds[i],
+          onTap: () => _openMove(moves[i]),
+        ),
+    ];
+    final startButtons = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        KashiActionButton(
+          label: 'Educational',
+          onPressed: moves.isEmpty ? null : () => _start(PlayerMode.learning),
+        ),
+        const SizedBox(height: 8),
+        KashiActionButton(
+          label: 'Only follow along',
+          onPressed: moves.isEmpty ? null : () => _start(PlayerMode.athlete),
+        ),
+      ],
+    );
+
+    if (!KashiLayout.of(context).isPhone) {
+      return _wide(colors, moves, totalSeconds, moveRows, startButtons);
+    }
     return Scaffold(
       backgroundColor: colors.ground,
       body: Column(
@@ -109,33 +147,12 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
               padding: EdgeInsets.zero,
               children: [
                 _Header(
-                  session: widget.session,
-                  moves: moves,
-                  totalSeconds: seconds.contains(null)
-                      ? null
-                      : seconds.fold<int>(0, (a, s) => a + s!),
-                ),
+                    session: widget.session,
+                    moves: moves,
+                    totalSeconds: totalSeconds),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Column(
-                    children: [
-                      if (moves.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Text('This session has no moves yet.',
-                              style: KashiTextStyles.body
-                                  .copyWith(color: colors.textMuted)),
-                        ),
-                      for (var i = 0; i < moves.length; i++)
-                        _MoveRow(
-                          number: i + 1,
-                          name: moves[i].exercise.name,
-                          counted: moves[i].item.isTracked,
-                          seconds: seconds[i],
-                          onTap: () => _openMove(moves[i]),
-                        ),
-                    ],
-                  ),
+                  child: Column(children: moveRows),
                 ),
               ],
             ),
@@ -143,26 +160,80 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
           SafeArea(
             top: false,
             minimum: const EdgeInsets.fromLTRB(16, 10, 16, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                KashiActionButton(
-                  label: 'Educational',
-                  onPressed:
-                      moves.isEmpty ? null : () => _start(PlayerMode.learning),
-                ),
-                const SizedBox(height: 8),
-                KashiActionButton(
-                  label: 'Only follow along',
-                  onPressed:
-                      moves.isEmpty ? null : () => _start(PlayerMode.athlete),
-                ),
-              ],
-            ),
+            child: startButtons,
           ),
         ],
       ),
+    );
+  }
+
+  /// Tablet and web: the lajvard session panel (header, still, morshed and
+  /// the start buttons) on the left, the moves on the right.
+  Widget _wide(
+    KashiColors colors,
+    List<ItemDetail> moves,
+    int? totalSeconds,
+    List<Widget> moveRows,
+    Widget startButtons,
+  ) {
+    return Scaffold(
+      backgroundColor: colors.ground,
+      body: LayoutBuilder(builder: (context, constraints) {
+        final panel = (constraints.maxWidth * .45).clamp(300.0, 560.0);
+        // Narrow tablets keep the move list readable with smaller margins.
+        final listSide = constraints.maxWidth - panel < 420 ? 20.0 : 40.0;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: panel,
+              child: ColoredBox(
+                color: KashiPalette.lajvard700,
+                child: CustomPaint(
+                  painter: const _KhatamOutlinePattern(),
+                  child: SafeArea(
+                    right: false,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: _Header(
+                              session: widget.session,
+                              moves: moves,
+                              totalSeconds: totalSeconds,
+                              embedded: true,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 10, 24, 28),
+                          child: startButtons,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: SafeArea(
+                left: false,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(listSide, 40, listSide, 32),
+                  children: [
+                    Text('MOVES · TAP ONE TO WATCH HOW',
+                        style: KashiTextStyles.label
+                            .copyWith(color: colors.textMuted)),
+                    const SizedBox(height: 14),
+                    ...moveRows,
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
     );
   }
 }
@@ -184,11 +255,16 @@ class _Header extends StatelessWidget {
     required this.session,
     required this.moves,
     required this.totalSeconds,
+    this.embedded = false,
   });
 
   final TrainingSession session;
   final List<ItemDetail> moves;
   final int? totalSeconds;
+
+  /// Inside the wide layout's lajvard panel, which paints the ground and
+  /// the safe area; the still is taller there.
+  final bool embedded;
 
   /// A still from the first move that has one: its photo or video poster.
   String? get _still {
@@ -207,60 +283,61 @@ class _Header extends StatelessWidget {
       if (totalSeconds != null) _minutes(totalSeconds!),
       '${moves.length} ${moves.length == 1 ? 'move' : 'moves'}',
     ].join(' · ');
+    final content = Padding(
+      padding: embedded
+          ? const EdgeInsets.fromLTRB(24, 24, 24, 18)
+          : const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Material(
+                color: Colors.white.withValues(alpha: .1),
+                child: InkWell(
+                  onTap: () => Navigator.maybePop(context),
+                  child: const SizedBox.square(
+                    dimension: 44,
+                    child:
+                        Icon(Icons.arrow_back, color: Colors.white, size: 20),
+                  ),
+                ),
+              ),
+              Text('SESSION',
+                  style: KashiTextStyles.label
+                      .copyWith(color: KashiPalette.yellow400)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _FramedStill(src: still, height: embedded ? 240 : 140),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(session.title,
+                    style: KashiTextStyles.heading
+                        .copyWith(fontSize: 26, color: Colors.white)),
+              ),
+              const SizedBox(width: 10),
+              Text(meta,
+                  style: KashiTextStyles.ui
+                      .copyWith(fontSize: 12.5, color: KashiPalette.sky300)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const _MorshedDropdown(),
+        ],
+      ),
+    );
+    if (embedded) return content;
     return ColoredBox(
       color: KashiPalette.lajvard700,
       child: CustomPaint(
         painter: const _KhatamOutlinePattern(),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Material(
-                      color: Colors.white.withValues(alpha: .1),
-                      child: InkWell(
-                        onTap: () => Navigator.maybePop(context),
-                        child: const SizedBox.square(
-                          dimension: 44,
-                          child: Icon(Icons.arrow_back,
-                              color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ),
-                    Text('SESSION',
-                        style: KashiTextStyles.label
-                            .copyWith(color: KashiPalette.yellow400)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _FramedStill(src: still),
-                const SizedBox(height: 18),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Expanded(
-                      child: Text(session.title,
-                          style: KashiTextStyles.heading
-                              .copyWith(fontSize: 26, color: Colors.white)),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(meta,
-                        style: KashiTextStyles.ui.copyWith(
-                            fontSize: 12.5, color: KashiPalette.sky300)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const _MorshedDropdown(),
-              ],
-            ),
-          ),
-        ),
+        child: SafeArea(bottom: false, child: content),
       ),
     );
   }
@@ -269,15 +346,16 @@ class _Header extends StatelessWidget {
 /// The session still in a 3px yellow, 3px lajvard, 1px turquoise frame;
 /// the pahlevan illustration when no move has a still.
 class _FramedStill extends StatelessWidget {
-  const _FramedStill({required this.src});
+  const _FramedStill({required this.src, required this.height});
 
   final String? src;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 7),
-      height: 140,
+      height: height,
       decoration: const BoxDecoration(boxShadow: [
         BoxShadow(color: KashiPalette.turquoise500, spreadRadius: 7),
         BoxShadow(color: KashiPalette.lajvard700, spreadRadius: 6),
