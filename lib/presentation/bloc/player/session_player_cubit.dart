@@ -192,6 +192,18 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     });
   }
 
+  /// Goes to [index], playing only if that move starts on its own. The
+  /// learnt list is re-read first: the user can flip a move's Learnt switch
+  /// from its card at any time, and a list cached at load would keep
+  /// skipping the card for a move they just un-learnt.
+  Future<void> _goToOwnStart(int index) async {
+    if (_mode == PlayerMode.learning) {
+      _learntExerciseIds = await _learntExercisesRepo.getLearntExerciseIds();
+    }
+    if (isClosed) return;
+    await _goTo(index, play: _startsOnItsOwn(index));
+  }
+
   /// Moves to the move at [index] and loads it, playing or waiting.
   ///
   /// The playing intent is declared before the engine is commanded, so every
@@ -268,7 +280,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
           target: s.tracks[index].effectiveRepetitions,
         ));
       case GoToMove(:final index):
-        unawaited(_goTo(index, play: _startsOnItsOwn(index)));
+        unawaited(_goToOwnStart(index));
       case FinishSession():
         _finish();
     }
@@ -300,7 +312,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   void _continueAfterLog(PlayerLoggingReps s) {
     switch (afterMove(index: s.playingIndex, moveCount: s.tracks.length)) {
       case GoToMove(:final index):
-        unawaited(_goTo(index, play: _startsOnItsOwn(index)));
+        unawaited(_goToOwnStart(index));
       case FinishSession() || LogReps():
         _finish();
     }
@@ -315,7 +327,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   void replay() {
     if (state.tracks.isEmpty) return;
     _loggedReps.clear();
-    unawaited(_goTo(0, play: _startsOnItsOwn(0)));
+    unawaited(_goToOwnStart(0));
   }
 
   /// Below this, "previous" is treated as the start of a fresh tap rather
@@ -333,7 +345,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
       return;
     }
     final prevIndex = state.playingIndex - 1;
-    unawaited(_goTo(prevIndex, play: _startsOnItsOwn(prevIndex)));
+    unawaited(_goToOwnStart(prevIndex));
   }
 
   /// Jumps to [index], keeping the current play/pause intent.
@@ -345,7 +357,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   /// Jumps to [index] and plays it (unless it waits for "Go").
   void setIndexAndPlay(int index) {
     if (state is! PlayerReady && state is! PlayerFinished) return;
-    unawaited(_goTo(index, play: _startsOnItsOwn(index)));
+    unawaited(_goToOwnStart(index));
   }
 
   /// Starts the current move from its beginning — Learning Mode's "Go".

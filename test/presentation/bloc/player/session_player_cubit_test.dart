@@ -1545,6 +1545,42 @@ void main() {
           reason: 'track 1 (exercise 11) is learnt — auto-plays');
       expect(cubit.shouldPromptLearningMode, isFalse);
     });
+
+    test('un-learning a move mid-session makes it wait for Go again', () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [
+          _item(sessionId: 1, exerciseId: 10, position: 0),
+          _item(sessionId: 1, exerciseId: 11, position: 1),
+        ],
+        [_exercise(10), _exercise(11)],
+      );
+      final learnt = FakeLearntExercisesRepository(learntIds: {11});
+      final cubit = _makeCubit(
+        snap,
+        audioService: FakeAudioPlayerService(),
+        mode: PlayerMode.learning,
+        learntExercisesRepo: learnt,
+      );
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      // The user opens the card of move 11 and switches Learnt off.
+      await learnt.setExerciseLearnt(11, false);
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(cubit.state.playingIndex, 1);
+      expect(cubit.state.isPlaying, isFalse);
+      expect(cubit.shouldPromptLearningMode, isTrue);
+
+      // Back to move 10 and forward again: the card must show again.
+      await cubit.prev();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      cubit.next();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(cubit.state.isPlaying, isFalse);
+      expect(cubit.shouldPromptLearningMode, isTrue);
+    });
   });
 
   // ---------- zoorkhaneh mode: never auto-advances; rep count climbs past total ----------
