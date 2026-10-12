@@ -127,10 +127,10 @@ void main() {
     final shena = tester.getTopLeft(find.text('Shena'));
     final charkh = tester.getTopLeft(find.text('Charkh'));
     expect(shena.dy, lessThan(charkh.dy));
-    expect(find.byType(KashiRepsTag), findsOneWidget,
-        reason: 'only Shena is counted');
-    expect(find.text('10 min'), findsOneWidget,
-        reason: 'Shena with the effective Morshed');
+    expect(find.byType(KashiRepsTag), findsNothing,
+        reason: 'reps are plain text now');
+    expect(find.text('40 reps · 10 min'), findsOneWidget,
+        reason: 'Shena is counted: its reps and time with the Morshed');
   });
 
   testWidgets('the morshed dropdown shows and changes the app-wide choice',

@@ -1027,7 +1027,7 @@ class _TopBar extends StatelessWidget {
           const Icon(Icons.music_note, size: 14, color: _Scene.accent),
         if (morshedName != null)
           Flexible(
-            child: Text(' Morshed $morshedName',
+            child: Text(' $morshedName',
                 overflow: TextOverflow.ellipsis,
                 style: labelStyle.copyWith(color: _Scene.accent)),
           ),

@@ -420,9 +420,11 @@ class _LearningCardPageState extends State<LearningCardPage> {
               end: 14,
               top: top + 16,
               child: _SquareButton(
-                tooltip: 'Close video',
+                // The video plays in place of the photo; ✕ leaves the card,
+                // like Back.
+                tooltip: 'Close',
                 icon: const Icon(Icons.close),
-                onPressed: () => setState(() => _videoOpen = false),
+                onPressed: () => Navigator.maybePop(context, false),
               ),
             )
           else if (videoSrc != null)

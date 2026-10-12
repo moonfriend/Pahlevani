@@ -20,7 +20,6 @@ import '../../bloc/player/player_mode.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
-import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
 import '../library/learning_card_page.dart';
@@ -42,8 +41,8 @@ Future<void> openSessionPreview(
     );
 
 /// What you are about to do, and with which morshed: the session's header
-/// with a framed still, the morshed dropdown, the move list (REPS marks a
-/// move a trainer flagged for counting; tapping a move opens its learning
+/// with a framed still, the morshed dropdown, the move list (a move a trainer
+/// flagged for counting shows its reps; tapping a move opens its learning
 /// card) and two start buttons: Educational (Learning mode — pauses before
 /// each move not yet learnt) and Only follow along (Athlete mode).
 ///
@@ -114,7 +113,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
         _MoveRow(
           number: i + 1,
           name: moves[i].exercise.name,
-          counted: moves[i].item.isTracked,
+          reps: _countedTarget(moves[i]),
           seconds: seconds[i],
           onTap: () => _openMove(moves[i]),
         ),
@@ -247,6 +246,12 @@ int? _countedTarget(ItemDetail detail) => detail.item.isTracked
     : null;
 
 int _wholeMinutes(int seconds) => (seconds / 60).round().clamp(1, 999);
+
+/// The row's effort: reps of a counted move, then the time.
+String _effort(int? reps, int? seconds) => [
+      if (reps != null) '$reps reps',
+      if (seconds != null) _minutes(seconds),
+    ].join(' · ');
 
 String _minutes(int seconds) => '${_wholeMinutes(seconds)} min';
 
@@ -451,14 +456,16 @@ class _MoveRow extends StatelessWidget {
   const _MoveRow({
     required this.number,
     required this.name,
-    required this.counted,
+    required this.reps,
     required this.seconds,
     required this.onTap,
   });
 
   final int number;
   final String name;
-  final bool counted;
+
+  /// Target reps of a counted move; null when it isn't counted.
+  final int? reps;
   final int? seconds;
   final VoidCallback onTap;
 
@@ -490,13 +497,10 @@ class _MoveRow extends StatelessWidget {
                   style: KashiTextStyles.ui
                       .copyWith(fontSize: 14, color: colors.textPrimary)),
             ),
-            if (counted) ...[
-              const KashiRepsTag(),
-              const SizedBox(width: 12),
-            ],
+            // "20 reps · 3 min": plain text, like the time alone.
             ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 44),
-              child: Text(seconds == null ? '' : _minutes(seconds!),
+              child: Text(_effort(reps, seconds),
                   textAlign: TextAlign.end,
                   style: KashiTextStyles.ui.copyWith(
                       fontSize: 12.5,
