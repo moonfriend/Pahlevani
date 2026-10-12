@@ -201,6 +201,19 @@ void main() {
     expect(await fakeWakelock.enabled, isTrue);
   });
 
+  testWidgets(
+      'a wake lock the platform refuses does not break the player '
+      '(Linux without a screensaver service)', (tester) async {
+    fakeWakelock.throwOnToggle = true;
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('Move 1 of 2'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('disables the wakelock when leaving the player page',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));

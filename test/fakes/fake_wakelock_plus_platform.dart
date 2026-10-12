@@ -8,8 +8,13 @@ class FakeWakelockPlusPlatform extends WakelockPlusPlatformInterface {
   int enableCallCount = 0;
   int disableCallCount = 0;
 
+  /// Mimics a desktop without a screensaver service (e.g. headless Linux CI),
+  /// where the real plugin throws.
+  bool throwOnToggle = false;
+
   @override
   Future<void> toggle({required bool enable}) async {
+    if (throwOnToggle) throw Exception('no screensaver service');
     _enabled = enable;
     if (enable) {
       enableCallCount++;

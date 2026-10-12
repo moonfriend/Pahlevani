@@ -89,7 +89,17 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     unawaited(_loadMorshedName());
     // Kept on for the whole session (not just while isPlaying) so a brief
     // pause to check form doesn't let the screen lock mid-training.
-    unawaited(WakelockPlus.enable());
+    unawaited(_keepScreenOn(true));
+  }
+
+  /// Best effort: some platforms can't hold a wake lock (Linux without a
+  /// screensaver service throws), and that must never break the session.
+  Future<void> _keepScreenOn(bool on) async {
+    try {
+      await WakelockPlus.toggle(enable: on);
+    } catch (e) {
+      AppLogger.w('Wake lock unavailable', error: e);
+    }
   }
 
   Future<void> _loadMorshedName() async {
@@ -189,7 +199,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   @override
   void dispose() {
-    unawaited(WakelockPlus.disable());
+    unawaited(_keepScreenOn(false));
     _progress.close();
     _cubit.close(); // close() calls audioService.dispose() which stops playback
     super.dispose();
