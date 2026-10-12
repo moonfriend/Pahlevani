@@ -43,7 +43,6 @@ import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
-import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 
@@ -212,7 +211,6 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
       ),
       actionLabel: 'Go',
-      footer: LearntToggle(exerciseId: exercise.id),
     );
     if (shouldStart && mounted) {
       unawaited(_cubit.startCurrentTrack());
@@ -324,128 +322,113 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         BlocProvider.value(value: _cubit),
         BlocProvider.value(value: _progress),
       ],
-      // Space counts a rep, like tapping the star (the design's keyboard
-      // shortcut on web and desktop).
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.space): _cubit.countRep,
-        },
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            // The player is a lajvard scene, the same in both themes.
-            backgroundColor: KashiPalette.lajvard900,
-            body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
-              // A restart (see _restartPlayer) rebuilds the whole player subtree.
-              key: ValueKey(_playerGeneration),
-              listenWhen: (prev, cur) =>
-                  prev.playingIndex != cur.playingIndex ||
-                  (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-                  (prev is! PlayerFinished && cur is PlayerFinished) ||
-                  (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
-              listener: (context, state) {
-                if (state is PlayerLoggingReps) {
-                  unawaited(_showRepLog(context, state));
-                  return;
-                }
-                if (state is PlayerFinished) {
-                  unawaited(_handleSessionFinished(context));
-                }
-                if (state.tracks.isNotEmpty &&
-                    state is! PlayerFinished &&
-                    _cubit.shouldPromptLearningMode) {
-                  final exercise = _cubit.exerciseAt(state.playingIndex);
-                  if (exercise != null) {
-                    unawaited(_promptLearningMode(
-                        context, state.playingIndex, exercise));
-                  }
-                }
-                // Precache each image URL at most once per player session.
-                // Previously this looped all tracks on every index change, causing
-                // repeated Supabase egress when the in-memory cache was full.
-                for (final track in state.tracks) {
-                  final src = track.media.src;
-                  if (track.media.type == 'photo' &&
-                      src != null &&
-                      src.isNotEmpty &&
-                      !src.startsWith('/') &&
-                      _precachedUrls.add(src)) {
-                    precacheImage(ExerciseImageProvider(src), context,
-                        onError: (_, __) {});
-                  }
-                }
-              },
-              builder: (context, state) {
-                if (state is PlayerLoading) {
-                  return const Center(
-                      child: CircularProgressIndicator(color: _Scene.accent));
-                }
-                if (state is PlayerNeedsDownload) {
-                  return _NeedsDownload(
-                    topBar: _TopBar(
-                      state: state,
-                      morshedName: _morshedName,
-                      onSelectMove: null,
-                      onEdit: () => _openEdit(context),
-                    ),
-                    onDownload: () => _download(context),
-                  );
-                }
-                if (state is PlayerFailed && state.tracks.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(state.message,
-                          textAlign: TextAlign.center,
-                          style: KashiTextStyles.body
-                              .copyWith(color: _Scene.text)),
-                    ),
-                  );
-                }
-                final index = state.playingIndex;
-                final exercise = _cubit.exerciseAt(index);
-                final layout = KashiLayout.of(context);
-                return _KashiPlayerView(
-                  topBar: _TopBar(
-                    state: state,
-                    morshedName: _morshedName,
-                    onSelectMove: _cubit.setIndexAndPlay,
-                    onEdit: () => _openEdit(context),
-                  ),
-                  stage: _Stage(state: state, cubit: _cubit),
-                  title: _MoveTitle(
-                    name: state.currentTrack?.title ?? '',
-                    nameFa: exercise?.titleFa,
-                    onHowTo: exercise == null
-                        ? null
-                        : () => _openHowTo(context, index),
-                    fontSize: switch (layout) {
-                      KashiLayout.phone => 24,
-                      KashiLayout.tablet => 30,
-                      KashiLayout.web => 36,
-                    },
-                  ),
-                  cues: exercise?.cues ?? const [],
-                  counter: _Counter(
-                    counted: _cubit.isCounted(index),
-                    target: state.currentTrack?.effectiveRepetitions ?? 0,
-                    starTaps: state is PlayerReady ? state.starTaps : null,
-                    loopsForever: widget.mode == PlayerMode.zoorkhaneh,
-                    onTap: _cubit.countRep,
-                    size: switch (layout) {
-                      KashiLayout.phone => RepStar.phoneSize,
-                      KashiLayout.tablet => 260,
-                      KashiLayout.web => 300,
-                    },
-                    mentionSpace: layout.isWide,
-                  ),
-                  transport: _Transport(
-                      state: state, cubit: _cubit, stacked: layout.isTablet),
-                  layout: layout,
-                );
-              },
-            ),
-          ),
+      child: Scaffold(
+        // The player is a lajvard scene, the same in both themes.
+        backgroundColor: KashiPalette.lajvard900,
+        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
+          // A restart (see _restartPlayer) rebuilds the whole player subtree.
+          key: ValueKey(_playerGeneration),
+          listenWhen: (prev, cur) =>
+              prev.playingIndex != cur.playingIndex ||
+              (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
+              (prev is! PlayerFinished && cur is PlayerFinished) ||
+              (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
+          listener: (context, state) {
+            if (state is PlayerLoggingReps) {
+              unawaited(_showRepLog(context, state));
+              return;
+            }
+            if (state is PlayerFinished) {
+              unawaited(_handleSessionFinished(context));
+            }
+            if (state.tracks.isNotEmpty &&
+                state is! PlayerFinished &&
+                _cubit.shouldPromptLearningMode) {
+              final exercise = _cubit.exerciseAt(state.playingIndex);
+              if (exercise != null) {
+                unawaited(
+                    _promptLearningMode(context, state.playingIndex, exercise));
+              }
+            }
+            // Precache each image URL at most once per player session.
+            // Previously this looped all tracks on every index change, causing
+            // repeated Supabase egress when the in-memory cache was full.
+            for (final track in state.tracks) {
+              final src = track.media.src;
+              if (track.media.type == 'photo' &&
+                  src != null &&
+                  src.isNotEmpty &&
+                  !src.startsWith('/') &&
+                  _precachedUrls.add(src)) {
+                precacheImage(ExerciseImageProvider(src), context,
+                    onError: (_, __) {});
+              }
+            }
+          },
+          builder: (context, state) {
+            if (state is PlayerLoading) {
+              return const Center(
+                  child: CircularProgressIndicator(color: _Scene.accent));
+            }
+            if (state is PlayerNeedsDownload) {
+              return _NeedsDownload(
+                topBar: _TopBar(
+                  state: state,
+                  morshedName: _morshedName,
+                  onSelectMove: null,
+                  onEdit: () => _openEdit(context),
+                ),
+                onDownload: () => _download(context),
+              );
+            }
+            if (state is PlayerFailed && state.tracks.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(state.message,
+                      textAlign: TextAlign.center,
+                      style: KashiTextStyles.body.copyWith(color: _Scene.text)),
+                ),
+              );
+            }
+            final index = state.playingIndex;
+            final exercise = _cubit.exerciseAt(index);
+            final layout = KashiLayout.of(context);
+            return _KashiPlayerView(
+              topBar: _TopBar(
+                state: state,
+                morshedName: _morshedName,
+                onSelectMove: _cubit.setIndexAndPlay,
+                onEdit: () => _openEdit(context),
+              ),
+              stage: _Stage(state: state, cubit: _cubit),
+              title: _MoveTitle(
+                name: state.currentTrack?.title ?? '',
+                nameFa: exercise?.titleFa,
+                onHowTo:
+                    exercise == null ? null : () => _openHowTo(context, index),
+                fontSize: switch (layout) {
+                  KashiLayout.phone => 24,
+                  KashiLayout.tablet => 30,
+                  KashiLayout.web => 36,
+                },
+              ),
+              cues: exercise?.cues ?? const [],
+              counter: _Counter(
+                counted: _cubit.isCounted(index),
+                target: state.currentTrack?.effectiveRepetitions ?? 0,
+                loopsForever: widget.mode == PlayerMode.zoorkhaneh,
+                size: switch (layout) {
+                  KashiLayout.phone => RepStar.phoneSize,
+                  KashiLayout.tablet => 260,
+                  KashiLayout.web => 300,
+                },
+              ),
+              transport: _Transport(
+                  state: state, cubit: _cubit, stacked: layout.isTablet),
+              layout: layout,
+            );
+          },
         ),
       ),
     );
@@ -1177,22 +1160,14 @@ class _Counter extends StatelessWidget {
   const _Counter({
     required this.counted,
     required this.target,
-    required this.starTaps,
     required this.loopsForever,
-    required this.onTap,
     this.size = RepStar.phoneSize,
-    this.mentionSpace = false,
   });
 
   final bool counted;
   final int target;
-  final int? starTaps;
   final bool loopsForever;
-  final VoidCallback onTap;
   final double size;
-
-  /// Says Space also counts (keyboards: the web layout).
-  final bool mentionSpace;
 
   @override
   Widget build(BuildContext context) {
@@ -1210,17 +1185,13 @@ class _Counter extends StatelessWidget {
           counted: counted,
           target: target,
           progress: progress,
-          starTaps: starTaps,
           loopsForever: loopsForever,
-          onTap: onTap,
           size: size,
         ),
         const SizedBox(height: 4),
         Text(
             counted
-                ? mentionSpace
-                    ? 'Tap the star, or press space, on every rep'
-                    : 'Tap the star on every rep'
+                ? 'The morshed counts; you confirm after'
                 : 'Follow the morshed’s count',
             textAlign: TextAlign.center,
             style: KashiTextStyles.body

@@ -23,42 +23,12 @@ void main() {
     expect(find.text('of 40'), findsOneWidget);
   });
 
-  testWidgets("the user's star taps replace the audio count", (tester) async {
-    await _pump(
-        tester,
-        const RepStar(
-            counted: true, target: 40, progress: _progress, starTaps: 12));
-    expect(find.text('12'), findsOneWidget);
-  });
-
-  testWidgets('tapping a counted star counts a rep', (tester) async {
-    var taps = 0;
-    await _pump(
-        tester,
-        RepStar(
-            counted: true,
-            target: 40,
-            progress: _progress,
-            onTap: () => taps++));
-    await tester.tap(find.byType(RepStar));
-    expect(taps, 1);
-  });
-
   testWidgets('a move that is not counted shows the time remaining',
       (tester) async {
-    var taps = 0;
     await _pump(
-        tester,
-        RepStar(
-            counted: false,
-            target: 5,
-            progress: _progress,
-            onTap: () => taps++));
+        tester, const RepStar(counted: false, target: 5, progress: _progress));
     expect(find.text('0:30'), findsOneWidget);
     expect(find.text('remaining'), findsOneWidget);
-
-    await tester.tap(find.byType(RepStar));
-    expect(taps, 0, reason: 'the star is never a button except for counting');
   });
 
   testWidgets('a looping (Zoorkhaneh) move that is not counted shows reps',

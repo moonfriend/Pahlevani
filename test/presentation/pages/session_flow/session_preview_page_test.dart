@@ -10,6 +10,7 @@ import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
@@ -21,6 +22,7 @@ import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_download_dialog_deps.dart';
 import '../../../fakes/fake_download_repository.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
 
 final _session = TrainingSession(
@@ -78,6 +80,8 @@ Future<List<PlayerMode>> _pump(WidgetTester tester,
   final started = <PlayerMode>[];
   await getIt.reset();
   registerDownloadDialogFakes(_catalogRepo);
+  getIt.registerSingleton<LearntExercisesRepository>(
+      FakeLearntExercisesRepository());
   addTearDown(getIt.reset);
 
   _catalogRepo.selectedMorshedId = null;

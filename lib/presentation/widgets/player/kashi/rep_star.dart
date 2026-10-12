@@ -7,34 +7,25 @@ import '../../../../core/theme/kashi/kashi_typography.dart';
 import '../../../../domain/player/move_timeline.dart';
 import '../../kashi/khatam.dart';
 
-/// The player's star: the one star that is tappable, because tapping it is
-/// counting.
-///
-/// On a counted move it shows the reps — the user's star taps when they
-/// tapped, otherwise the rep the morshed's audio is on — out of the target,
-/// with a yellow fill and one dot per target rep around it. On any other
-/// move it shows the time remaining (or, when the move loops forever in
-/// Zoorkhaneh mode, the rep) and is not tappable.
+/// The player's star. On a counted move it shows the rep the morshed's audio
+/// is on, out of the target, with a yellow fill and one dot per target rep
+/// around it; the reps only advance with the audio, never by tapping. On any
+/// other move it shows the time remaining (or, when the move loops forever in
+/// Zoorkhaneh mode, the rep).
 class RepStar extends StatelessWidget {
   const RepStar({
     super.key,
     required this.counted,
     required this.target,
     required this.progress,
-    this.starTaps,
     this.loopsForever = false,
-    this.onTap,
     this.size = phoneSize,
   });
 
   final bool counted;
   final int target;
   final MoveProgress progress;
-  final int? starTaps;
   final bool loopsForever;
-
-  /// A star tap on a counted move. Ignored on other moves.
-  final VoidCallback? onTap;
   final double size;
 
   /// The phone layout's star; tablet and web pass a larger [size].
@@ -44,7 +35,7 @@ class RepStar extends StatelessWidget {
   static ({int count, double size}) dotsFor({required int target}) =>
       (count: math.max(0, target), size: target > 48 ? 4 : 5);
 
-  int get _count => starTaps ?? (progress.isKnown ? progress.rep : 0);
+  int get _count => progress.isKnown ? progress.rep : 0;
 
   double get _fill {
     if (counted) return target <= 0 ? 0 : (_count / target).clamp(0.0, 1.0);
@@ -68,7 +59,7 @@ class RepStar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (big, small) = _label;
-    final star = SizedBox.square(
+    return SizedBox.square(
       dimension: size,
       child: CustomPaint(
         painter: _RepStarPainter(
@@ -93,16 +84,6 @@ class RepStar extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-    if (!counted || onTap == null) return star;
-    return Semantics(
-      button: true,
-      label: 'Count a rep',
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: star,
       ),
     );
   }

@@ -1902,33 +1902,6 @@ void main() {
           reason: 'prefilled from the audio: every rep was played');
     });
 
-    test('star taps replace the audio count as the prefill', () async {
-      final cubit = build(FakeAudioPlayerService());
-      addTearDown(cubit.close);
-      await cubit.loadTracks();
-
-      cubit
-        ..countRep()
-        ..countRep()
-        ..countRep();
-      expect((cubit.state as PlayerReady).starTaps, 3);
-      cubit.next();
-
-      expect((cubit.state as PlayerLoggingReps).counted, 3);
-    });
-
-    test('star taps are ignored on a move that is not counted', () async {
-      final cubit = build(FakeAudioPlayerService());
-      addTearDown(cubit.close);
-      await cubit.loadTracks();
-      cubit.next();
-      cubit.skipRepLog(); // now on move 1, not counted
-
-      cubit.countRep();
-
-      expect((cubit.state as PlayerReady).starTaps, isNull);
-    });
-
     test('saving logs the reps and goes on to the next move', () async {
       final audio = FakeAudioPlayerService();
       final cubit = build(audio);

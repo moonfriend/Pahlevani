@@ -10,12 +10,14 @@ import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_variation_selector.dart';
 import '../../widgets/kashi/move_placeholder.dart';
 import '../../widgets/player/exercise_demo_video_player.dart';
+import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
 
 /// What the learning card shows about one move — from the Library's sample
 /// moves or from a session's real move.
 class LearningMove {
   const LearningMove({
+    this.exerciseId,
     required this.name,
     this.nameFa,
     this.minutes,
@@ -58,6 +60,7 @@ class LearningMove {
       _ => null,
     };
     return LearningMove(
+      exerciseId: exercise.id,
       name: exercise.name,
       nameFa: exercise.titleFa,
       minutes: minutes,
@@ -74,6 +77,9 @@ class LearningMove {
     );
   }
 
+  /// The session exercise this card is for; null for placeholder Library
+  /// samples. When set, the card offers the "Learnt" switch.
+  final int? exerciseId;
   final String name;
   final String? nameFa;
   final int? minutes;
@@ -101,21 +107,18 @@ class LearningMove {
 /// on phones, a centred two-column card over the dimmed page on tablets and
 /// in the web layout. Resolves to true when the action was pressed, false when
 /// the card was closed (Back, ✕ or a tap beside it) — so a caller acts only
-/// once the card has fully closed. [footer] sits above the action (e.g.
-/// Learning mode's "learnt" toggle). The video starts straight away, as the
+/// once the card has fully closed. The video starts straight away, as the
 /// design asks when the card is opened from a session.
 Future<bool> showLearningCard(
   BuildContext context,
   LearningMove move, {
   String actionLabel = 'Got it',
-  Widget? footer,
 }) async {
   final result = await _pushLearningCard(
     context,
     LearningCardPage(
       move: move,
       actionLabel: actionLabel,
-      footer: footer,
       autoplayVideo: true,
     ),
   );
@@ -154,7 +157,6 @@ class LearningCardPage extends StatefulWidget {
     required this.move,
     this.actionLabel = 'Got it',
     this.onAction,
-    this.footer,
     this.autoplayVideo = false,
   });
 
@@ -176,7 +178,6 @@ class LearningCardPage extends StatefulWidget {
 
   /// Defaults to closing the card with `true`.
   final void Function(BuildContext context)? onAction;
-  final Widget? footer;
 
   /// Opens with the video playing instead of the photo.
   final bool autoplayVideo;
@@ -217,7 +218,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
     if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
-    final footer = widget.footer;
+    final footer = _learntToggle;
     return Scaffold(
       backgroundColor: colors.ground,
       body: Center(
@@ -257,8 +258,16 @@ class _LearningCardPageState extends State<LearningCardPage> {
     );
   }
 
+  /// The "Learnt" switch, on every card of a real move — so it can be
+  /// switched on or off wherever the card opens (Library, preview, How to,
+  /// Learning mode).
+  Widget? get _learntToggle {
+    final id = _move.exerciseId;
+    return id == null ? null : LearntToggle(exerciseId: id);
+  }
+
   Widget _wideCard(KashiColors colors) {
-    final footer = widget.footer;
+    final footer = _learntToggle;
     final videoSrc = _move.videoSrc;
     return Center(
       child: Padding(

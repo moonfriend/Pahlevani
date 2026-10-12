@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/pages/library/sample_moves.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
+import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
+
+import '../../../fakes/fake_learnt_exercises_repository.dart';
 
 final _shena = sampleMoves.firstWhere((m) => m.id == 'shena');
 final _vorod = sampleMoves.firstWhere((m) => m.id == 'vorod');
@@ -33,6 +38,13 @@ Future<void> _pump(WidgetTester tester, SampleMove move,
 }
 
 void main() {
+  setUp(() async {
+    await getIt.reset();
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+  });
+  tearDown(() => getIt.reset());
+
   testWidgets('shows the move: Farsi name, duration, description, steps',
       (tester) async {
     await _pump(tester, _shena);
@@ -122,7 +134,6 @@ void main() {
       int? target,
       int? minutes,
       String actionLabel = 'Got it',
-      Widget? footer,
     }) async {
       final results = <bool>[];
       // tester.view, so MediaQuery (and the layout) see this size.
@@ -142,7 +153,6 @@ void main() {
                     target: target,
                     minutes: minutes),
                 actionLabel: actionLabel,
-                footer: footer,
               )),
               child: const Text('open'),
             ),
@@ -218,11 +228,30 @@ void main() {
       expect(results, [true, false]);
     });
 
-    testWidgets('a custom action label and a footer above it', (tester) async {
-      await open(tester, shena,
-          actionLabel: 'Go', footer: const Text('learnt toggle'));
+    testWidgets('a custom action label', (tester) async {
+      await open(tester, shena, actionLabel: 'Go');
       expect(find.text('Go'), findsOneWidget);
-      expect(find.text('learnt toggle'), findsOneWidget);
+    });
+
+    testWidgets('a real move offers the Learnt switch, and it can be undone',
+        (tester) async {
+      final repo = FakeLearntExercisesRepository(learntIds: {1});
+      await getIt.reset();
+      getIt.registerSingleton<LearntExercisesRepository>(repo);
+      addTearDown(getIt.reset);
+
+      await open(tester, shena);
+      expect(find.byType(LearntToggle), findsOneWidget);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(await repo.getLearntExerciseIds(), isNot(contains(1)));
+    });
+
+    testWidgets('a Library sample has no Learnt switch', (tester) async {
+      await _pump(tester, _shena);
+      expect(find.byType(LearntToggle), findsNothing);
     });
 
     testWidgets('no video or photo: the female pahlevan illustration',

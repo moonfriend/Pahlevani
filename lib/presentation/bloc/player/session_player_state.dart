@@ -64,34 +64,23 @@ final class PlayerReady extends SessionPlayerState {
     super.isPlaying,
     super.isMuted,
     this.waitingForGo = false,
-    this.starTaps,
   });
 
   /// Learning mode: this move isn't learnt yet, so it waits for the user's
   /// "Go" instead of starting by itself.
   final bool waitingForGo;
 
-  /// Reps the user counted by tapping the star on this (counted) move; null
-  /// until the first tap. When set, it pre-fills the Rep log instead of the
-  /// audio's count.
-  final int? starTaps;
-
-  PlayerReady copyWith(
-          {bool? isPlaying,
-          bool? isMuted,
-          bool? waitingForGo,
-          int? starTaps}) =>
+  PlayerReady copyWith({bool? isPlaying, bool? isMuted, bool? waitingForGo}) =>
       PlayerReady(
         tracks: tracks,
         playingIndex: playingIndex,
         isPlaying: isPlaying ?? this.isPlaying,
         isMuted: isMuted ?? this.isMuted,
         waitingForGo: waitingForGo ?? this.waitingForGo,
-        starTaps: starTaps ?? this.starTaps,
       );
 
   @override
-  List<Object?> get props => [...super.props, waitingForGo, starTaps];
+  List<Object?> get props => [...super.props, waitingForGo];
 }
 
 /// A counted move has just been played: playback is paused while the user
@@ -105,7 +94,8 @@ final class PlayerLoggingReps extends SessionPlayerState {
     required this.target,
   });
 
-  /// Pre-fill: the star taps if the user tapped, otherwise the audio's reps.
+  /// Pre-fill: the reps the morshed's audio counted; the user confirms or
+  /// corrects them.
   final int counted;
 
   /// The reps the session prescribes for this move.

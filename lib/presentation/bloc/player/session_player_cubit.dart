@@ -264,7 +264,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
         emit(PlayerLoggingReps(
           tracks: s.tracks,
           playingIndex: index,
-          counted: s.starTaps ?? _timeline.current.rep,
+          counted: _timeline.current.rep,
           target: s.tracks[index].effectiveRepetitions,
         ));
       case GoToMove(:final index):
@@ -280,13 +280,6 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     await _timeline.setMuted(_muted);
     final s = state;
     if (s is PlayerReady && !isClosed) emit(s.copyWith(isMuted: _muted));
-  }
-
-  /// A star tap on a counted move: one more rep counted by the user.
-  void countRep() {
-    final s = state;
-    if (s is! PlayerReady || !isCounted(s.playingIndex)) return;
-    emit(s.copyWith(starTaps: (s.starTaps ?? 0) + 1));
   }
 
   /// Rep log "Save": records [reps] for the move just done, then goes on.

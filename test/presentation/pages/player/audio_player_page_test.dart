@@ -514,47 +514,14 @@ void main() {
     expect(find.text('Back long'), findsOneWidget);
     expect(find.text('Breathe out'), findsOneWidget);
     expect(find.text('of 40'), findsOneWidget);
-    expect(find.text('Tap the star on every rep'), findsOneWidget);
+    expect(find.text('The morshed counts; you confirm after'), findsOneWidget);
 
+    // Reps only follow the audio: tapping the star or pressing Space does
+    // not change the count.
     await tester.tap(find.byType(RepStar));
-    await tester.tap(find.byType(RepStar));
-    await tester.pump();
-    expect(find.text('2'), findsOneWidget);
-  });
-
-  testWidgets('Space counts a rep, like tapping the star (keyboards)',
-      (tester) async {
-    const shena = Exercise(
-        id: 101,
-        name: 'Shena',
-        audioFileUrl: 'https://example.com/shena.mp3',
-        repetitionsDefault: 3);
-    const counted = TrainingItem(
-      id: 10001,
-      sessionId: 1,
-      exerciseId: 101,
-      position: 1,
-      prescription: RepsPresc(40),
-      isTracked: true,
-    );
-    final snap = DomainSnapshot(
-      sessionsById: {testSession1.id: testSession1},
-      itemsBySessionId: {
-        testSession1.id: [counted]
-      },
-      exercisesById: {101: shena},
-    );
-    await getIt.reset();
-    _registerFakes(snap);
-
-    await tester.pumpWidget(_buildPage(snap));
-    await _pumpAndLoad(tester);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();
-    expect(find.text('3'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
