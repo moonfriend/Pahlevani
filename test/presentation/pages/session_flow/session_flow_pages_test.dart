@@ -39,7 +39,7 @@ void main() {
       expect(find.text('How many Shena?'), findsOneWidget);
       expect(find.text('Your morshed’s target: 40'), findsOneWidget);
       expect(find.text('24'), findsOneWidget);
-      expect(find.text('Counted 24 on the star. Adjust if needed.'),
+      expect(find.text('The morshed counted 24. Adjust if needed.'),
           findsOneWidget);
       expect(find.textContaining('last time'), findsNothing,
           reason: 'no comparison with last time');
@@ -68,6 +68,35 @@ void main() {
       await _pump(tester, page(counted: 0));
       expect(find.text('1'), findsOneWidget);
     });
+
+    // Regression: on a wide landscape window the Save button sat at the very
+    // bottom edge, or below the fold on a short one, so it needed a scroll.
+    for (final size in const [
+      Size(360, 740), // phone, portrait
+      Size(740, 360), // phone, landscape
+      Size(800, 420), // short window
+      Size(1134, 720), // Linux desktop
+      Size(1920, 1080), // large web window
+    ]) {
+      testWidgets(
+          'Save is visible in the first view at ${size.width.toInt()}'
+          '×${size.height.toInt()}, with no scrolling', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+            MaterialApp(theme: PahlevaniTheme.light(), home: page()));
+
+        final save = tester.getRect(find.text('Save and continue'));
+        final skip = tester.getRect(find.text('Skip logging'));
+        expect(save.top, greaterThanOrEqualTo(0));
+        expect(skip.bottom, lessThanOrEqualTo(size.height));
+        if (size.width >= 600 && size.height >= 600) {
+          expect(save.bottom, lessThan(size.height * .8),
+              reason: 'not stranded at the bottom edge of a big window');
+        }
+      });
+    }
 
     testWidgets('Skip logging', (tester) async {
       var skipped = 0;
