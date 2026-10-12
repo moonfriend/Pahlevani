@@ -91,8 +91,12 @@ class _StubDownloadRepository implements DownloadRepository {
   @override
   Future<void> markTrainingSessionDownloaded(int sessionId) async {}
 
+  /// Files treated as already on the device.
+  final Set<String> localUrls = {};
+
   @override
-  Future<Set<String>> localUrlsIn(DownloadPlan plan) async => {};
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async =>
+      plan.urls.intersection(localUrls);
 
   @override
   Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
@@ -141,8 +145,15 @@ final _snapshot = DomainSnapshot(
           prescription: RepsPresc(3)),
     ],
   },
-  exercisesById: {1: const Exercise(id: 1, name: 'Shena')},
+  exercisesById: {
+    1: const Exercise(
+        id: 1,
+        name: 'Shena',
+        media: ExerciseMedia(type: 'photo', src: _photoUrl)),
+  },
 );
+
+const _photoUrl = 'https://cdn/shena.jpg';
 
 Widget _buildHarness(TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
   return MultiBlocProvider(
@@ -400,10 +411,13 @@ void main() {
 
   // ── Mode-selection dialog ──────────────────────────────────────────────────
 
+  late _StubDownloadRepository downloadsStub;
+
   void registerPlayerFakes() {
     getIt.registerSingleton<TrainingSessionRepository>(
         _StubRepository(_snapshot));
-    getIt.registerSingleton<DownloadRepository>(_StubDownloadRepository());
+    downloadsStub = _StubDownloadRepository();
+    getIt.registerSingleton<DownloadRepository>(downloadsStub);
     getIt.registerSingleton<AudioCatalogRepository>(
         FakeAudioCatalogRepository());
     getIt.registerSingleton<LearntExercisesRepository>(
@@ -542,14 +556,13 @@ void main() {
       expect(find.byType(AudioPlayerPage), findsNothing);
     });
 
-    testWidgets('once everything is on the device, it continues to the player',
-        (tester) async {
-      // The test session has no media and the fake catalog no recordings, so
-      // nothing is missing — the dialog offers Continue. (The download
-      // itself is covered by media_download_dialog_test.)
+    testWidgets(
+        'once everything is on the device, it goes straight on — no '
+        'dialog', (tester) async {
+      // (The download itself is covered by media_download_dialog_test.)
       await openList(tester);
+      downloadsStub.localUrls.add(_photoUrl);
       await startFromPreview(tester);
-      await tester.tap(find.text('Continue'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 

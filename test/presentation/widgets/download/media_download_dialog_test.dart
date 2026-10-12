@@ -181,7 +181,8 @@ void main() {
     expect(find.text('Download 52 MB'), findsOneWidget);
   });
 
-  testWidgets('everything already on the device → Continue', (tester) async {
+  testWidgets('everything already on the device → no dialog, reports done',
+      (tester) async {
     downloads.localUrls = {
       'https://cdn/a.mp3',
       'https://cdn/v.mp4',
@@ -189,9 +190,7 @@ void main() {
       'https://cdn/howto.mp4'
     };
     await openDialog(tester);
-    expect(find.textContaining('already on this device'), findsOneWidget);
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(result, isTrue);
   });
 

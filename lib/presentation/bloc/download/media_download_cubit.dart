@@ -70,15 +70,26 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
           ? await _prefs.getPreferredTier()
           : null;
       final tiers = _plans.keys.toList();
+      final estimates = {
+        for (final t in tiers)
+          t: estimateDownload(
+              plan: _plans[t]!, alreadyLocal: local, sizes: _knownSizes),
+      };
+      final selected = remembered ??
+          (tiers.contains(suggestedTier) ? suggestedTier : tiers.first);
+      if (target is SessionDownloadTarget &&
+          estimates[selected]!.filesToDownload == 0) {
+        // Starting a session whose media is all here (for the tier the
+        // athlete uses): don't ask, just go on. A Morshed pack choice keeps
+        // its own confirmation.
+        await _markDone();
+        emit(const MediaDownloadDone());
+        return;
+      }
       emit(MediaDownloadReady(
         tiers: tiers,
-        estimates: {
-          for (final t in tiers)
-            t: estimateDownload(
-                plan: _plans[t]!, alreadyLocal: local, sizes: _knownSizes),
-        },
-        selectedTier: remembered ??
-            (tiers.contains(suggestedTier) ? suggestedTier : tiers.first),
+        estimates: estimates,
+        selectedTier: selected,
         isFirstChoice: target is SessionDownloadTarget && remembered == null,
       ));
     } catch (e, st) {
@@ -121,11 +132,17 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
 
   Future<void> _finish() async {
     if (state is! MediaDownloadInProgress) return;
+    await _markDone();
+    emit(const MediaDownloadDone());
+  }
+
+  /// A session whose media is all on the device is flagged downloaded, so
+  /// the list's badge and Start agree.
+  Future<void> _markDone() async {
     final t = target;
     if (t is SessionDownloadTarget) {
       await _downloads.markTrainingSessionDownloaded(t.sessionId);
     }
-    emit(const MediaDownloadDone());
   }
 
   /// Stops a running download (finished files are kept) and returns to the

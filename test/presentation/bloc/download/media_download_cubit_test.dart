@@ -159,6 +159,35 @@ void main() {
     expect(s.estimates[DownloadTier.audio]!.filesToDownload, 1);
   });
 
+  test('everything of the chosen tier already local → done at once, no dialog',
+      () async {
+    prefs.tier = DownloadTier.audio;
+    downloads.localUrls = {audioUrl, otherPackUrl, posterUrl};
+    final cubit = sessionCubit();
+    addTearDown(cubit.close);
+    await cubit.load();
+    expect(cubit.state, isA<MediaDownloadDone>());
+    expect(downloads.markedDownloaded, [1],
+        reason: 'the session is flagged so the list and Start agree');
+  });
+
+  test('no tier chosen: the suggested tier being complete is enough', () async {
+    downloads.localUrls = {audioUrl, otherPackUrl, posterUrl, videoUrl};
+    final cubit = sessionCubit();
+    addTearDown(cubit.close);
+    await cubit.load();
+    expect(cubit.state, isA<MediaDownloadDone>());
+  });
+
+  test('the chosen tier still missing a file → asks', () async {
+    prefs.tier = DownloadTier.followAlong;
+    downloads.localUrls = {audioUrl, otherPackUrl, posterUrl}; // no video
+    final cubit = sessionCubit();
+    addTearDown(cubit.close);
+    await cubit.load();
+    expect(cubit.state, isA<MediaDownloadReady>());
+  });
+
   test('sizes unavailable → still ready, with sizes unknown', () async {
     final cubit = sessionCubit(sizeRepo: _Sizes(sizes, fail: true));
     addTearDown(cubit.close);
