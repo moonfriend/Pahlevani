@@ -15,10 +15,12 @@ import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../../layout/kashi_layout.dart';
 import '../progress/calendar_month.dart';
+import '../../../domain/entities/info/info_link.dart';
 import 'counted_moves_page.dart';
 import '../../widgets/kashi/kashi_day_tile.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
-import '../../widgets/kashi/kashi_rep_tile.dart';
+import '../../widgets/kashi/kashi_info_tile.dart';
+import '../../widgets/kashi/kashi_rep_summary_tile.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/shamseh.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
@@ -65,7 +67,7 @@ String homeDateLabel(DateTime d) =>
 
 /// Home (bento): one place to start a session and glance at your practice —
 /// the Today carousel, the shamseh, the last value of the two most-counted
-/// moves (tap one for all of them) and
+/// moves on one card (tap it for all of them), an info card and
 /// this month's tiles, plus a way into the full session list.
 ///
 /// Pure UI over [sessions] and callbacks; reads [TrainingHistoryCubit] and
@@ -79,6 +81,8 @@ class HomePage extends StatelessWidget {
     required this.onOpenProgress,
     required this.onOpenCalendar,
     this.onSessionMenu,
+    this.infoLink,
+    this.onOpenInfo,
     this.now = DateTime.now,
   });
 
@@ -91,6 +95,10 @@ class HomePage extends StatelessWidget {
   /// Long-press on the Today card: the session's own actions (Zoorkhaneh
   /// mode).
   final ValueChanged<TrainingSession>? onSessionMenu;
+
+  /// The website page the info card links to; no card while null.
+  final InfoLink? infoLink;
+  final ValueChanged<InfoLink>? onOpenInfo;
   final DateTime Function() now;
 
   /// The Today carousel offers the first few sessions; the rest are a tap
@@ -135,20 +143,27 @@ class HomePage extends StatelessWidget {
     final allSessions =
         _AllSessionsRow(count: sessions.length, onTap: onOpenAllSessions);
 
-    // The two rep slots: the two most-counted moves, or one hint across
-    // both while nothing has been counted.
-    List<_BentoCell> repCells() {
-      if (trends.isEmpty) return const [(span: 2, child: _RepHint())];
-      return [
-        for (var i = 0; i < 2; i++)
-          (
-            span: 1,
-            child: i < trends.length
-                ? KashiRepTile(trend: trends[i], onTap: openCountedMoves)
-                : const SizedBox.shrink(),
-          ),
-      ];
-    }
+    // The two slots beside the shamseh: one card summarising the two
+    // most-counted moves (a hint while nothing has been counted) and the
+    // info card.
+    final repSummary = KeyedSubtree(
+      key: const ValueKey('home-rep-summary'),
+      child: trends.isEmpty
+          ? const _RepHint()
+          : KashiRepSummaryTile(
+              trends: trends.take(2).toList(), onTap: openCountedMoves),
+    );
+    final link = infoLink;
+    final infoTile = KeyedSubtree(
+      key: const ValueKey('home-info'),
+      child: link == null
+          ? const SizedBox.shrink()
+          : KashiInfoTile(link: link, onTap: () => onOpenInfo?.call(link)),
+    );
+    final List<_BentoCell> repCells = [
+      (span: 1, child: repSummary),
+      (span: 1, child: infoTile),
+    ];
 
     Widget otherSessions(Axis axis) => KeyedSubtree(
           key: const ValueKey('home-other-sessions'),
@@ -172,8 +187,14 @@ class HomePage extends StatelessWidget {
                 Expanded(child: shamsehTile),
                 SizedBox(width: gap),
                 Expanded(
-                  child: _RepColumn(
-                      trends: trends.take(2), onTap: openCountedMoves),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: repSummary),
+                      SizedBox(height: gap),
+                      Expanded(child: infoTile),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -188,7 +209,7 @@ class HomePage extends StatelessWidget {
           ]),
           SizedBox(height: gap),
           _BentoRow(layout: layout, rows: 1, cells: [
-            ...repCells(),
+            ...repCells,
             (span: 1, child: otherSessions(Axis.vertical)),
           ]),
           SizedBox(height: gap),
@@ -211,7 +232,7 @@ class HomePage extends StatelessWidget {
           ]),
           SizedBox(height: gap),
           _BentoRow(layout: layout, rows: 1, cells: [
-            ...repCells(),
+            ...repCells,
             (span: 2, child: otherSessions(Axis.horizontal)),
           ]),
         ],
@@ -641,33 +662,6 @@ class _ShamsehTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// The two 1×1 slots beside the shamseh: the two most-counted moves, or a
-/// hint when nothing has been counted yet. Tapping either opens them all.
-class _RepColumn extends StatelessWidget {
-  const _RepColumn({required this.trends, required this.onTap});
-
-  final Iterable<MovementTrend> trends;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final list = trends.toList();
-    if (list.isEmpty) return const _RepHint();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: KashiRepTile(trend: list[0], onTap: onTap)),
-        SizedBox(height: KashiLayout.phone.bentoGap),
-        Expanded(
-          child: list.length > 1
-              ? KashiRepTile(trend: list[1], onTap: onTap)
-              : const SizedBox.shrink(),
-        ),
-      ],
     );
   }
 }

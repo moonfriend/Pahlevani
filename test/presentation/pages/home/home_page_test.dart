@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/info/info_link.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/domain/entities/tracking/tracked_movement_count.dart';
@@ -44,9 +45,12 @@ SessionCompletionRecord _done(DateTime at, Map<String, int> reps) =>
       ],
     );
 
+const _info = InfoLink(title: 'Rahaavi', url: 'https://rahaavi.com');
+
 class _Calls {
   final opened = <TrainingSession>[];
   final menus = <TrainingSession>[];
+  final infoOpened = <InfoLink>[];
   int allSessions = 0, progress = 0, calendar = 0;
 }
 
@@ -90,6 +94,8 @@ Future<_Calls> _pump(
         onOpenAllSessions: () => calls.allSessions++,
         onOpenProgress: () => calls.progress++,
         onOpenCalendar: () => calls.calendar++,
+        infoLink: _info,
+        onOpenInfo: calls.infoOpened.add,
       ),
     ),
   ));
@@ -190,32 +196,37 @@ void main() {
       expect(calls.progress, 1);
     });
 
-    testWidgets('rep tiles: the last value of each counted move',
+    testWidgets('one rep card summarises the two most-counted moves',
         (tester) async {
-      await _pump(tester, history: history);
-      expect(find.text('Shena · last'), findsOneWidget);
-      expect(find.text('42'), findsOneWidget);
-      expect(find.text('Meel Giri · last'), findsOneWidget);
-      expect(find.text('50'), findsOneWidget);
-    });
-
-    testWidgets(
-        'more than two counted moves: only the two most-counted show, '
-        'never a third card', (tester) async {
       await _pump(tester, history: [
         _done(DateTime(2026, 9, 16), {'Mil 1': 50, 'Shena': 40, 'Mil 2': 5}),
         _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
       ]);
-      expect(find.text('Mil 1 · last'), findsOneWidget);
-      expect(find.text('Shena · last'), findsOneWidget);
-      expect(find.text('Mil 2 · last'), findsNothing);
+      final card = find.byKey(const ValueKey('home-rep-summary'));
+      expect(card, findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('Mil 1')),
+          findsOneWidget);
+      expect(
+          find.descendant(of: card, matching: find.text('52')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('Shena')),
+          findsOneWidget);
+      expect(
+          find.descendant(of: card, matching: find.text('42')), findsOneWidget);
+      expect(find.text('Mil 2'), findsNothing, reason: 'never a third move');
+    });
+
+    testWidgets('the info card shows the admin-set title and opens its link',
+        (tester) async {
+      final calls = await _pump(tester, history: history);
+      await tester.tap(find.text('Rahaavi'));
+      expect(calls.infoOpened, [_info]);
     });
 
     testWidgets('tapping a rep card lists every counted move', (tester) async {
       await _pump(tester, history: [
         _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
       ]);
-      await tester.tap(find.text('Shena · last'));
+      await tester.tap(find.byKey(const ValueKey('home-rep-summary')));
       await tester.pumpAndSettle();
 
       expect(find.text('Counted moves'), findsOneWidget);
@@ -323,8 +334,8 @@ void main() {
       expect(shamseh.top, today.top);
       expect(today.width, greaterThan(shamseh.width * 1.8));
       expect(other.top, greaterThan(today.bottom));
-      expect(tester.getRect(find.text('Shena · last')).top,
-          lessThan(other.bottom));
+      expect(rectOf(tester, 'home-rep-summary').top, lessThan(other.bottom));
+      expect(rectOf(tester, 'home-info').top, lessThan(other.bottom));
       expect(rectOf(tester, 'home-month-strip').top, greaterThan(other.bottom));
       expect(find.byKey(const ValueKey('home-calendar')), findsNothing);
     });

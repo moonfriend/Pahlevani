@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../domain/entities/info/info_link.dart';
 import '../../../domain/entities/training_session/training_session.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
@@ -59,6 +62,15 @@ class HomeTab extends StatelessWidget {
     );
   }
 
+  /// Placeholder until the admin sets the info page (name + website link).
+  static const infoLink =
+      InfoLink(title: 'Rahaavi', url: 'https://rahaavi.com');
+
+  /// Opens the page in the browser: the content lives on our website, so
+  /// it can change without an app release.
+  Future<void> _openInfo(InfoLink link) =>
+      launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication);
+
   @override
   Widget build(BuildContext context) =>
       BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
@@ -69,6 +81,8 @@ class HomeTab extends StatelessWidget {
           onOpenAllSessions: () => _openAllSessions(context),
           onOpenProgress: () => AppShell.of(context).select(progressTab),
           onOpenCalendar: () => _openCalendar(context),
+          infoLink: infoLink,
+          onOpenInfo: _openInfo,
         ),
       );
 }
