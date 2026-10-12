@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
@@ -9,14 +10,24 @@ class VersionGateCubit extends Cubit<VersionGateState> {
   final VersionGateRepository _repo;
   final int currentBuildNumber;
 
+  /// A web page is always the latest deploy, and its build number isn't a
+  /// store version, so the store-update gate doesn't apply there.
+  final bool _isWeb;
+
   VersionGateCubit({
     required VersionGateRepository repository,
     required this.currentBuildNumber,
+    bool isWeb = kIsWeb,
   })  : _repo = repository,
+        _isWeb = isWeb,
         super(const VersionGateChecking());
 
   Future<void> check() async {
     if (isClosed) return;
+    if (_isWeb) {
+      emit(const VersionGateOk());
+      return;
+    }
     emit(const VersionGateChecking());
     try {
       final config = await _repo.fetchConfig();
