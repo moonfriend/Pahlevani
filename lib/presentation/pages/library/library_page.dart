@@ -2,23 +2,24 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
-import '../../widgets/kashi/kashi_labels.dart';
+import '../../../domain/entities/training_session/exercise.dart';
+import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
-import 'learning_card_page.dart';
-import 'sample_moves.dart';
+import 'open_move_card.dart';
 
-/// Every move with its video: two to a row on phones, three on tablets,
+/// Every move in the catalogue: two to a row on phones, three on tablets,
 /// four on the web layout, the thumbnails growing with the tiles. One colour
-/// until categories exist. Tap a move → its learning card.
-///
-/// Shows [sampleMoves] (placeholder) until a moves catalog exists.
+/// until categories exist. Tap a move → its learning card (the same card as
+/// the session preview's).
 class LibraryPage extends StatelessWidget {
-  const LibraryPage({super.key, this.moves = sampleMoves});
+  const LibraryPage({super.key, required this.moves});
 
-  final List<SampleMove> moves;
+  /// One exercise per move (see `libraryMoves`).
+  final List<Exercise> moves;
 
   @override
   Widget build(BuildContext context) {
@@ -70,6 +71,17 @@ class LibraryPage extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (moves.isEmpty)
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: side + 6),
+                      sliver: SliverToBoxAdapter(
+                        child: Text(
+                            'No moves yet. They appear once your sessions '
+                            'have loaded.',
+                            style: KashiTextStyles.body
+                                .copyWith(color: colors.textMuted)),
+                      ),
+                    ),
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(side, 0, side, side),
                     sliver: SliverGrid.builder(
@@ -106,7 +118,7 @@ class _MoveTile extends StatelessWidget {
   const _MoveTile(
       {required this.move, required this.thumbHeight, required this.starSize});
 
-  final SampleMove move;
+  final Exercise move;
 
   /// 108 on phones, taller on wider tiles.
   final double thumbHeight;
@@ -118,7 +130,7 @@ class _MoveTile extends StatelessWidget {
     return Material(
       color: colors.raised,
       child: InkWell(
-        onTap: () => openLibraryLearningCard(context, move),
+        onTap: () => openMoveCard(context, move),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
@@ -138,29 +150,7 @@ class _MoveTile extends StatelessWidget {
                             maxHeight: starSize,
                             child: ClipPath(
                               clipper: const KhatamClipper(),
-                              child: Image.asset(move.image,
-                                  width: starSize,
-                                  height: starSize,
-                                  fit: BoxFit.cover),
-                            ),
-                          ),
-                        ),
-                        if (move.isTracked)
-                          const PositionedDirectional(
-                              start: 6, top: 6, child: KashiRepsTag()),
-                        PositionedDirectional(
-                          end: 6,
-                          bottom: 6,
-                          child: ColoredBox(
-                            color: colors.scene700.withValues(alpha: .85),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              child: Text('${move.minutes} min',
-                                  style: KashiTextStyles.label.copyWith(
-                                      fontSize: 10,
-                                      letterSpacing: 0,
-                                      color: Colors.white)),
+                              child: _Still(move: move, size: starSize),
                             ),
                           ),
                         ),
@@ -182,17 +172,48 @@ class _MoveTile extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             color: colors.textPrimary)),
                   ),
-                  const SizedBox(width: 6),
-                  Text(move.nameFa,
-                      textDirection: TextDirection.rtl,
-                      style: KashiTextStyles.farsi
-                          .copyWith(color: colors.farsiAccent)),
+                  if (move.titleFa case final fa? when fa.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text(fa,
+                        textDirection: TextDirection.rtl,
+                        style: KashiTextStyles.farsi
+                            .copyWith(color: colors.farsiAccent)),
+                  ],
                 ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The move's photo or video poster; the pahlevan illustration when it has
+/// none or it can't load (offline before the first download).
+class _Still extends StatelessWidget {
+  const _Still({required this.move, required this.size});
+
+  final Exercise move;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = move.media;
+    final src = switch (media.type) {
+      'photo' => media.src,
+      'video' => media.poster,
+      _ => null,
+    };
+    final placeholder = Image.asset(KashiAssets.pahlevanFemale,
+        width: size, height: size, fit: BoxFit.cover);
+    if (src == null || src.isEmpty) return placeholder;
+    return Image(
+      image: ExerciseImageProvider(src),
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => placeholder,
     );
   }
 }

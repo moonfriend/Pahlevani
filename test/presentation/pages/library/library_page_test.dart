@@ -1,10 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/pages/library/library_page.dart';
-import 'package:pahlevani/presentation/pages/library/sample_moves.dart';
-import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
+import 'package:pahlevani/presentation/widgets/player/learnt_toggle.dart';
+
+import '../../../fakes/fake_download_repository.dart';
+import '../../../fakes/fake_learnt_exercises_repository.dart';
+
+const _moves = [
+  Exercise(
+      id: 1,
+      movementId: 1,
+      name: 'Vorod',
+      titleFa: 'ورود',
+      description: 'Entering the gowd.'),
+  Exercise(
+      id: 2,
+      movementId: 4,
+      name: 'Shena Sar Navazi',
+      titleFa: 'شنا',
+      description: 'A wave-like press on the board.'),
+  Exercise(id: 3, movementId: 5, name: 'Meel Giri'),
+  Exercise(id: 4, movementId: 6, name: 'Charkh'),
+  Exercise(id: 5, movementId: 7, name: 'Sang'),
+  Exercise(id: 6, movementId: 8, name: 'Pa Zadan'),
+];
 
 Future<void> _pump(WidgetTester tester,
     {Size size = const Size(360, 740), ThemeData? theme}) async {
@@ -14,37 +39,54 @@ Future<void> _pump(WidgetTester tester,
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
-    home: const LibraryPage(),
+    home: const LibraryPage(moves: _moves),
   ));
 }
 
 void main() {
+  setUp(() async {
+    await getIt.reset();
+    getIt
+      ..registerSingleton<LearntExercisesRepository>(
+          FakeLearntExercisesRepository())
+      ..registerSingleton<DownloadRepository>(FakeDownloadRepository());
+  });
+  tearDown(getIt.reset);
+
   testWidgets('title and move count', (tester) async {
     await _pump(tester);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('${sampleMoves.length} moves'), findsOneWidget);
+    expect(find.text('${_moves.length} moves'), findsOneWidget);
   });
 
-  testWidgets('lists every move; REPS marks only the counted ones',
-      (tester) async {
+  testWidgets('lists every real move with its Farsi name', (tester) async {
     await _pump(tester, size: const Size(360, 2000));
-
-    for (final move in sampleMoves) {
+    for (final move in _moves) {
       expect(find.text(move.name), findsOneWidget, reason: move.name);
     }
-    expect(find.byType(KashiRepsTag),
-        findsNWidgets(sampleMoves.where((m) => m.isTracked).length));
+    expect(find.text('ورود'), findsOneWidget);
   });
 
-  testWidgets('tapping a move opens its learning card', (tester) async {
+  testWidgets('tapping a move opens its learning card, with the Learnt switch',
+      (tester) async {
     await _pump(tester);
-    final shena = sampleMoves.firstWhere((m) => m.id == 'shena');
-
-    await tester.tap(find.text(shena.name));
+    await tester.tap(find.text('Shena Sar Navazi'));
     await tester.pumpAndSettle();
 
     expect(find.byType(LearningCardPage), findsOneWidget);
-    expect(find.text(shena.description), findsOneWidget);
+    expect(find.text('A wave-like press on the board.'), findsOneWidget);
+    expect(find.byType(LearntToggle), findsOneWidget);
+  });
+
+  testWidgets('no moves yet: says so instead of an empty grid', (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: PahlevaniTheme.light(),
+      home: const LibraryPage(moves: []),
+    ));
+    expect(find.textContaining('No moves yet'), findsOneWidget);
   });
 
   for (final (size, columns) in const [
@@ -55,8 +97,8 @@ void main() {
     testWidgets('$columns moves to a row at $size (the design\'s grid)',
         (tester) async {
       await _pump(tester, size: size);
-      final firstRowTop = tester.getRect(find.text(sampleMoves[0].name)).top;
-      final inFirstRow = sampleMoves
+      final firstRowTop = tester.getRect(find.text(_moves[0].name)).top;
+      final inFirstRow = _moves
           .where((m) => tester.getRect(find.text(m.name)).top == firstRowTop)
           .length;
       expect(inFirstRow, columns);
@@ -65,12 +107,11 @@ void main() {
 
   testWidgets('wider tiles get taller thumbnails', (tester) async {
     await _pump(tester, size: const Size(1440, 900));
-    final name = tester.getRect(find.text(sampleMoves[0].name));
+    final name = tester.getRect(find.text(_moves[0].name));
     final tileTop = tester
         .getRect(find
             .ancestor(
-                of: find.text(sampleMoves[0].name),
-                matching: find.byType(InkWell))
+                of: find.text(_moves[0].name), matching: find.byType(InkWell))
             .first)
         .top;
     expect(name.top - tileTop, greaterThan(180));

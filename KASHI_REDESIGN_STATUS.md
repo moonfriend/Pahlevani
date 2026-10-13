@@ -52,7 +52,7 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
 ### Next
 - User: manual check on Linux (resize the window across 600 / 1100 px), Android and web
   (checklist section "Tablet, desktop and web layouts").
-- Library still on `sample_moves.dart`; Farsi/RTL via `.po` files.
+- Library on the real catalogue (2026-10-13); `sample_moves.dart` now only feeds the learning-card tests. Farsi/RTL via `.po` files.
 
 ## 2026-10-07: fixes from the first device look
 - Rep log + KB sizes "missing": the app ran against **production** (`env/supabase.active.env` was

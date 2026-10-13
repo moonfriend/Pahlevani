@@ -369,7 +369,8 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(
-              onPressed: () => openLibraryLearningCard(context, _shena),
+              onPressed: () =>
+                  showLearningCard(context, LearningMove.fromSample(_shena)),
               child: const Text('open'),
             ),
           ),

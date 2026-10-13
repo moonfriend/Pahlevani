@@ -13,6 +13,9 @@ import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/usecases/library/library_moves.dart'
+    as catalogue;
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -158,6 +161,10 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   /// statuses aren't known yet).
   DownloadStatus downloadStatusOf(int sessionId) =>
       _currentDownloadStatus[sessionId] ?? DownloadStatus.notDownloaded;
+
+  /// The Library's moves: every loaded move once, sorted by name.
+  List<Exercise> get libraryMoves =>
+      catalogue.libraryMoves(_currentTSSnapshot.exercisesById.values);
 
   /// Estimated play seconds of one session move with the athlete's
   /// Morshed, or null when unknown (exercise missing, or no recording).

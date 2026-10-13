@@ -549,5 +549,22 @@ void main() {
           reason: '100s / 25 reps * 50 reps');
       expect(cubit.moveDurationSeconds(unknown), isNull);
     });
+    test('libraryMoves lists every loaded move once, by name', () async {
+      final repo = _SpyRepository(DomainSnapshot(
+        sessionsById: {1: _session(1)},
+        itemsBySessionId: const {},
+        exercisesById: const {
+          1: Exercise(id: 1, movementId: 4, name: 'Shena'),
+          2: Exercise(id: 2, movementId: 4, name: 'Shena'),
+          3: Exercise(id: 3, movementId: 1, name: 'Charkh'),
+        },
+      ));
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+
+      await cubit.initialize();
+
+      expect(cubit.libraryMoves.map((e) => e.id), [3, 1]);
+    });
   });
 }

@@ -125,10 +125,6 @@ Future<bool> showLearningCard(
   return result ?? false;
 }
 
-/// Opens a Library sample move's learning card, the same way.
-Future<void> openLibraryLearningCard(BuildContext context, SampleMove move) =>
-    _pushLearningCard(context, LearningCardPage.sample(move));
-
 Future<bool?> _pushLearningCard(BuildContext context, LearningCardPage page) {
   if (KashiLayout.of(context).isPhone) {
     return Navigator.push<bool>(

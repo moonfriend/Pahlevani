@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/dependency_injection.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
+import '../../bloc/training_session/training_session_cubit.dart';
 import '../home/home_tab.dart';
 import '../library/library_page.dart';
 import '../profile/profile_page.dart';
@@ -20,7 +21,15 @@ List<ShellTab> mainTabs() => [
         ),
         onSelected: () => _history().load(),
       ),
-      ShellTab(label: 'Library', builder: (_) => const LibraryPage()),
+      ShellTab(
+        label: 'Library',
+        // Rebuilds when sessions (re)load, so the catalogue follows the
+        // background sync.
+        builder: (_) => BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
+          builder: (context, _) => LibraryPage(
+              moves: context.read<TrainingSessionCubit>().libraryMoves),
+        ),
+      ),
       ShellTab(
         label: 'Progress',
         builder: (_) => BlocProvider.value(

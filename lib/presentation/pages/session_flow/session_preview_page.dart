@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -11,9 +10,7 @@ import '../../../domain/entities/audio_catalog/morshed.dart';
 import '../../../domain/entities/training_session/prescription.dart';
 import '../../../domain/entities/training_session/session_details.dart';
 import '../../../domain/entities/training_session/training_session.dart';
-import '../../../domain/repositories/download_repository.dart';
 import '../../../domain/usecases/audio_catalog/effective_morshed.dart';
-import '../../../domain/usecases/player/resolve_move_media.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../audio_catalog/choose_morshed_flow.dart';
 import '../../bloc/player/player_mode.dart';
@@ -22,7 +19,7 @@ import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
-import '../library/learning_card_page.dart';
+import '../library/open_move_card.dart';
 import 'session_start.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
@@ -70,23 +67,14 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
     }
   }
 
-  Future<void> _openMove(ItemDetail detail) async {
-    final (media, videoReady) =
-        await ResolveMoveMedia(getIt<DownloadRepository>())(
-            detail.exercise.media,
-            useRemoteMedia: kIsWeb);
-    if (!mounted) return;
+  Future<void> _openMove(ItemDetail detail) {
     final seconds =
         context.read<TrainingSessionCubit>().moveDurationSeconds(detail.item);
-    await showLearningCard(
+    return openMoveCard(
       context,
-      LearningMove.fromExercise(
-        detail.exercise,
-        media: media,
-        videoReady: videoReady,
-        target: _countedTarget(detail),
-        minutes: seconds == null ? null : _wholeMinutes(seconds),
-      ),
+      detail.exercise,
+      target: _countedTarget(detail),
+      minutes: seconds == null ? null : _wholeMinutes(seconds),
     );
   }
 
