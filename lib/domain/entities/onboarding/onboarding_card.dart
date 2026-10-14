@@ -51,23 +51,30 @@ class OnboardingCard extends Equatable {
 }
 
 /// Shown until the server's cards have been fetched once, and whenever the
-/// server has no active cards. Same copy as the migration's seed rows.
+/// server has no active cards. Same copy as release 1's cards on the server
+/// (the meel card's buttons live only on the server).
 const List<OnboardingCard> defaultOnboardingCards = [
   OnboardingCard(
-    title: 'Train with your morshed',
-    body: 'Each session is a video led by the morshed’s voice and the beat '
-        'of the zarb.',
+    title: 'The Zoorkhaneh in your pocket',
+    body: 'Pahlevani is the old Persian practice of strength and chivalry, '
+        'trained to the drum and voice of a morshed.',
   ),
   OnboardingCard(
-    title: 'Count what matters',
-    body: 'Your trainers mark the moves worth counting. Log your reps as you '
-        'go.',
+    title: 'A morshed leads, you follow',
+    body: 'Pick a session and press Start. Follow the morshed’s count, '
+        'and learn each move from its card on the way. Every session you '
+        'finish marks your calendar.',
     builtinImage: BuiltinOnboardingImage.figureAlt,
   ),
   OnboardingCard(
-    title: 'Lay a tile every session',
-    body: 'Your shamseh grows ring by ring. It never resets, so a missed week '
-        'costs you nothing.',
-    builtinImage: BuiltinOnboardingImage.shamseh,
+    title: 'What you need',
+    body: 'A little space, a mat, and a pair of meel. No meel yet? Start '
+        'with Sheno Explosion: it needs none.',
+  ),
+  OnboardingCard(
+    title: 'Train safely',
+    body: 'Warm up first, go at your own pace, and stop if anything hurts. '
+        'Next, we’ll ask you to agree to our safety and privacy terms.',
+    builtinImage: BuiltinOnboardingImage.figureAlt,
   ),
 ];

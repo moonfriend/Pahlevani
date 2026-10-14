@@ -31,21 +31,23 @@ void main() {
       (tester) async {
     await _pump(tester);
 
-    expect(find.text('Train with your morshed'), findsOneWidget);
+    expect(find.text('The Zoorkhaneh in your pocket'), findsOneWidget);
     expect(find.byType(KhatamWindow), findsOneWidget);
     expect(find.text('Skip'), findsOneWidget);
     expect(find.text('Next'), findsOneWidget);
   });
 
-  testWidgets('Next walks through the three cards; the last says Begin',
+  testWidgets('Next walks through the four cards; the last says Begin',
       (tester) async {
     var finished = 0;
     await _pump(tester, onFinished: () => finished++);
 
     await _next(tester);
-    expect(find.text('Count what matters'), findsOneWidget);
+    expect(find.text('A morshed leads, you follow'), findsOneWidget);
     await _next(tester);
-    expect(find.text('Lay a tile every session'), findsOneWidget);
+    expect(find.text('What you need'), findsOneWidget);
+    await _next(tester);
+    expect(find.text('Train safely'), findsOneWidget);
     expect(find.text('Next'), findsNothing);
     expect(finished, 0, reason: 'only Begin or Skip leave onboarding');
 

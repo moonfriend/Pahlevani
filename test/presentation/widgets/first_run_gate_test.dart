@@ -83,7 +83,7 @@ void main() {
 
     await tester.tap(find.text('Begin'));
     await tester.pumpAndSettle();
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < defaultOnboardingCards.length - 1; i++) {
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
     }
