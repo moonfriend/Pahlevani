@@ -6,20 +6,51 @@ import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/training_session/exercise.dart';
+import '../../../domain/entities/training_session/training_session.dart';
 import '../../widgets/exercise_image_provider.dart';
+import '../../widgets/kashi/kashi_labels.dart';
+import '../home/home_page.dart';
+import '../home/session_card.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
 import 'open_move_card.dart';
 
-/// Every move in the catalogue: two to a row on phones, three on tablets,
+/// Every session (so ones not on Home, like Advanced Sang and Kabbade, are
+/// reachable), then every move in the catalogue: two to a row on phones, three on tablets,
 /// four on the web layout, the thumbnails growing with the tiles. One colour
 /// until categories exist. Tap a move → its learning card (the same card as
 /// the session preview's).
 class LibraryPage extends StatelessWidget {
-  const LibraryPage({super.key, required this.moves});
+  const LibraryPage({
+    super.key,
+    required this.moves,
+    this.sessions = const [],
+    this.onOpenSession,
+    this.onSessionMenu,
+  });
 
   /// One exercise per move (see `libraryMoves`).
   final List<Exercise> moves;
+
+  /// Every session the user can see, including those not on Home; listed
+  /// Home's first (in their slot order), then the rest by title.
+  final List<HomeSession> sessions;
+  final ValueChanged<TrainingSession>? onOpenSession;
+
+  /// Long-press: the session's hidden menu (Zoorkhaneh mode).
+  final ValueChanged<TrainingSession>? onSessionMenu;
+
+  List<HomeSession> get _orderedSessions => [...sessions]..sort((a, b) {
+      final pa = a.session.homePosition, pb = b.session.homePosition;
+      if (pa != null || pb != null) {
+        if (pa == null) return 1;
+        if (pb == null) return -1;
+        return pa.compareTo(pb);
+      }
+      return a.session.title
+          .toLowerCase()
+          .compareTo(b.session.title.toLowerCase());
+    });
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +102,33 @@ class LibraryPage extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (sessions.isNotEmpty) ...[
+                    _sectionLabel('Sessions', side),
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(side, 0, side, side),
+                      sliver: SliverGrid.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: phone ? 1 : columns - 1,
+                          mainAxisSpacing: gap,
+                          crossAxisSpacing: gap,
+                          mainAxisExtent: 72,
+                        ),
+                        itemCount: _orderedSessions.length,
+                        itemBuilder: (context, i) {
+                          final s = _orderedSessions[i];
+                          return SessionCard(
+                            session: s,
+                            compact: true,
+                            onOpen: () => onOpenSession?.call(s.session),
+                            onMenu: onSessionMenu == null
+                                ? null
+                                : () => onSessionMenu!(s.session),
+                          );
+                        },
+                      ),
+                    ),
+                    _sectionLabel('Moves', side),
+                  ],
                   if (moves.isEmpty)
                     SliverPadding(
                       padding: EdgeInsets.symmetric(horizontal: side + 6),
@@ -109,6 +167,11 @@ class LibraryPage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _sectionLabel(String text, double side) => SliverPadding(
+        padding: EdgeInsets.fromLTRB(side, 4, side, 10),
+        sliver: SliverToBoxAdapter(child: KashiSectionLabel(text)),
+      );
 
   /// Beyond this the grid stops growing and centres.
   static const _maxContentWidth = 1400.0;

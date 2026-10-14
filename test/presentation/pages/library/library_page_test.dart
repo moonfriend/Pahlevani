@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/training_session.dart';
+import 'package:pahlevani/presentation/pages/home/home_page.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
@@ -31,15 +33,42 @@ const _moves = [
   Exercise(id: 6, movementId: 8, name: 'Pa Zadan'),
 ];
 
+HomeSession _session(int id, String title, {int? slot}) => (
+      session: TrainingSession(
+          id: id,
+          title: title,
+          description: '',
+          difficulty: 3,
+          homePosition: slot),
+      moves: 5,
+      minutes: 12,
+    );
+
+final _sessions = [
+  _session(3, 'Advanced Sang and Kabbade'),
+  _session(4, 'Sheno Explosion', slot: 2),
+  _session(2, 'Full Pahlevani', slot: 1),
+];
+
+final _opened = <TrainingSession>[];
+final _menus = <TrainingSession>[];
+
 Future<void> _pump(WidgetTester tester,
     {Size size = const Size(360, 740), ThemeData? theme}) async {
+  _opened.clear();
+  _menus.clear();
   // tester.view, so MediaQuery (and the layout) see this size.
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
-    home: const LibraryPage(moves: _moves),
+    home: LibraryPage(
+      moves: _moves,
+      sessions: _sessions,
+      onOpenSession: _opened.add,
+      onSessionMenu: _menus.add,
+    ),
   ));
 }
 
@@ -52,6 +81,32 @@ void main() {
       ..registerSingleton<DownloadRepository>(FakeDownloadRepository());
   });
   tearDown(getIt.reset);
+
+  testWidgets(
+      'every session is listed, Home\'s first in their order, then the '
+      'rest by title', (tester) async {
+    await _pump(tester, size: const Size(360, 2000));
+    expect(find.text('SESSIONS'), findsOneWidget);
+    final tops = [
+      for (final t in [
+        'Full Pahlevani',
+        'Sheno Explosion',
+        'Advanced Sang and Kabbade'
+      ])
+        tester.getRect(find.text(t)).top
+    ];
+    expect(tops[0], lessThan(tops[1]));
+    expect(tops[1], lessThan(tops[2]));
+  });
+
+  testWidgets('tapping a session opens it; long-press its hidden menu',
+      (tester) async {
+    await _pump(tester, size: const Size(360, 2000));
+    await tester.tap(find.text('Advanced Sang and Kabbade'));
+    await tester.longPress(find.text('Sheno Explosion'));
+    expect(_opened.map((s) => s.id), [3]);
+    expect(_menus.map((s) => s.id), [4]);
+  });
 
   testWidgets('title and move count', (tester) async {
     await _pump(tester);

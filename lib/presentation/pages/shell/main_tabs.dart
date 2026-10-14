@@ -7,7 +7,10 @@ import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../home/home_tab.dart';
+import '../home/home_page.dart';
 import '../library/library_page.dart';
+import '../session_flow/session_preview_page.dart';
+import '../session_flow/session_start.dart';
 import '../profile/profile_page.dart';
 import '../progress/progress_page.dart';
 import 'app_shell.dart';
@@ -32,8 +35,12 @@ List<ShellTab> mainTabs() => [
         // Rebuilds when sessions (re)load, so the catalogue follows the
         // background sync.
         builder: (_) => BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
-          builder: (context, _) => LibraryPage(
-              moves: context.read<TrainingSessionCubit>().libraryMoves),
+          builder: (context, state) => LibraryPage(
+            moves: context.read<TrainingSessionCubit>().libraryMoves,
+            sessions: homeSessionsFrom(state),
+            onOpenSession: (s) => openSessionPreview(context, s),
+            onSessionMenu: (s) => showSessionPlayMenu(context, s),
+          ),
         ),
       ),
       if (ReleaseFeatures.progressTab)

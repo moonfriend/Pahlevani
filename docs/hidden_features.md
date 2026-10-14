@@ -61,5 +61,7 @@ in the same change. Get them back from git history when the list returns.
   plays straight away instead of showing an empty card.
 - **Zoorkhaneh mode** is a long-press on a Home session card, which asks
   "Start in Zoorkhaneh mode?" (`showSessionPlayMenu` in `session_start.dart`).
+- **Every session is in the Library** (a Sessions list above the moves), so a
+  session that isn't on Home (e.g. Advanced Sang and Kabbade) is still reachable.
 - **Home's sessions come from admin slots** (`training_session.home_position`,
   migration 0043). A trainer-assigned session takes the main card (`home_lineup.dart`).

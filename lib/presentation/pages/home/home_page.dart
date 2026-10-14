@@ -16,6 +16,7 @@ import '../../layout/kashi_layout.dart';
 import '../progress/calendar_month.dart';
 import '../../../domain/entities/info/info_link.dart';
 import 'home_lineup.dart';
+import 'session_card.dart';
 import '../../widgets/kashi/kashi_day_tile.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_info_tile.dart';
@@ -666,7 +667,7 @@ class _SmallSessions extends StatelessWidget {
         for (final (i, s) in sessions.indexed) ...[
           if (i > 0) SizedBox(width: gap, height: gap),
           Expanded(
-            child: _OtherSessionCard(
+            child: SessionCard(
               session: s,
               compact: true,
               onOpen: () => onOpen(s.session),
@@ -680,88 +681,6 @@ class _SmallSessions extends StatelessWidget {
           const Spacer(),
         ],
       ],
-    );
-  }
-}
-
-class _OtherSessionCard extends StatelessWidget {
-  const _OtherSessionCard(
-      {required this.session,
-      required this.compact,
-      required this.onOpen,
-      this.onMenu});
-
-  final HomeSession session;
-  final bool compact;
-  final VoidCallback onOpen;
-  final VoidCallback? onMenu;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    final title = session.session.title;
-    final minutes = session.minutes;
-    final meta = minutes == null
-        ? '${session.moves} moves'
-        : '$minutes min · ${session.moves} moves';
-    final play = compact ? 30.0 : 40.0;
-    return Material(
-      color: colors.raised,
-      child: InkWell(
-        onTap: onOpen,
-        onLongPress: onMenu,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (session.session.needsMeel)
-                      Text('NEEDS MEEL',
-                          style: KashiTextStyles.label
-                              .copyWith(fontSize: 10, color: colors.textMuted)),
-                    Text(title,
-                        maxLines: compact ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: compact
-                            ? KashiTextStyles.ui.copyWith(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: colors.textPrimary)
-                            : KashiTextStyles.title.copyWith(
-                                fontSize: 20, color: colors.textPrimary)),
-                    Text(meta,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: KashiTextStyles.ui.copyWith(
-                            fontSize: compact ? 11 : 12.5,
-                            fontWeight: FontWeight.w400,
-                            color: colors.textMuted)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: 'Start $title',
-                child: Material(
-                  color: colors.action,
-                  child: InkWell(
-                    onTap: onOpen,
-                    child: SizedBox.square(
-                      dimension: play,
-                      child: Icon(Icons.play_arrow_rounded,
-                          size: play * .55, color: colors.onAction),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
