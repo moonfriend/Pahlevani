@@ -9,20 +9,17 @@ import '../../../core/theme/kashi/kashi_palette.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/tracking/session_completion_record.dart';
 import '../../../domain/entities/training_session/training_session.dart';
-import '../../../domain/usecases/tracking/training_history_aggregations.dart';
 import '../../bloc/auth/auth_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../../layout/kashi_layout.dart';
 import '../progress/calendar_month.dart';
 import '../../../domain/entities/info/info_link.dart';
-import 'counted_moves_page.dart';
+import 'home_lineup.dart';
 import '../../widgets/kashi/kashi_day_tile.dart';
 import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_info_tile.dart';
-import '../../widgets/kashi/kashi_rep_summary_tile.dart';
 import '../../widgets/kashi/khatam.dart';
-import '../../widgets/kashi/shamseh.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
 
 /// A session as the Today card shows it.
@@ -65,10 +62,9 @@ const _shortMonths = [
 String homeDateLabel(DateTime d) =>
     '${_weekdays[d.weekday - 1]} · ${d.day} ${_shortMonths[d.month - 1]}';
 
-/// Home (bento): one place to start a session and glance at your practice —
-/// the Today carousel, the shamseh, the last value of the two most-counted
-/// moves on one card (tap it for all of them), an info card and
-/// this month's tiles, plus a way into the full session list.
+/// Home (bento): one curated main session (a trainer's, when one is
+/// assigned), two short sessions, this month's training days and the info
+/// card. Which sessions show is [homeLineup]'s call.
 ///
 /// Pure UI over [sessions] and callbacks; reads [TrainingHistoryCubit] and
 /// [AuthCubit] from the context.
@@ -77,8 +73,6 @@ class HomePage extends StatelessWidget {
     super.key,
     required this.sessions,
     required this.onOpenSession,
-    required this.onOpenAllSessions,
-    required this.onOpenProgress,
     required this.onOpenCalendar,
     this.onSessionMenu,
     this.infoLink,
@@ -86,24 +80,18 @@ class HomePage extends StatelessWidget {
     this.now = DateTime.now,
   });
 
+  /// Every session the user can see; Home picks from them.
   final List<HomeSession> sessions;
   final ValueChanged<TrainingSession> onOpenSession;
-  final VoidCallback onOpenAllSessions;
-  final VoidCallback onOpenProgress;
   final VoidCallback onOpenCalendar;
 
-  /// Long-press on the Today card: the session's own actions (Zoorkhaneh
-  /// mode).
+  /// Long-press on a session card: its hidden actions (Zoorkhaneh mode).
   final ValueChanged<TrainingSession>? onSessionMenu;
 
   /// The website page the info card links to; no card while null.
   final InfoLink? infoLink;
   final ValueChanged<InfoLink>? onOpenInfo;
   final DateTime Function() now;
-
-  /// The Today carousel offers the first few sessions; the rest are a tap
-  /// away under "All sessions".
-  static const carouselSize = 5;
 
   @override
   Widget build(BuildContext context) {
@@ -112,113 +100,73 @@ class HomePage extends StatelessWidget {
     final records = history is TrainingHistoryLoaded
         ? history.completions
         : const <SessionCompletionRecord>[];
-    final trends = mostCountedMovements(records);
+    final userId = switch (context.watch<AuthCubit>().state) {
+      AuthAuthenticated(:final user) ||
+      AuthNeedsConsent(:final user) =>
+        user.id,
+      _ => null,
+    };
+    final lineup = homeLineup(sessions, userId: userId);
     final today = now();
     final layout = KashiLayout.of(context);
+    final gap = layout.bentoGap;
     final trainedDays = {for (final r in records) r.completedAt};
 
-    void openCountedMoves() => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-              builder: (_) => CountedMovesPage(trends: trends)),
-        );
-
-    final todayTile = KeyedSubtree(
+    final mainCard = KeyedSubtree(
       key: const ValueKey('home-today'),
       child: _TodayCard(
-        sessions: sessions.take(carouselSize).toList(),
+        sessions: [if (lineup.main case final main?) main],
+        tag: lineup.mainFromTrainer ? 'FROM YOUR TRAINER' : 'TODAY',
         onOpen: onOpenSession,
         onMenu: onSessionMenu,
       ),
     );
-    final shamsehTile = KeyedSubtree(
-      key: const ValueKey('home-shamseh'),
-      child: _ShamsehTile(tilesLaid: records.length, onTap: onOpenProgress),
+    final smallCards = KeyedSubtree(
+      key: const ValueKey('home-small-sessions'),
+      child: _SmallSessions(
+        sessions: lineup.small,
+        axis: layout.isPhone ? Axis.horizontal : Axis.vertical,
+        onOpen: onOpenSession,
+        onMenu: onSessionMenu,
+      ),
     );
     final monthStrip = KeyedSubtree(
       key: const ValueKey('home-month-strip'),
       child: _MonthStrip(
           today: today, trainedDays: trainedDays, onTap: onOpenCalendar),
     );
-    final allSessions =
-        _AllSessionsRow(count: sessions.length, onTap: onOpenAllSessions);
-
-    // The two slots beside the shamseh: one card summarising the two
-    // most-counted moves (a hint while nothing has been counted) and the
-    // info card.
-    final repSummary = KeyedSubtree(
-      key: const ValueKey('home-rep-summary'),
-      child: trends.isEmpty
-          ? const _RepHint()
-          : KashiRepSummaryTile(
-              trends: trends.take(2).toList(), onTap: openCountedMoves),
-    );
     final link = infoLink;
-    final infoTile = KeyedSubtree(
-      key: const ValueKey('home-info'),
-      child: link == null
-          ? const SizedBox.shrink()
-          : KashiInfoTile(link: link, onTap: () => onOpenInfo?.call(link)),
-    );
-    final List<_BentoCell> repCells = [
-      (span: 1, child: repSummary),
-      (span: 1, child: infoTile),
-    ];
+    final infoCard = link == null
+        ? null
+        : KeyedSubtree(
+            key: const ValueKey('home-info'),
+            child: SizedBox(
+              height: 72,
+              child: KashiInfoTile(
+                  link: link, onTap: () => onOpenInfo?.call(link)),
+            ),
+          );
 
-    Widget otherSessions(Axis axis) => KeyedSubtree(
-          key: const ValueKey('home-other-sessions'),
-          child: _OtherSessionsTile(
-            sessions: sessions.skip(1).take(2).toList(),
-            axis: axis,
-            onOpen: onOpenSession,
-          ),
-        );
-
-    final gap = layout.bentoGap;
     final List<Widget> bento = switch (layout) {
       KashiLayout.phone => [
-          SizedBox(height: 2 * layout.bentoRow + gap, child: todayTile),
+          SizedBox(height: 2 * layout.bentoRow + gap, child: mainCard),
           SizedBox(height: gap),
-          SizedBox(
-            height: 2 * layout.bentoRow + gap,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: shamsehTile),
-                SizedBox(width: gap),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: repSummary),
-                      SizedBox(height: gap),
-                      Expanded(child: infoTile),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          SizedBox(height: layout.bentoRow, child: smallCards),
           SizedBox(height: gap),
           monthStrip,
         ],
       KashiLayout.tablet => [
           _BentoRow(layout: layout, rows: 2, cells: [
-            (span: 2, child: todayTile),
-            (span: 1, child: shamsehTile),
-          ]),
-          SizedBox(height: gap),
-          _BentoRow(layout: layout, rows: 1, cells: [
-            ...repCells,
-            (span: 1, child: otherSessions(Axis.vertical)),
+            (span: 2, child: mainCard),
+            (span: 1, child: smallCards),
           ]),
           SizedBox(height: gap),
           monthStrip,
         ],
       KashiLayout.web => [
           _BentoRow(layout: layout, rows: 2, cells: [
-            (span: 2, child: todayTile),
-            (span: 1, child: shamsehTile),
+            (span: 2, child: mainCard),
+            (span: 1, child: smallCards),
             (
               span: 1,
               child: KeyedSubtree(
@@ -229,11 +177,6 @@ class HomePage extends StatelessWidget {
                     onTap: onOpenCalendar),
               ),
             ),
-          ]),
-          SizedBox(height: gap),
-          _BentoRow(layout: layout, rows: 1, cells: [
-            ...repCells,
-            (span: 2, child: otherSessions(Axis.horizontal)),
           ]),
         ],
     };
@@ -255,8 +198,7 @@ class HomePage extends StatelessWidget {
               children: [
                 _Header(date: today, layout: layout),
                 ...bento,
-                SizedBox(height: layout.isPhone ? 14 : gap * 2),
-                allSessions,
+                if (infoCard != null) ...[SizedBox(height: gap), infoCard],
               ],
             ),
           ),
@@ -357,9 +299,15 @@ class _Header extends StatelessWidget {
 /// The 2×2 lajvard card: a swipeable carousel of sessions with dots.
 class _TodayCard extends StatefulWidget {
   const _TodayCard(
-      {required this.sessions, required this.onOpen, required this.onMenu});
+      {required this.sessions,
+      required this.tag,
+      required this.onOpen,
+      required this.onMenu});
 
   final List<HomeSession> sessions;
+
+  /// The first page's label.
+  final String tag;
   final ValueChanged<TrainingSession> onOpen;
   final ValueChanged<TrainingSession>? onMenu;
 
@@ -404,7 +352,7 @@ class _TodayCardState extends State<_TodayCard> {
                     itemBuilder: (context, i) => _TodayPage(
                       session: sessions[i],
                       tag: i == 0
-                          ? 'TODAY · SUGGESTED'
+                          ? widget.tag
                           : 'SESSION ${i + 1} OF ${sessions.length}',
                       figure: _figureFor(i),
                       onOpen: () => widget.onOpen(sessions[i].session),
@@ -620,76 +568,6 @@ class _TodayPlaceholder extends StatelessWidget {
       );
 }
 
-class _ShamsehTile extends StatelessWidget {
-  const _ShamsehTile({required this.tilesLaid, required this.onTap});
-
-  final int tilesLaid;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    final label =
-        KashiTextStyles.ui.copyWith(fontSize: 12, color: Colors.white);
-    return Material(
-      color: colors.tile,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Your shamseh', style: label),
-              Expanded(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  // 124px on the phone tile; as large as the tile allows on
-                  // tablet and web.
-                  final size = math.max(0.0,
-                      math.min(constraints.maxWidth, constraints.maxHeight));
-                  return Center(
-                    child: Shamseh(
-                        size: size,
-                        tilesLaid: tilesLaid,
-                        palette: ShamsehPalette.homeTile),
-                  );
-                }),
-              ),
-              Text('$tilesLaid tiles laid',
-                  style: label.copyWith(
-                      fontSize: 13, fontWeight: FontWeight.w800)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RepHint extends StatelessWidget {
-  const _RepHint();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    return ColoredBox(
-      color: colors.raised,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Align(
-          alignment: AlignmentDirectional.bottomStart,
-          child: Text(
-            'Counted moves appear here after a session — the last value of '
-            'each.',
-            style: KashiTextStyles.body
-                .copyWith(fontSize: 13, height: 1.45, color: colors.textMuted),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// This month as two rows of day tiles; trained days carry the star.
 class _MonthStrip extends StatelessWidget {
   const _MonthStrip({
@@ -757,107 +635,60 @@ class _MonthStrip extends StatelessWidget {
   }
 }
 
-class _AllSessionsRow extends StatelessWidget {
-  const _AllSessionsRow({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    return Material(
-      color: colors.raised,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text('All sessions',
-                    style: KashiTextStyles.ui
-                        .copyWith(fontSize: 15, color: colors.textPrimary)),
-              ),
-              if (count > 0)
-                Text('$count',
-                    style: KashiTextStyles.ui
-                        .copyWith(fontSize: 13, color: colors.textMuted)),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded, color: colors.textMuted),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The sessions after Today's, each with a play square — the tablet and web
-/// tile that stands in for swiping. Stacked on tablet, side by side on web.
-class _OtherSessionsTile extends StatelessWidget {
-  const _OtherSessionsTile(
-      {required this.sessions, required this.axis, required this.onOpen});
+/// Home's two small sessions: side by side on phones, stacked beside the
+/// main card on wider layouts.
+class _SmallSessions extends StatelessWidget {
+  const _SmallSessions({
+    required this.sessions,
+    required this.axis,
+    required this.onOpen,
+    this.onMenu,
+  });
 
   final List<HomeSession> sessions;
   final Axis axis;
   final ValueChanged<TrainingSession> onOpen;
+  final ValueChanged<TrainingSession>? onMenu;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    final gap = axis == Axis.vertical ? 8.0 : 10.0;
-    return ColoredBox(
-      color: colors.raised,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Other sessions',
-                style: KashiTextStyles.ui
-                    .copyWith(fontSize: 13, color: colors.textMuted)),
-            const SizedBox(height: 10),
-            Expanded(
-              child: sessions.isEmpty
-                  ? Text('More sessions are on their way.',
-                      style: KashiTextStyles.body
-                          .copyWith(fontSize: 13, color: colors.textMuted))
-                  : Flex(
-                      direction: axis,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final (i, s) in sessions.indexed) ...[
-                          if (i > 0) SizedBox(width: gap, height: gap),
-                          Expanded(
-                            child: _OtherSessionCard(
-                                session: s,
-                                compact: axis == Axis.vertical,
-                                onOpen: () => onOpen(s.session)),
-                          ),
-                        ],
-                        // Keeps a lone session at its normal size.
-                        if (sessions.length == 1) ...[
-                          SizedBox(width: gap, height: gap),
-                          const Spacer(),
-                        ],
-                      ],
-                    ),
+    final gap = KashiLayout.of(context).bentoGap;
+    return Flex(
+      direction: axis,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, s) in sessions.indexed) ...[
+          if (i > 0) SizedBox(width: gap, height: gap),
+          Expanded(
+            child: _OtherSessionCard(
+              session: s,
+              compact: true,
+              onOpen: () => onOpen(s.session),
+              onMenu: onMenu == null ? null : () => onMenu!(s.session),
             ),
-          ],
-        ),
-      ),
+          ),
+        ],
+        // Keeps a lone session at its normal size.
+        if (sessions.length == 1) ...[
+          SizedBox(width: gap, height: gap),
+          const Spacer(),
+        ],
+      ],
     );
   }
 }
 
 class _OtherSessionCard extends StatelessWidget {
   const _OtherSessionCard(
-      {required this.session, required this.compact, required this.onOpen});
+      {required this.session,
+      required this.compact,
+      required this.onOpen,
+      this.onMenu});
 
   final HomeSession session;
   final bool compact;
   final VoidCallback onOpen;
+  final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -869,9 +700,10 @@ class _OtherSessionCard extends StatelessWidget {
         : '$minutes min · ${session.moves} moves';
     final play = compact ? 30.0 : 40.0;
     return Material(
-      color: colors.inset,
+      color: colors.raised,
       child: InkWell(
         onTap: onOpen,
+        onLongPress: onMenu,
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
           child: Row(
@@ -881,8 +713,12 @@ class _OtherSessionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (session.session.needsMeel)
+                      Text('NEEDS MEEL',
+                          style: KashiTextStyles.label
+                              .copyWith(fontSize: 10, color: colors.textMuted)),
                     Text(title,
-                        maxLines: 1,
+                        maxLines: compact ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
                         style: compact
                             ? KashiTextStyles.ui.copyWith(

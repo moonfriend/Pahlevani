@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,15 +14,23 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/home/home_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_day_tile.dart';
-import 'package:pahlevani/presentation/widgets/kashi/shamseh.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_training_history_repository.dart';
 
 final _today = DateTime(2026, 9, 30, 9); // a Wednesday
 
-TrainingSession _session(int id, String title) =>
-    TrainingSession(id: id, title: title, description: '', difficulty: 3);
+TrainingSession _session(int id, String title,
+        {int? slot, bool needsMeel = false, bool isPublic = true}) =>
+    TrainingSession(
+        id: id,
+        title: title,
+        description: '',
+        difficulty: 3,
+        homePosition: slot,
+        needsMeel: needsMeel,
+        isPublic: isPublic,
+        ownerTrainerId: isPublic ? null : 'trainer-1');
 
 List<HomeSession> _sessions(int n) => [
       for (var i = 1; i <= n; i++)
@@ -51,7 +58,7 @@ class _Calls {
   final opened = <TrainingSession>[];
   final menus = <TrainingSession>[];
   final infoOpened = <InfoLink>[];
-  int allSessions = 0, progress = 0, calendar = 0;
+  int calendar = 0;
 }
 
 Future<_Calls> _pump(
@@ -91,8 +98,6 @@ Future<_Calls> _pump(
         now: () => _today,
         onOpenSession: calls.opened.add,
         onSessionMenu: calls.menus.add,
-        onOpenAllSessions: () => calls.allSessions++,
-        onOpenProgress: () => calls.progress++,
         onOpenCalendar: () => calls.calendar++,
         infoLink: _info,
         onOpenInfo: calls.infoOpened.add,
@@ -119,58 +124,93 @@ void main() {
     });
   });
 
-  group('Today card', () {
-    testWidgets('suggests the first session with its length', (tester) async {
+  group('sessions', () {
+    testWidgets('the main card shows the first session with its length',
+        (tester) async {
       await _pump(tester);
-      expect(find.text('TODAY · SUGGESTED'), findsOneWidget);
-      expect(find.text('Session 1'), findsOneWidget);
+      expect(find.text('TODAY'), findsOneWidget);
+      final main = find.byKey(const ValueKey('home-today'));
+      expect(find.descendant(of: main, matching: find.text('Session 1')),
+          findsOneWidget);
       expect(find.text('61 min · 7 moves'), findsOneWidget);
     });
 
-    testWidgets('Start and the card open the shown session', (tester) async {
-      final calls = await _pump(tester);
-      await tester.tap(find.text('Start'));
-      await tester.tap(find.text('Session 1'));
-      expect(calls.opened.map((s) => s.id), [1, 1]);
+    testWidgets('admin slots: 1 is the main card, 2 and 3 the small ones',
+        (tester) async {
+      await _pump(tester, sessions: [
+        (
+          session: _session(1, 'Morning Ritual', slot: 3),
+          moves: 6,
+          minutes: 20
+        ),
+        (
+          session: _session(2, 'Full Pahlevani', slot: 1),
+          moves: 29,
+          minutes: 70
+        ),
+        (
+          session: _session(3, 'Sheno Explosion', slot: 2),
+          moves: 7,
+          minutes: 15
+        ),
+        (session: _session(4, 'Not on Home'), moves: 3, minutes: 9),
+      ]);
+      final main = find.byKey(const ValueKey('home-today'));
+      final small = find.byKey(const ValueKey('home-small-sessions'));
+      expect(find.descendant(of: main, matching: find.text('Full Pahlevani')),
+          findsOneWidget);
+      expect(find.descendant(of: small, matching: find.text('Sheno Explosion')),
+          findsOneWidget);
+      expect(find.descendant(of: small, matching: find.text('Morning Ritual')),
+          findsOneWidget);
+      expect(find.text('Not on Home'), findsNothing);
     });
 
-    testWidgets('long-pressing the card opens the session menu',
+    testWidgets("a trainer's session takes the main card", (tester) async {
+      await _pump(tester,
+          user: const AppUser(
+              id: 'me', email: 'sara@example.com', consentAccepted: true),
+          sessions: [
+            (session: _session(1, 'Full', slot: 1), moves: 9, minutes: 60),
+            (
+              session: _session(9, 'For Sara', isPublic: false),
+              moves: 5,
+              minutes: 20
+            ),
+          ]);
+      expect(find.text('FROM YOUR TRAINER'), findsOneWidget);
+      final main = find.byKey(const ValueKey('home-today'));
+      expect(find.descendant(of: main, matching: find.text('For Sara')),
+          findsOneWidget);
+    });
+
+    testWidgets('a session that needs meel is tagged', (tester) async {
+      await _pump(tester, sessions: [
+        (session: _session(1, 'Full', slot: 1), moves: 9, minutes: 60),
+        (
+          session: _session(2, 'Morning Ritual', slot: 2, needsMeel: true),
+          moves: 6,
+          minutes: 20
+        ),
+        (session: _session(3, 'Sheno', slot: 3), moves: 7, minutes: 15),
+      ]);
+      expect(find.text('NEEDS MEEL'), findsOneWidget);
+    });
+
+    testWidgets('Start and the cards open their session', (tester) async {
+      final calls = await _pump(tester);
+      await tester.tap(find.text('Start'));
+      await tester.tap(find.text('Session 2'));
+      expect(calls.opened.map((s) => s.id), [1, 2]);
+    });
+
+    testWidgets('long-pressing a session card opens its hidden menu',
         (tester) async {
       final calls = await _pump(tester);
       await tester.longPress(find.text('Session 1'));
-      expect(calls.menus.map((s) => s.id), [1]);
+      await tester.longPress(find.text('Session 3'));
+      expect(calls.menus.map((s) => s.id), [1, 3]);
       expect(calls.opened, isEmpty);
-    });
-
-    testWidgets('dots pick a session; swiping moves through them',
-        (tester) async {
-      final calls = await _pump(tester);
-
-      await tester.tap(find.byKey(const ValueKey('today-dot-2')));
-      await tester.pumpAndSettle();
-      expect(find.text('Session 3'), findsOneWidget);
-      expect(find.text('SESSION 3 OF 3'), findsOneWidget);
-
-      await tester.fling(find.text('Session 3'), const Offset(300, 0), 1000);
-      await tester.pumpAndSettle();
-      expect(find.text('Session 2'), findsOneWidget);
-
-      await tester.tap(find.text('Start'));
-      expect(calls.opened.single.id, 2);
-    });
-
-    testWidgets('a mouse drag swipes too (desktop and web)', (tester) async {
-      await _pump(tester);
-      await tester.drag(find.text('Session 1'), const Offset(-300, 0),
-          kind: PointerDeviceKind.mouse);
-      await tester.pumpAndSettle();
-      expect(find.text('SESSION 2 OF 3'), findsOneWidget);
-    });
-
-    testWidgets('shows at most five sessions', (tester) async {
-      await _pump(tester, sessions: _sessions(9));
-      expect(find.byKey(const ValueKey('today-dot-4')), findsOneWidget);
-      expect(find.byKey(const ValueKey('today-dot-5')), findsNothing);
     });
 
     testWidgets('no sessions yet: a calm placeholder, no Start',
@@ -179,68 +219,23 @@ void main() {
       expect(find.text('Start'), findsNothing);
       expect(find.textContaining('Sessions are on their way'), findsOneWidget);
     });
+
+    testWidgets('no shamseh, rep cards or All sessions on Home (release 1)',
+        (tester) async {
+      await _pump(tester, history: [
+        _done(DateTime(2026, 9, 21), {'Shena': 42, 'Meel': 50}),
+      ]);
+      expect(find.textContaining('shamseh'), findsNothing);
+      expect(find.text('All sessions'), findsNothing);
+      expect(find.byKey(const ValueKey('home-rep-summary')), findsNothing);
+    });
   });
 
-  group('tiles from training history', () {
+  group('calendar and info', () {
     final history = [
-      _done(DateTime(2026, 9, 16), {'Shena': 40, 'Meel Giri': 48}),
-      _done(DateTime(2026, 9, 21), {'Shena': 42, 'Meel Giri': 50}),
+      _done(DateTime(2026, 9, 16), {'Shena': 40}),
+      _done(DateTime(2026, 9, 21), {'Shena': 42}),
     ];
-
-    testWidgets('shamseh tile: tiles laid; tap opens Progress', (tester) async {
-      final calls = await _pump(tester, history: history);
-      expect(find.text('2 tiles laid'), findsOneWidget);
-      expect(tester.widget<Shamseh>(find.byType(Shamseh)).tilesLaid, 2);
-
-      await tester.tap(find.text('Your shamseh'));
-      expect(calls.progress, 1);
-    });
-
-    testWidgets('one rep card summarises the two most-counted moves',
-        (tester) async {
-      await _pump(tester, history: [
-        _done(DateTime(2026, 9, 16), {'Mil 1': 50, 'Shena': 40, 'Mil 2': 5}),
-        _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
-      ]);
-      final card = find.byKey(const ValueKey('home-rep-summary'));
-      expect(card, findsOneWidget);
-      expect(find.descendant(of: card, matching: find.text('Mil 1')),
-          findsOneWidget);
-      expect(
-          find.descendant(of: card, matching: find.text('52')), findsOneWidget);
-      expect(find.descendant(of: card, matching: find.text('Shena')),
-          findsOneWidget);
-      expect(
-          find.descendant(of: card, matching: find.text('42')), findsOneWidget);
-      expect(find.text('Mil 2'), findsNothing, reason: 'never a third move');
-    });
-
-    testWidgets('the info card shows the admin-set title and opens its link',
-        (tester) async {
-      final calls = await _pump(tester, history: history);
-      await tester.tap(find.text('Rahaavi'));
-      expect(calls.infoOpened, [_info]);
-    });
-
-    testWidgets('tapping a rep card lists every counted move', (tester) async {
-      await _pump(tester, history: [
-        _done(DateTime(2026, 9, 21), {'Mil 1': 52, 'Shena': 42, 'Mil 2': 6}),
-      ]);
-      await tester.tap(find.byKey(const ValueKey('home-rep-summary')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Counted moves'), findsOneWidget);
-      expect(find.text('Mil 1 · last'), findsOneWidget);
-      expect(find.text('Shena · last'), findsOneWidget);
-      expect(find.text('Mil 2 · last'), findsOneWidget);
-      expect(find.text('6'), findsOneWidget);
-    });
-
-    testWidgets('no counted moves yet: a hint instead of rep tiles',
-        (tester) async {
-      await _pump(tester);
-      expect(find.textContaining('Counted moves appear here'), findsOneWidget);
-    });
 
     testWidgets(
         'month strip: this month\'s days, trained ones starred; '
@@ -255,14 +250,15 @@ void main() {
       await tester.tap(find.text('Calendar →'));
       expect(calls.calendar, 1);
     });
-  });
 
-  testWidgets('All sessions opens the full list', (tester) async {
-    final calls = await _pump(tester);
-    await tester.scrollUntilVisible(find.text('All sessions'), 80,
-        scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.text('All sessions'));
-    expect(calls.allSessions, 1);
+    testWidgets('the info card shows its title and opens its link',
+        (tester) async {
+      final calls = await _pump(tester);
+      await tester.scrollUntilVisible(find.text('Rahaavi'), 80,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Rahaavi'));
+      expect(calls.infoOpened, [_info]);
+    });
   });
 
   for (final size in const [Size(360, 740), Size(320, 568), Size(1440, 900)]) {
@@ -306,61 +302,45 @@ void main() {
   group('responsive bento', () {
     const tablet = Size(834, 1194);
     const web = Size(1440, 900);
-    final history = [
-      _done(DateTime(2026, 9, 16), {'Shena': 40, 'Meel Giri': 48}),
-      _done(DateTime(2026, 9, 21), {'Shena': 42, 'Meel Giri': 50}),
-    ];
 
     Rect rectOf(WidgetTester tester, String key) =>
         tester.getRect(find.byKey(ValueKey(key)));
 
-    testWidgets('phone: no Other sessions tile, the month strip below',
+    testWidgets('phone: the small sessions side by side under the main card',
         (tester) async {
-      await _pump(tester, history: history);
-      expect(find.byKey(const ValueKey('home-other-sessions')), findsNothing);
-      expect(find.byKey(const ValueKey('home-month-strip')), findsOneWidget);
+      await _pump(tester);
+      final main = rectOf(tester, 'home-today');
+      final small = rectOf(tester, 'home-small-sessions');
+      expect(small.top, greaterThan(main.bottom));
+      expect(tester.getRect(find.text('Session 2')).top,
+          tester.getRect(find.text('Session 3')).top);
+      expect(rectOf(tester, 'home-month-strip').top, greaterThan(small.bottom));
     });
 
     testWidgets(
-        'tablet: Today (2 columns) beside the shamseh; the rep cards and '
-        'Other sessions share the next row; the month strip below',
-        (tester) async {
-      await _pump(tester, size: tablet, history: history);
+        'tablet: the main card over two columns, the small sessions '
+        'stacked beside it; the month strip below', (tester) async {
+      await _pump(tester, size: tablet);
       expect(tester.takeException(), isNull);
-
-      final today = rectOf(tester, 'home-today');
-      final shamseh = rectOf(tester, 'home-shamseh');
-      final other = rectOf(tester, 'home-other-sessions');
-      expect(shamseh.top, today.top);
-      expect(today.width, greaterThan(shamseh.width * 1.8));
-      expect(other.top, greaterThan(today.bottom));
-      expect(rectOf(tester, 'home-rep-summary').top, lessThan(other.bottom));
-      expect(rectOf(tester, 'home-info').top, lessThan(other.bottom));
-      expect(rectOf(tester, 'home-month-strip').top, greaterThan(other.bottom));
+      final main = rectOf(tester, 'home-today');
+      final small = rectOf(tester, 'home-small-sessions');
+      expect(small.top, main.top);
+      expect(main.width, greaterThan(small.width * 1.8));
+      expect(tester.getRect(find.text('Session 3')).top,
+          greaterThan(tester.getRect(find.text('Session 2')).top));
+      expect(rectOf(tester, 'home-month-strip').top, greaterThan(main.bottom));
       expect(find.byKey(const ValueKey('home-calendar')), findsNothing);
     });
 
     testWidgets(
-        'web: Today, shamseh and the month calendar on one row; Other '
-        'sessions offers the next sessions', (tester) async {
-      final calls = await _pump(tester, size: web, history: history);
+        'web: main card, small sessions and the month calendar on '
+        'one row', (tester) async {
+      await _pump(tester, size: web);
       expect(tester.takeException(), isNull);
-
-      final today = rectOf(tester, 'home-today');
-      expect(rectOf(tester, 'home-shamseh').top, today.top);
-      expect(rectOf(tester, 'home-calendar').top, today.top);
+      final main = rectOf(tester, 'home-today');
+      expect(rectOf(tester, 'home-small-sessions').top, main.top);
+      expect(rectOf(tester, 'home-calendar').top, main.top);
       expect(find.byKey(const ValueKey('home-month-strip')), findsNothing);
-      expect(find.text('30'), findsOneWidget,
-          reason: 'the calendar tile numbers the days');
-
-      final other = find.byKey(const ValueKey('home-other-sessions'));
-      expect(find.descendant(of: other, matching: find.text('Session 2')),
-          findsOneWidget);
-      expect(find.descendant(of: other, matching: find.text('Session 3')),
-          findsOneWidget);
-      await tester.tap(find.descendant(
-          of: other, matching: find.byTooltip('Start Session 3')));
-      expect(calls.opened.single.id, 3);
     });
 
     for (final size in const [
@@ -371,7 +351,7 @@ void main() {
     ]) {
       testWidgets('lays out without overflow at the edge size $size',
           (tester) async {
-        await _pump(tester, size: size, history: history);
+        await _pump(tester, size: size);
         expect(tester.takeException(), isNull);
       });
     }

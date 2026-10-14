@@ -10,8 +10,6 @@ import '../../bloc/training_session/training_session_cubit.dart';
 import '../progress/calendar_page.dart';
 import '../session_flow/session_preview_page.dart';
 import '../session_flow/session_start.dart';
-import '../shell/app_shell.dart';
-import '../training_session/training_sessions_page.dart';
 import 'home_page.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
@@ -19,9 +17,6 @@ import 'home_page.dart';
 /// Expects a [TrainingHistoryCubit] above it.
 class HomeTab extends StatelessWidget {
   const HomeTab({super.key});
-
-  /// Index of the Progress tab in the shell.
-  static const progressTab = 2;
 
   /// Opens the session's preview, then refreshes the history so a
   /// finished session shows on Home.
@@ -39,17 +34,6 @@ class HomeTab extends StatelessWidget {
     await showSessionPlayMenu(context, session);
     await history.load();
   }
-
-  void _openAllSessions(BuildContext context) => Navigator.push(
-        context,
-        MaterialPageRoute(
-          // The list was always a root page; give it a way back.
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('All sessions')),
-            body: const TrainingSessionPage(),
-          ),
-        ),
-      );
 
   void _openCalendar(BuildContext context) {
     final history = context.read<TrainingHistoryCubit>();
@@ -78,8 +62,6 @@ class HomeTab extends StatelessWidget {
           sessions: homeSessionsFrom(state),
           onOpenSession: (s) => _openSession(context, s),
           onSessionMenu: (s) => _openSessionMenu(context, s),
-          onOpenAllSessions: () => _openAllSessions(context),
-          onOpenProgress: () => AppShell.of(context).select(progressTab),
           onOpenCalendar: () => _openCalendar(context),
           infoLink: infoLink,
           onOpenInfo: _openInfo,
