@@ -2,6 +2,8 @@
 
 ## Project Purpose
 
+> **Release 1 hides several built features** (Progress, Path, Fitness test, the old session list, the Rep log, …). Read `docs/hidden_features.md` before deleting "unused" code or bringing a feature back.
+
 Flutter app for practising **Pahlevani** — traditional Persian warrior fitness. Users browse training sessions, each composed of ordered exercises with audio guidance, download sessions for offline use, and play through exercises in sequence with repetition tracking.
 
 ---

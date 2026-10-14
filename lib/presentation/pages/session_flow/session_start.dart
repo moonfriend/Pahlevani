@@ -45,30 +45,24 @@ Future<void> startSession(
   unawaited(sessions.loadInitialStatuses());
 }
 
-/// A session's own play actions, from a long-press on a session card:
-/// Zoorkhaneh mode lives here rather than in the preview.
+/// The hidden way into Zoorkhaneh mode: a long-press on a session card asks
+/// whether to start the session there (each move loops until you go on).
 Future<void> showSessionPlayMenu(
     BuildContext context, TrainingSession session) async {
-  final zoorkhaneh = await showModalBottomSheet<bool>(
+  final zoorkhaneh = await showDialog<bool>(
     context: context,
-    shape: const RoundedRectangleBorder(),
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            title: Text(session.title,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.repeat_rounded),
-            title: const Text('Play in Zoorkhaneh mode'),
-            subtitle: const Text('Each move loops until you go on'),
-            onTap: () => Navigator.pop(sheetContext, true),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Start in Zoorkhaneh mode?'),
+      content: Text('${session.title}: each move loops until you go on, '
+          'like a class in the Zoorkhaneh.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel')),
+        FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Start')),
+      ],
     ),
   );
   if (zoorkhaneh == true && context.mounted) {

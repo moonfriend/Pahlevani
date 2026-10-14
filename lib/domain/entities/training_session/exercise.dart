@@ -75,4 +75,13 @@ class Exercise {
     this.steps = const [],
     this.variations = const [],
   });
+
+  /// Whether there is anything to learn this move from: a video (the
+  /// follow-along demo or an educational one) or explanation text. Only
+  /// such moves get a learning card in Learning mode and the Library.
+  bool get hasLearningContent =>
+      (media.type == 'video' && media.hasAsset) ||
+      (videoUrl?.isNotEmpty ?? false) ||
+      (description?.trim().isNotEmpty ?? false) ||
+      steps.isNotEmpty;
 }

@@ -16,7 +16,6 @@ import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
-import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_labels.dart';
 
 import '../../../fakes/fake_audio_catalog_repository.dart';
@@ -155,26 +154,20 @@ void main() {
   });
 
   testWidgets(
-      'no Start button: Educational starts Learning mode, '
-      'Only follow along starts Athlete mode', (tester) async {
+      'one Start button (release 1): it starts Learning mode, so cards show '
+      'for moves not yet learnt', (tester) async {
     final started = await _pump(tester);
-    expect(find.text('Start session'), findsNothing);
+    expect(find.text('Only follow along'), findsNothing);
+    expect(find.text('Educational'), findsNothing);
 
-    await tester.tap(find.text('Educational'));
+    await tester.tap(find.text('Start'));
     await tester.pump();
     expect(started, [PlayerMode.learning]);
-
-    await tester.tap(find.text('Only follow along'));
-    await tester.pump();
-    expect(started, [PlayerMode.learning, PlayerMode.athlete]);
   });
 
-  testWidgets('both start buttons share the same colour', (tester) async {
+  testWidgets('a warm-up reminder sits above Start', (tester) async {
     await _pump(tester);
-    final buttons = tester
-        .widgetList<KashiActionButton>(find.byType(KashiActionButton))
-        .toList();
-    expect(buttons.map((b) => b.label), ['Educational', 'Only follow along']);
+    expect(find.textContaining('Warm up first'), findsOneWidget);
   });
 
   testWidgets('tapping a move opens the Library\'s learning card',
@@ -202,16 +195,16 @@ void main() {
       expect(tester.takeException(), isNull);
 
       final title = tester.getRect(find.text('Full Pahlevani'));
-      final educational = tester.getRect(find.text('Educational'));
+      final start = tester.getRect(find.text('Start'));
       final shena = tester.getRect(find.text('Shena'));
       expect(shena.left, greaterThan(title.right));
-      expect(shena.left, greaterThan(educational.right));
+      expect(shena.left, greaterThan(start.right));
       expect(shena.top, lessThan(size.height / 3),
           reason: 'the list starts at the top, beside the header');
       expect(find.text('MOVES · TAP ONE TO WATCH HOW'), findsOneWidget);
 
-      await tester.tap(find.text('Only follow along'));
-      expect(started, [PlayerMode.athlete]);
+      await tester.tap(find.text('Start'));
+      expect(started, [PlayerMode.learning]);
     });
   }
 

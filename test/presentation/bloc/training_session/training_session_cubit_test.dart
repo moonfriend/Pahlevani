@@ -554,9 +554,9 @@ void main() {
         sessionsById: {1: _session(1)},
         itemsBySessionId: const {},
         exercisesById: const {
-          1: Exercise(id: 1, movementId: 4, name: 'Shena'),
-          2: Exercise(id: 2, movementId: 4, name: 'Shena'),
-          3: Exercise(id: 3, movementId: 1, name: 'Charkh'),
+          1: Exercise(id: 1, movementId: 4, name: 'Shena', description: 'd'),
+          2: Exercise(id: 2, movementId: 4, name: 'Shena', description: 'd'),
+          3: Exercise(id: 3, movementId: 1, name: 'Charkh', description: 'd'),
         },
       ));
       final cubit = _makeCubit(repo);

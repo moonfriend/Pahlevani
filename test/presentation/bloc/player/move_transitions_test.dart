@@ -28,4 +28,13 @@ void main() {
     expect(moveStartsOnItsOwn(mode: PlayerMode.learning, isLearnt: false),
         isFalse);
   });
+
+  test('a move with nothing to learn from never waits for Go', () {
+    expect(
+        moveStartsOnItsOwn(
+            mode: PlayerMode.learning,
+            isLearnt: false,
+            hasLearningContent: false),
+        isTrue);
+  });
 }

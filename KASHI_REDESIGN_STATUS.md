@@ -27,6 +27,10 @@ Pick-up notes for the next session. Design source: `~/StudioProjects/pahlevani_u
     `SessionPlayerCubit` (`PlayerMode`).
 - Worktree: `~/StudioProjects/Pahlevani-worktrees/new-ux-design`.
 
+## 2026-10-14: release 1 course change (curated product)
+
+Decided with the user and the design agent: Home = 1 main session (admin slot 1, or a trainer-assigned one) + 2 small ones, the calendar and the info card; tabs Home · Library · Profile; one Start button (Learning mode); no rep logging; Zoorkhaneh by long-press. Many built features are hidden, **not deleted**: see `docs/hidden_features.md`. Still to build for release 1: B (info card from the DB, elevated when new) and A (onboarding links, consent with versions, email + activation code gate for everyone, account deletion). First update: Complete-screen calendar tile + Shena/Meel totals.
+
 ## 2026-10-09: first test pass fixes + tablet / desktop / web layouts
 - **Fixes from the user's first test:** arch tab icons; Home shows only the two most-counted moves
   (tap → "Counted moves" page); mouse drag swipes carousels (desktop/web); the preview's two mode

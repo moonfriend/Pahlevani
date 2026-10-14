@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 import 'package:pahlevani/domain/usecases/library/library_moves.dart';
 
-Exercise _ex(int id, String name, {int? movementId}) =>
-    Exercise(id: id, name: name, movementId: movementId);
+Exercise _ex(int id, String name,
+        {int? movementId, String? description = 'How'}) =>
+    Exercise(
+        id: id, name: name, movementId: movementId, description: description);
 
 void main() {
   test('one entry per movement, the lowest exercise id standing for it', () {
@@ -27,5 +29,20 @@ void main() {
       _ex(3, 'Meel', movementId: 3),
     ]);
     expect(moves.map((e) => e.name), ['Charkh', 'Meel', 'vorod']);
+  });
+
+  test('only moves with a video or explanation text', () {
+    final moves = libraryMoves([
+      _ex(1, 'Text', movementId: 1),
+      _ex(2, 'Nothing', movementId: 2, description: null),
+      const Exercise(
+          id: 3,
+          movementId: 3,
+          name: 'Video',
+          media: ExerciseMedia(type: 'video', src: 'https://x/v.mp4')),
+      const Exercise(
+          id: 4, movementId: 4, name: 'Edu', videoUrl: 'https://x/e.mp4'),
+    ]);
+    expect(moves.map((e) => e.name), ['Edu', 'Text', 'Video']);
   });
 }

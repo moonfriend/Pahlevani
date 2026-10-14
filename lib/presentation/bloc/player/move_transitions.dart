@@ -32,6 +32,10 @@ AfterMove afterMove(
             : const FinishSession();
 
 /// Whether a move starts by itself when reached. In Learning mode a move
-/// that isn't learnt yet waits for the user's "Go".
-bool moveStartsOnItsOwn({required PlayerMode mode, required bool isLearnt}) =>
-    mode != PlayerMode.learning || isLearnt;
+/// that isn't learnt yet waits for the user's "Go" — unless it has nothing
+/// to learn from, when a card would be empty.
+bool moveStartsOnItsOwn(
+        {required PlayerMode mode,
+        required bool isLearnt,
+        bool hasLearningContent = true}) =>
+    mode != PlayerMode.learning || isLearnt || !hasLearningContent;

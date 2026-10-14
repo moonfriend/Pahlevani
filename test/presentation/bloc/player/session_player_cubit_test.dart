@@ -109,9 +109,18 @@ class _FakeDownloadRepo implements DownloadRepository {
 TrainingSession _session(int id) =>
     TrainingSession(id: id, title: 'S$id', description: '', difficulty: 1);
 
-Exercise _exercise(int id, {String url = 'https://audio.mp3', int reps = 3}) =>
+// Every test move has something to learn from (a description), so Learning
+// mode prompts for it unless it is learnt.
+Exercise _exercise(int id,
+        {String url = 'https://audio.mp3',
+        int reps = 3,
+        String? description = 'How'}) =>
     Exercise(
-        id: id, name: 'Ex $id', audioFileUrl: url, repetitionsDefault: reps);
+        id: id,
+        name: 'Ex $id',
+        audioFileUrl: url,
+        repetitionsDefault: reps,
+        description: description);
 
 TrainingItem _item(
         {required int sessionId,
@@ -144,6 +153,8 @@ SessionPlayerCubit _makeCubit(
   FakeAudioCatalogRepository? audioCatalogRepo,
   FakeLearntExercisesRepository? learntExercisesRepo,
   PlayerMode mode = PlayerMode.athlete,
+  // Most tests here cover the Rep log itself; release 1 switches it off.
+  bool repLogging = true,
 }) {
   final session = snapshot.sessionsById.values.first;
   return SessionPlayerCubit(
@@ -156,6 +167,7 @@ SessionPlayerCubit _makeCubit(
     learntExercisesRepository:
         learntExercisesRepo ?? FakeLearntExercisesRepository(),
     notificationService: FakePlayerNotificationService(),
+    repLogging: repLogging,
   );
 }
 
@@ -1469,6 +1481,22 @@ void main() {
   // ---------- learning mode: "Learnt" moves skip the prompt entirely ----------
 
   group('learning mode — learnt exercises', () {
+    test('a move with nothing to learn from plays without waiting for Go',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10, description: null)],
+      );
+      final cubit = _makeCubit(snap, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+
     test('a learnt exercise auto-plays without waiting for Go', () async {
       final snap = _snapshotWithItems(
         _session(1),
@@ -1877,7 +1905,7 @@ void main() {
 
     // Move 0 is counted (target 5), move 1 is not, move 2 is counted (4).
     SessionPlayerCubit build(FakeAudioPlayerService audio,
-            {PlayerMode mode = PlayerMode.athlete}) =>
+            {PlayerMode mode = PlayerMode.athlete, bool repLogging = true}) =>
         _makeCubit(
           _snapshotWithItems(
             _session(1),
@@ -1900,7 +1928,21 @@ void main() {
           ),
           audioService: audio,
           mode: mode,
+          repLogging: repLogging,
         );
+
+    test('with rep logging off (release 1) a counted move goes straight on',
+        () async {
+      final cubit = build(FakeAudioPlayerService(), repLogging: false);
+      addTearDown(cubit.close);
+      await cubit.loadTracks();
+
+      cubit.next();
+      await settle();
+
+      expect(cubit.state, isNot(isA<PlayerLoggingReps>()));
+      expect(cubit.state.playingIndex, 1);
+    });
 
     test('next on a counted move pauses and asks for its reps', () async {
       final audio = FakeAudioPlayerService();

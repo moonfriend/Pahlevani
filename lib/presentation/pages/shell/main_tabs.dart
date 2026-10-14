@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/dependency_injection.dart';
+import '../../../core/release_features.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
@@ -30,14 +31,15 @@ List<ShellTab> mainTabs() => [
               moves: context.read<TrainingSessionCubit>().libraryMoves),
         ),
       ),
-      ShellTab(
-        label: 'Progress',
-        builder: (_) => BlocProvider.value(
-          value: _history()..load(),
-          child: const ProgressPage(),
+      if (ReleaseFeatures.progressTab)
+        ShellTab(
+          label: 'Progress',
+          builder: (_) => BlocProvider.value(
+            value: _history()..load(),
+            child: const ProgressPage(),
+          ),
+          onSelected: () => _history().load(),
         ),
-        onSelected: () => _history().load(),
-      ),
       ShellTab(
         label: 'Profile',
         builder: (_) => MultiBlocProvider(

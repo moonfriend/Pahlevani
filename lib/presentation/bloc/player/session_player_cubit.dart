@@ -10,6 +10,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/player/move_timeline.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/core/release_features.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
@@ -54,6 +55,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   /// The user's mute choice, kept across moves for this play-through.
   bool _muted = false;
 
+  /// Whether counted moves open the Rep log (off in release 1).
+  final bool _repLogging;
+
   late final StreamSubscription<MoveEvent> _moveEventSub;
   StreamSubscription<NotificationCommand>? _notificationSub;
 
@@ -67,7 +71,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     required LearntExercisesRepository learntExercisesRepository,
     required PlayerNotificationService notificationService,
     bool autoStart = true,
+    bool repLogging = ReleaseFeatures.repLogging,
   })  : _trainingSession = trainingSession,
+        _repLogging = repLogging,
         _mode = mode,
         _timeline = MoveTimeline(audioPlayerService),
         _buildQueue = BuildPlaybackQueue(
@@ -118,13 +124,15 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   bool isCounted(int index) =>
       index >= 0 &&
       index < _itemDetails.length &&
-      _itemDetails[index].item.isTracked;
+      _itemDetails[index].item.isTracked &&
+      _repLogging;
 
   bool _startsOnItsOwn(int index) {
     final exercise = exerciseAt(index);
     return moveStartsOnItsOwn(
       mode: _mode,
       isLearnt: exercise != null && _learntExerciseIds.contains(exercise.id),
+      hasLearningContent: exercise?.hasLearningContent ?? false,
     );
   }
 

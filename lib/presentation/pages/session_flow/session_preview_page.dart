@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/dependency_injection.dart';
+import '../../../core/release_features.dart';
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_palette.dart';
@@ -40,10 +41,11 @@ Future<void> openSessionPreview(
 /// What you are about to do, and with which morshed: the session's header
 /// with a framed still, the morshed dropdown, the move list (a move a trainer
 /// flagged for counting shows its reps; tapping a move opens its learning
-/// card) and two start buttons: Educational (Learning mode — pauses before
-/// each move not yet learnt) and Only follow along (Athlete mode).
+/// card) and Start (Learning mode: pauses before each move not yet learnt,
+/// when it has something to learn from). "Only follow along" (Athlete mode)
+/// is switched off for release 1 ([ReleaseFeatures.followAlongButton]).
 ///
-/// Zoorkhaneh mode is not offered here; it lives in the session's own menu.
+/// Zoorkhaneh mode is not offered here; it is a long-press on a session card.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
 class SessionPreviewPage extends StatefulWidget {
   const SessionPreviewPage({super.key, required this.session, this.onStart});
@@ -110,15 +112,23 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text('Warm up first, and stop if anything hurts.',
+            textAlign: TextAlign.center,
+            style: KashiTextStyles.ui
+                .copyWith(fontSize: 12.5, color: colors.textMuted)),
+        const SizedBox(height: 8),
+        // Learning mode: cards show for moves not yet learnt.
         KashiActionButton(
-          label: 'Educational',
+          label: 'Start',
           onPressed: moves.isEmpty ? null : () => _start(PlayerMode.learning),
         ),
-        const SizedBox(height: 8),
-        KashiActionButton(
-          label: 'Only follow along',
-          onPressed: moves.isEmpty ? null : () => _start(PlayerMode.athlete),
-        ),
+        if (ReleaseFeatures.followAlongButton) ...[
+          const SizedBox(height: 8),
+          KashiActionButton(
+            label: 'Only follow along',
+            onPressed: moves.isEmpty ? null : () => _start(PlayerMode.athlete),
+          ),
+        ],
       ],
     );
 

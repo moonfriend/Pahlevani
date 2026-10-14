@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:pahlevani/core/release_features.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
@@ -50,10 +51,17 @@ import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 // Page shell
 // ─────────────────────────────────────────────────────────────────────────────
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage(
-      {super.key, required this.trainingSession, required this.mode});
+  const AudioPlayerPage({
+    super.key,
+    required this.trainingSession,
+    required this.mode,
+    this.repLogging = ReleaseFeatures.repLogging,
+  });
   final TrainingSession trainingSession;
   final PlayerMode mode;
+
+  /// Whether counted moves open the Rep log; see [ReleaseFeatures].
+  final bool repLogging;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -128,6 +136,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         audioCatalogRepository: getIt<AudioCatalogRepository>(),
         learntExercisesRepository: getIt<LearntExercisesRepository>(),
         notificationService: getIt<PlayerNotificationService>(),
+        repLogging: widget.repLogging,
       );
 
   /// Edit from the player: pause first (audio and demo video stop while

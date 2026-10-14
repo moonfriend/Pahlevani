@@ -467,7 +467,7 @@ void main() {
         reason: 'Zoorkhaneh lives in the session menu, not the preview');
   });
 
-  testWidgets('Educational in the preview opens the player in Learning mode',
+  testWidgets('Start in the preview opens the player in Learning mode',
       (tester) async {
     registerPlayerFakes();
     final cubit = await downloadedSessionCubit();
@@ -480,7 +480,7 @@ void main() {
 
     await tester.tap(find.text('Session A'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Educational'));
+    await tester.tap(find.text('Start'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -532,7 +532,7 @@ void main() {
     Future<void> startFromPreview(WidgetTester tester) async {
       await tester.tap(find.text('Session A'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Educational'));
+      await tester.tap(find.text('Start'));
       await tester.pumpAndSettle();
     }
 

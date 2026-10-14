@@ -61,6 +61,7 @@ void _registerFakes(DomainSnapshot snapshot) {
 
 Widget _buildPage(DomainSnapshot snapshot,
     {PlayerMode mode = PlayerMode.athlete}) {
+  // The Rep log tests below need it on; release 1 switches it off.
   return BlocProvider(
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
@@ -69,7 +70,8 @@ Widget _buildPage(DomainSnapshot snapshot,
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
-      home: AudioPlayerPage(trainingSession: testSession1, mode: mode),
+      home: AudioPlayerPage(
+          trainingSession: testSession1, mode: mode, repLogging: true),
     ),
   );
 }
@@ -110,7 +112,9 @@ Widget _buildLauncher(DomainSnapshot snapshot) {
               context,
               MaterialPageRoute(
                 builder: (_) => AudioPlayerPage(
-                    trainingSession: testSession1, mode: PlayerMode.athlete),
+                    trainingSession: testSession1,
+                    mode: PlayerMode.athlete,
+                    repLogging: true),
               ),
             ),
             child: const Text('Open player'),
