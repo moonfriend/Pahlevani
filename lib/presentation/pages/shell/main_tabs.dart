@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/dependency_injection.dart';
 import '../../../core/release_features.dart';
+import '../../bloc/announcement/announcement_cubit.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
@@ -16,8 +17,12 @@ import 'app_shell.dart';
 List<ShellTab> mainTabs() => [
       ShellTab(
         label: 'Home',
-        builder: (_) => BlocProvider.value(
-          value: _history()..load(),
+        builder: (_) => MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: _history()..load()),
+            // Fetched on every start, then re-checked every few hours.
+            BlocProvider.value(value: getIt<AnnouncementCubit>()..load()),
+          ],
           child: const HomeTab(),
         ),
         onSelected: () => _history().load(),

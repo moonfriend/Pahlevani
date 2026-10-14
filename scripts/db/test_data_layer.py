@@ -195,6 +195,29 @@ def test_onboarding_cards_fetch(cur: psycopg2.cursor) -> None:
         _optional(row, "body_fa", str)
 
 
+def test_home_announcement_fetch(cur: psycopg2.cursor) -> None:
+    """
+    Dart: AnnouncementRemoteDataSource.fetchActive()
+    SELECT title, description, url FROM home_announcement WHERE is_active —
+    skips if the table is not yet in schema (migration 0044).
+    """
+    try:
+        cur.execute(
+            "SELECT title, description, url FROM public.home_announcement "
+            "WHERE is_active"
+        )
+    except psycopg2.errors.UndefinedTable:
+        return  # pre-migration — 0044 not yet applied
+
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    assert len(rows) == 1, "home_announcement: the migration seeds one card"
+    _require(rows[0], "title", str)
+    _require(rows[0], "description", str)
+    _require(rows[0], "url", str)
+    assert rows[0]["url"].startswith("https://")
+
+
 # ─── runner ───────────────────────────────────────────────────────────────────
 
 _TESTS = [
@@ -204,6 +227,7 @@ _TESTS = [
     ("fetchMovementTable()",            test_fetch_movements),
     ("VersionGateRepository.fetchConfig()", test_version_gate_fetch_config),
     ("OnboardingRemoteDataSource.fetchActiveCards()", test_onboarding_cards_fetch),
+    ("AnnouncementRemoteDataSource.fetchActive()", test_home_announcement_fetch),
 ]
 
 

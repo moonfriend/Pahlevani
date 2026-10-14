@@ -13,6 +13,7 @@ import '../../data/datasources/audio_catalog/audio_catalog_remote_datasource.dar
 import '../../data/datasources/path/path_local_database.dart';
 import '../../data/datasources/path/path_progress_local_database.dart';
 import '../../data/datasources/path/path_remote_datasource.dart';
+import '../../data/datasources/announcement/announcement_remote_datasource.dart';
 import '../../data/datasources/onboarding/onboarding_remote_datasource.dart';
 import '../../data/datasources/tracking/training_history_local_database.dart';
 import '../../data/datasources/training_session/training_session_local_database.dart';
@@ -24,6 +25,7 @@ import '../../data/repositories_impl/download_repository_impl.dart';
 import '../../data/repositories_impl/learnt_exercises_repository_impl.dart';
 import '../../data/repositories_impl/path/path_progress_repository_impl.dart';
 import '../../data/repositories_impl/path_repository_impl.dart';
+import '../../data/repositories_impl/announcement_repository_impl.dart';
 import '../../data/repositories_impl/onboarding_repository_impl.dart';
 import '../../data/repositories_impl/tracking/training_history_repository_impl.dart';
 import '../../data/repositories_impl/training_session_repository_impl.dart';
@@ -40,7 +42,9 @@ import '../../domain/repositories/download_repository.dart';
 import '../../domain/repositories/learnt_exercises_repository.dart';
 import '../../domain/repositories/path/path_progress_repository.dart';
 import '../../domain/repositories/path_repository.dart';
+import '../../domain/repositories/announcement_repository.dart';
 import '../../domain/repositories/onboarding_repository.dart';
+import '../../presentation/bloc/announcement/announcement_cubit.dart';
 import '../../domain/repositories/tracking/training_history_repository.dart';
 import '../../domain/repositories/training_session_repository.dart';
 import '../../domain/repositories/version_gate_repository.dart';
@@ -137,6 +141,16 @@ class DependencyInjection {
       () => OnboardingRepositoryImpl(
         remoteDataSource: OnboardingRemoteDataSourceImpl(),
       ),
+    );
+
+    // Home's info card (admin-set announcement, migration 0044).
+    getIt.registerLazySingleton<AnnouncementRepository>(
+      () => AnnouncementRepositoryImpl(
+        remoteDataSource: AnnouncementRemoteDataSourceImpl(),
+      ),
+    );
+    getIt.registerLazySingleton<AnnouncementCubit>(
+      () => AnnouncementCubit(repository: getIt<AnnouncementRepository>()),
     );
 
     getIt.registerLazySingleton<AudioCatalogRemoteDataSource>(

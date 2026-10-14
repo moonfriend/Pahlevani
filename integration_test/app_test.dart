@@ -12,6 +12,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:pahlevani/domain/entities/info/info_link.dart';
+import 'package:pahlevani/domain/repositories/announcement_repository.dart';
+import 'package:pahlevani/presentation/bloc/announcement/announcement_cubit.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
@@ -121,6 +124,9 @@ void main() {
     // First open fetches the admin's onboarding cards.
     getIt.registerLazySingleton<OnboardingRepository>(
         () => FakeOnboardingRepository());
+    // Home's info card: none in these journeys.
+    getIt.registerLazySingleton<AnnouncementCubit>(
+        () => AnnouncementCubit(repository: _NoAnnouncement()));
     // The Progress and Profile tabs read these.
     getIt.registerLazySingleton<TrainingHistoryCubit>(() =>
         TrainingHistoryCubit(
@@ -326,4 +332,15 @@ Future<void> goPastLearningCard(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 500)); // the card slides in
   await tester.tap(find.text('Go'));
   await pumpPlayer(tester);
+}
+
+class _NoAnnouncement implements AnnouncementRepository {
+  @override
+  Future<InfoLink?> cached() async => null;
+  @override
+  Future<InfoLink?> refresh() async => null;
+  @override
+  Future<String?> seenKey() async => null;
+  @override
+  Future<void> markSeen(String contentKey) async {}
 }

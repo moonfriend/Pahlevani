@@ -46,6 +46,7 @@ from movement_learning_content import (
     variations_from_rows,
 )
 from morshed_admin import set_default_morshed
+from home_announcement import HomeAnnouncement
 from onboarding_cards import (
     BUILTIN_IMAGE_LABELS,
     BUILTIN_IMAGES,
@@ -206,6 +207,12 @@ def load_onboarding_cards() -> list[dict]:
         get_client().table("onboarding_cards")
         .select("*").order("position").order("id").execute().data
     )
+
+@st.cache_data(ttl=30)
+def load_home_announcement() -> dict | None:
+    """The single Home card row, inactive included (service-role key)."""
+    rows = get_client().table("home_announcement").select("*").eq("id", 1).execute().data
+    return rows[0] if rows else None
 
 @st.cache_data(ttl=30)
 def load_profiles() -> list[dict]:
@@ -3399,6 +3406,43 @@ def tab_onboarding():
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+def tab_home_card():
+    st.header("Home card")
+    st.caption(
+        "The info card on the app's Home: a title, one line of text and a link to a "
+        "page on our website (first use: the meel guide). The app re-reads it on every "
+        "start and every 3 hours. When you change the title, text or link, it shows "
+        "as **NEW** (raised) until each user opens it — no app update needed."
+    )
+    if st.button("↺ Reload", key="rel_home_card"):
+        load_home_announcement.clear()
+    try:
+        row = load_home_announcement()
+    except Exception as exc:  # postgrest raises when the table is missing
+        st.error(
+            "⚠️ Couldn't read `home_announcement`. If the table doesn't exist yet, run "
+            "`supabase/migrations/0044_home_announcement.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    card = HomeAnnouncement.from_row(row or {})
+    title = st.text_input("Title", value=card.title, key="home_card_title")
+    description = st.text_input("Line of text", value=card.description,
+                                key="home_card_description")
+    url = st.text_input("Link (https://…)", value=card.url, key="home_card_url")
+    is_active = st.checkbox("Show on Home", value=card.is_active, key="home_card_active")
+
+    edited = HomeAnnouncement(title, description, url, is_active)
+    problems = edited.problems()
+    for problem in problems:
+        st.warning(problem)
+    if st.button("💾 Save", type="primary", disabled=bool(problems), key="home_card_save"):
+        get_client().table("home_announcement").upsert(edited.to_row()).execute()
+        load_home_announcement.clear()
+        st.success("Saved. Apps pick it up on their next start or within 3 hours.")
+
+
 def main():
     st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
     # Default tab strip is a single scrollable row — wrap onto multiple rows
@@ -3418,7 +3462,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
         "🗺️  Path",
@@ -3432,6 +3476,7 @@ def main():
         "🧰  Utility",
         "🏋️  Fitness Test",
         "👋  Onboarding",
+        "📣  Home card",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
@@ -3446,6 +3491,7 @@ def main():
     with t11: tab_utility()
     with t12: tab_fitness_test_criteria()
     with t13: tab_onboarding()
+    with t14: tab_home_card()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../domain/entities/info/info_link.dart';
 import '../../../domain/entities/training_session/training_session.dart';
+import '../../bloc/announcement/announcement_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../bloc/training_session/training_session_cubit.dart';
 import '../progress/calendar_page.dart';
@@ -13,8 +14,9 @@ import '../session_flow/session_start.dart';
 import 'home_page.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
-/// existing play flow (mode dialog → player) and the full session list.
-/// Expects a [TrainingHistoryCubit] above it.
+/// play flow (preview → player), the calendar and the info card from
+/// [AnnouncementCubit]. Expects a [TrainingHistoryCubit] and an
+/// [AnnouncementCubit] above it.
 class HomeTab extends StatelessWidget {
   const HomeTab({super.key});
 
@@ -46,25 +48,31 @@ class HomeTab extends StatelessWidget {
     );
   }
 
-  /// Placeholder until the admin sets the info page (name + website link).
-  static const infoLink =
-      InfoLink(title: 'Rahaavi', url: 'https://rahaavi.com');
-
-  /// Opens the page in the browser: the content lives on our website, so
-  /// it can change without an app release.
-  Future<void> _openInfo(InfoLink link) =>
-      launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication);
+  /// Opens the card's page in the browser (the content lives on our
+  /// website, so it changes without an app release) and marks this version
+  /// of the card as seen.
+  Future<void> _openInfo(BuildContext context, InfoLink link) async {
+    final announcement = context.read<AnnouncementCubit>();
+    await launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication);
+    await announcement.markSeen();
+  }
 
   @override
   Widget build(BuildContext context) =>
       BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
-        builder: (context, state) => HomePage(
+        builder: (context, state) => _withAnnouncement(context, state),
+      );
+
+  Widget _withAnnouncement(BuildContext context, TrainingSessionState state) =>
+      BlocBuilder<AnnouncementCubit, AnnouncementState>(
+        builder: (context, announcement) => HomePage(
           sessions: homeSessionsFrom(state),
           onOpenSession: (s) => _openSession(context, s),
           onSessionMenu: (s) => _openSessionMenu(context, s),
           onOpenCalendar: () => _openCalendar(context),
-          infoLink: infoLink,
-          onOpenInfo: _openInfo,
+          infoLink: announcement.link,
+          infoIsNew: announcement.isNew,
+          onOpenInfo: (link) => _openInfo(context, link),
         ),
       );
 }

@@ -76,6 +76,7 @@ class HomePage extends StatelessWidget {
     required this.onOpenCalendar,
     this.onSessionMenu,
     this.infoLink,
+    this.infoIsNew = false,
     this.onOpenInfo,
     this.now = DateTime.now,
   });
@@ -90,6 +91,9 @@ class HomePage extends StatelessWidget {
 
   /// The website page the info card links to; no card while null.
   final InfoLink? infoLink;
+
+  /// The user hasn't opened this version of the info card yet.
+  final bool infoIsNew;
   final ValueChanged<InfoLink>? onOpenInfo;
   final DateTime Function() now;
 
@@ -141,9 +145,11 @@ class HomePage extends StatelessWidget {
         : KeyedSubtree(
             key: const ValueKey('home-info'),
             child: SizedBox(
-              height: 72,
+              height: 84,
               child: KashiInfoTile(
-                  link: link, onTap: () => onOpenInfo?.call(link)),
+                  link: link,
+                  isNew: infoIsNew,
+                  onTap: () => onOpenInfo?.call(link)),
             ),
           );
 
