@@ -75,7 +75,7 @@ final _catalogRepo = FakeAudioCatalogRepository(
 );
 
 Future<List<PlayerMode>> _pump(WidgetTester tester,
-    {Size size = const Size(360, 740)}) async {
+    {Size size = const Size(360, 740), TrainingSession? session}) async {
   final started = <PlayerMode>[];
   await getIt.reset();
   registerDownloadDialogFakes(_catalogRepo);
@@ -107,7 +107,7 @@ Future<List<PlayerMode>> _pump(WidgetTester tester,
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
       home: SessionPreviewPage(
-        session: _session,
+        session: session ?? _session,
         onStart: (_, mode) => started.add(mode),
       ),
     ),
@@ -218,4 +218,30 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('meel guide', () {
+    final meelSession = TrainingSession(
+        id: 1,
+        title: 'Full Pahlevani',
+        description: '',
+        difficulty: 1,
+        needsMeel: true);
+
+    testWidgets('a session that needs meel links to the meel guide',
+        (tester) async {
+      await _pump(tester, session: meelSession);
+      expect(find.text('This session needs meel.'), findsOneWidget);
+      expect(find.text('How to get your meel'), findsOneWidget);
+    });
+
+    testWidgets('on tablet and web too', (tester) async {
+      await _pump(tester, session: meelSession, size: const Size(1280, 800));
+      expect(find.text('How to get your meel'), findsOneWidget);
+    });
+
+    testWidgets('a session without meel says nothing about it', (tester) async {
+      await _pump(tester);
+      expect(find.text('How to get your meel'), findsNothing);
+    });
+  });
 }

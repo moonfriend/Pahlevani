@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/app_links.dart';
 import '../../../core/di/dependency_injection.dart';
 import '../../../core/release_features.dart';
 import '../../../core/theme/kashi/kashi_assets.dart';
@@ -112,6 +114,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.session.needsMeel) const _MeelGuide(),
         Text('Warm up first, and stop if anything hurts.',
             textAlign: TextAlign.center,
             style: KashiTextStyles.ui
@@ -231,6 +234,31 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
           ],
         );
       }),
+    );
+  }
+}
+
+/// "This session needs meel." with a link to the meel guide.
+class _MeelGuide extends StatelessWidget {
+  const _MeelGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      children: [
+        Text('This session needs meel.',
+            style: KashiTextStyles.ui
+                .copyWith(fontSize: 12.5, color: colors.textMuted)),
+        TextButton(
+          onPressed: () => launchUrl(Uri.parse(AppLinks.meelGuide),
+              mode: LaunchMode.externalApplication),
+          child: const Text('How to get your meel'),
+        ),
+      ],
     );
   }
 }
