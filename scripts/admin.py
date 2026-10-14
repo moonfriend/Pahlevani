@@ -46,6 +46,7 @@ from movement_learning_content import (
     variations_from_rows,
 )
 from morshed_admin import set_default_morshed
+from activation_gate import Activation, LockedScreen, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
     BUILTIN_IMAGE_LABELS,
@@ -207,6 +208,18 @@ def load_onboarding_cards() -> list[dict]:
         get_client().table("onboarding_cards")
         .select("*").order("position").order("id").execute().data
     )
+
+@st.cache_data(ttl=30)
+def load_locked_screen() -> dict | None:
+    """The locked screen's single row (migration 0045)."""
+    rows = get_client().table("activation_gate").select("*").eq("id", 1).execute().data
+    return rows[0] if rows else None
+
+@st.cache_data(ttl=30)
+def load_activations() -> list[dict]:
+    """Every activation (service-role key bypasses the own-row policy)."""
+    return (get_client().table("activations")
+            .select("email, code, activated_at").order("activated_at").execute().data)
 
 @st.cache_data(ttl=30)
 def load_home_announcement() -> dict | None:
@@ -2678,8 +2691,10 @@ def tab_grant_trainer():
 def tab_invite_codes():
     st.header("Invite Codes")
     st.caption(
-        "Trainer-issued codes gating student signup (username/password, no "
-        "email involved) — supabase/migrations/0016_invite_code_signup.sql. "
+        "Activation codes for Patreon members (release 1): an account redeems one "
+        "after signing in — give each member a code with **Max uses 1**. Who used "
+        "which code is in the **Activation** tab (migration 0045). The same codes "
+        "still gate the old username sign-up (0016). "
         "Codes are stored in plain text (the table isn't reachable through "
         "the app's API either way) so you can look one back up any time — "
         "see the table below."
@@ -3406,6 +3421,58 @@ def tab_onboarding():
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+def tab_activation():
+    st.header("Activation")
+    st.caption(
+        "Release 1 is for Patreon members: after signing in, an account needs an "
+        "activation code (issue them in **Invite Codes**, one use each). Until then "
+        "the app shows the locked screen below, and the database returns no content "
+        "(supabase/migrations/0045_activation_gate.sql). Trainers never need a code."
+    )
+    if st.button("↺ Reload", key="rel_activation"):
+        load_locked_screen.clear()
+        load_activations.clear()
+    try:
+        row = load_locked_screen()
+        activations = [Activation.from_row(r) for r in load_activations()]
+    except Exception as exc:  # postgrest raises when the tables are missing
+        st.error(
+            "⚠️ Couldn't read the activation tables. If they don't exist yet, run "
+            "`supabase/migrations/0045_activation_gate.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    st.subheader("Locked screen")
+    screen = LockedScreen.from_row(row or {})
+    message = st.text_area("Message", value=screen.message, key="locked_message")
+    link_label = st.text_input("Button label", value=screen.link_label,
+                               key="locked_link_label")
+    link_url = st.text_input("Button link (https://…)", value=screen.link_url,
+                             key="locked_link_url")
+    edited = LockedScreen(message, link_label, link_url)
+    problems = edited.problems()
+    for problem in problems:
+        st.warning(problem)
+    if st.button("💾 Save", type="primary", disabled=bool(problems), key="locked_save"):
+        get_client().table("activation_gate").upsert(edited.to_row()).execute()
+        load_locked_screen.clear()
+        st.success("Saved. The locked screen shows it on its next open.")
+
+    st.divider()
+    st.subheader(f"Activations ({len(activations)})")
+    st.caption("Who activated with which code — compare the emails with Patreon's "
+               "members each month.")
+    if activations:
+        st.dataframe(
+            [{"email": a.email, "code": a.code, "activated": a.activated_at}
+             for a in activations],
+            hide_index=True, use_container_width=True)
+        st.download_button("⬇️ Download CSV", activations_csv(activations),
+                           file_name="activations.csv", mime="text/csv",
+                           key="activations_csv")
+
+
 def tab_home_card():
     st.header("Home card")
     st.caption(
@@ -3462,7 +3529,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
         "🗺️  Path",
@@ -3477,6 +3544,7 @@ def main():
         "🏋️  Fitness Test",
         "👋  Onboarding",
         "📣  Home card",
+        "🔓  Activation",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
@@ -3492,6 +3560,7 @@ def main():
     with t12: tab_fitness_test_criteria()
     with t13: tab_onboarding()
     with t14: tab_home_card()
+    with t15: tab_activation()
 
 
 if __name__ == "__main__":

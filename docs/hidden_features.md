@@ -41,8 +41,11 @@ entry point for these features, so they are hidden with it:
 - **Path** (`pages/path/`, `PathCubit`) and **Fitness test** (`lib/features/fitness_test/`),
   from the list's header menu.
 - **Training history** (`pages/tracking/training_history_page.dart`), from the header menu.
-- **Sign in / sign out**, from the header menu. Release 1's block A adds sign-in
-  back as part of the activation gate.
+- **The old sign-in screens**, from the header menu: `pages/auth/auth_page.dart`
+  (username + Google), `invite_code_signup_page.dart` (username accounts) and
+  `privacy_consent_page.dart`. Release 1 replaces them with the gate in
+  `pages/access/` (email + password, consent with a terms version, activation
+  code). **Google sign-in** is therefore unreachable in release 1.
 - **Create and edit your own session** (`pages/training_session/edit_training_session_page.dart`),
   plus edit-a-copy, download and delete in a session's ⋮ menu.
 - **Trainer: "Assign to a trainee"** (`pages/trainer/assign_session_page.dart`), in a
@@ -54,6 +57,10 @@ delete, sign-in from the header menu) were removed from `integration_test/app_te
 in the same change. Get them back from git history when the list returns.
 
 ## Changed behaviour (not a switch)
+
+- **The activation gate** (`pages/access/access_gate.dart`): account → consent →
+  activation code → app. The database enforces it too (migration 0045): content
+  is readable only by activated accounts and trainers.
 
 - **Learning cards and the Library only cover moves with something to learn
   from:** a video (follow-along or educational) or explanation text
