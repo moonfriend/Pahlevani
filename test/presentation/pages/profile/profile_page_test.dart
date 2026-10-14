@@ -199,8 +199,8 @@ void main() {
       await _pump(tester, sessions: 3);
       await open(tester, 'Complete');
       expect(find.byType(CompletePage), findsOneWidget);
-      expect(find.text('Tile 4 is set in your shamseh.'), findsOneWidget,
-          reason: 'previews the next tile from real history');
+      expect(find.text('Today is marked in your calendar.'), findsOneWidget,
+          reason: 'release 1 has no shamseh');
     });
 
     testWidgets('Calendar preview opens with history', (tester) async {
@@ -208,5 +208,23 @@ void main() {
       await open(tester, 'Calendar');
       expect(find.byType(CalendarPage), findsOneWidget);
     });
+  });
+
+  testWidgets('no Trainer tools for a trainee', (tester) async {
+    await _pump(tester,
+        user: const AppUser(
+            id: 'u', email: 'sara@example.com', consentAccepted: true));
+    expect(find.text('Trainer tools', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('a trainer gets Trainer tools', (tester) async {
+    await _pump(tester,
+        user: const AppUser(
+            id: 't',
+            email: 'coach@example.com',
+            consentAccepted: true,
+            isTrainer: true));
+    expect(find.text('Sessions and assignments', skipOffstage: false),
+        findsOneWidget);
   });
 }

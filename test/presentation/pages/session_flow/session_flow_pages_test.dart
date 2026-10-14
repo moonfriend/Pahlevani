@@ -4,6 +4,7 @@ import 'package:pahlevani/core/theme/kashi/kashi_palette.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
+import 'package:pahlevani/presentation/widgets/kashi/kashi_day_tile.dart';
 import 'package:pahlevani/presentation/widgets/kashi/shamseh.dart';
 
 Future<void> _pump(WidgetTester tester, Widget page,
@@ -112,11 +113,29 @@ void main() {
   });
 
   group('CompletePage', () {
+    // The shamseh version; release 1 shows the calendar day instead.
     CompletePage page({VoidCallback? onReturnHome}) => CompletePage(
           tileNumber: 12,
           loggedReps: const [('Shena', 46), ('Meel Giri', 55)],
           onReturnHome: onReturnHome ?? () {},
+          showShamseh: true,
         );
+
+    testWidgets(
+        'release 1 (no shamseh): today is marked as a calendar day instead',
+        (tester) async {
+      await _pump(
+          tester,
+          CompletePage(
+              tileNumber: 12,
+              loggedReps: const [],
+              onReturnHome: () {},
+              showShamseh: false));
+      expect(find.text('Today is marked in your calendar.'), findsOneWidget);
+      expect(find.byType(Shamseh), findsNothing);
+      expect(tester.widget<KashiDayTile>(find.byType(KashiDayTile)).state,
+          DayTileState.trained);
+    });
 
     testWidgets('lajvard scene, greeting, tile number, this run\'s reps',
         (tester) async {

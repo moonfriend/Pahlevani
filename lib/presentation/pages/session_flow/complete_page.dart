@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/release_features.dart';
+import '../../widgets/kashi/kashi_day_tile.dart';
+
 import '../../../core/theme/kashi/kashi_palette.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
@@ -16,6 +19,7 @@ class CompletePage extends StatefulWidget {
   const CompletePage({
     super.key,
     required this.tileNumber,
+    this.showShamseh = ReleaseFeatures.shamseh,
     required this.loggedReps,
     required this.onReturnHome,
   });
@@ -23,6 +27,9 @@ class CompletePage extends StatefulWidget {
   /// Sessions completed including this one; this tile lands in slot
   /// `tileNumber - 1`.
   final int tileNumber;
+
+  /// Off in release 1: today shows as a starred calendar day instead.
+  final bool showShamseh;
 
   /// (move name, reps) logged during this run.
   final List<(String, int)> loggedReps;
@@ -35,13 +42,22 @@ class CompletePage extends StatefulWidget {
 class _CompletePageState extends State<CompletePage>
     with SingleTickerProviderStateMixin {
   // pvland: 1.3s after a .35s delay, cubic-bezier(.2,.8,.2,1).
-  late final _controller = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1650))
-    ..forward();
-  late final _landing = CurvedAnimation(
-    parent: _controller,
-    curve: const Interval(.35 / 1.65, 1, curve: Cubic(.2, .8, .2, 1)),
-  );
+  late final AnimationController _controller;
+  late final CurvedAnimation _landing;
+
+  @override
+  void initState() {
+    super.initState();
+    // Created up front, not lazily: without the shamseh nothing reads it
+    // before dispose(), where creating it would look up a dead ancestor.
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1650))
+      ..forward();
+    _landing = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(.35 / 1.65, 1, curve: Cubic(.2, .8, .2, 1)),
+    );
+  }
 
   @override
   void dispose() {
@@ -73,29 +89,40 @@ class _CompletePageState extends State<CompletePage>
                             fontSize: 32,
                             color: KashiPalette.yellow400)),
                     const SizedBox(height: 6),
-                    Text('Tile ${widget.tileNumber} is set in your shamseh.',
+                    Text(
+                        widget.showShamseh
+                            ? 'Tile ${widget.tileNumber} is set in your shamseh.'
+                            : 'Today is marked in your calendar.',
                         textAlign: TextAlign.center,
                         style: KashiTextStyles.body.copyWith(
                             fontSize: 14, color: KashiPalette.sky300)),
                     const SizedBox(height: 26),
-                    Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 290),
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: AnimatedBuilder(
-                            animation: _landing,
-                            builder: (context, _) => Shamseh(
-                              size: 290,
-                              tilesLaid: widget.tileNumber,
-                              palette: ShamsehPalette.scene,
-                              landingIndex: widget.tileNumber - 1,
-                              landingProgress: _landing.value,
+                    if (widget.showShamseh)
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 290),
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: AnimatedBuilder(
+                              animation: _landing,
+                              builder: (context, _) => Shamseh(
+                                size: 290,
+                                tilesLaid: widget.tileNumber,
+                                palette: ShamsehPalette.scene,
+                                landingIndex: widget.tileNumber - 1,
+                                landingProgress: _landing.value,
+                              ),
                             ),
                           ),
                         ),
+                      )
+                    else
+                      Center(
+                        child: KashiDayTile(
+                            day: DateTime.now().day,
+                            state: DayTileState.trained,
+                            size: 120),
                       ),
-                    ),
                     const SizedBox(height: 26),
                     _RepCards(reps: widget.loggedReps),
                     const Spacer(),

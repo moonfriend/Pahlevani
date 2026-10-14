@@ -16,6 +16,7 @@ switches. Flip one to `true` to bring its feature back.
 |---|---|---|
 | `progressTab` | The Progress tab: shamseh, calendar, counted moves | `pages/progress/`, wired in `pages/shell/main_tabs.dart` |
 | `followAlongButton` | "Only follow along" (Athlete mode) under Start in the session preview | `pages/session_flow/session_preview_page.dart` |
+| `shamseh` | The shamseh on the Complete screen (one tile per session). Release 1 shows today as a starred calendar day instead | `pages/session_flow/complete_page.dart` (`showShamseh`), `widgets/kashi/shamseh.dart` |
 | `repLogging` | The Rep log after each counted move, then the reps on Complete and in history | `SessionPlayerCubit` (`repLogging` param), `AudioPlayerPage.repLogging`, `pages/session_flow/rep_log_page.dart`. The first update replaces it with Shena/Meel totals on Complete. |
 
 ## Removed from Home (restore from git)
@@ -45,8 +46,8 @@ entry point for these features, so they are hidden with it:
 - **Create and edit your own session** (`pages/training_session/edit_training_session_page.dart`),
   plus edit-a-copy, download and delete in a session's ⋮ menu.
 - **Trainer: "Assign to a trainee"** (`pages/trainer/assign_session_page.dart`), in a
-  session's ⋮ menu for trainers. Assigned sessions still show (as Home's main card),
-  but trainers have no in-app way to assign until this gets a new entry point.
+  session's ⋮ menu for trainers. **Trainers (`profiles.is_trainer`) still reach the
+  whole list from Profile → Trainer tools**; nobody else can.
 
 The Linux integration journeys for this list (list renders, overflow menus,
 delete, sign-in from the header menu) were removed from `integration_test/app_test.dart`

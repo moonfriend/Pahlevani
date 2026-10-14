@@ -12,4 +12,8 @@ abstract final class ReleaseFeatures {
   /// The Rep log after each counted move. Release 1 logs no reps; the first
   /// update brings Shena/Meel totals on the Complete screen instead.
   static const repLogging = false;
+
+  /// The shamseh on the Complete screen (one tile per session). Release 1
+  /// marks the day in the calendar instead.
+  static const shamseh = false;
 }

@@ -594,7 +594,7 @@ void main() {
     await _pumpRoutes(tester);
 
     expect(find.byType(CompletePage), findsOneWidget);
-    expect(find.text('Tile 1 is set in your shamseh.'), findsOneWidget);
+    expect(find.text('Today is marked in your calendar.'), findsOneWidget);
     expect(find.byType(AudioPlayerPage), findsNothing,
         reason: 'the Complete screen replaces the player');
   });

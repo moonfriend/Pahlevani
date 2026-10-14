@@ -19,6 +19,7 @@ import '../../widgets/kashi/khatam_window.dart';
 import '../progress/calendar_page.dart';
 import '../session_flow/complete_page.dart';
 import '../session_flow/rep_log_page.dart';
+import '../training_session/training_sessions_page.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -89,6 +90,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   style: KashiTextStyles.body.copyWith(
                       fontSize: 12.5, height: 1.55, color: colors.textMuted),
                 ),
+                if (_isTrainer) const _TrainerTools(),
                 if (kDebugMode) const _DesignPreviews(),
               ],
             ),
@@ -97,6 +99,11 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+
+  bool get _isTrainer => switch (context.watch<AuthCubit>().state) {
+        AuthAuthenticated(:final user) => user.isTrainer,
+        _ => false,
+      };
 
   Widget _header(KashiColors colors) {
     final name = context.watch<AuthCubit>().state.displayName;
@@ -198,6 +205,42 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _note(String text, KashiColors colors) => Text(text,
       style:
           KashiTextStyles.body.copyWith(fontSize: 13, color: colors.textMuted));
+}
+
+/// Trainers only (`profiles.is_trainer`): the full session list, where a
+/// trainer builds sessions and assigns them to a trainee. That list is
+/// otherwise hidden in release 1 (docs/hidden_features.md).
+class _TrainerTools extends StatelessWidget {
+  const _TrainerTools();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const KashiSectionLabel('Trainer tools'),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Sessions and assignments',
+                style: KashiTextStyles.ui.copyWith(color: colors.textPrimary)),
+            trailing: Icon(Icons.chevron_right, color: colors.textMuted),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('Trainer tools')),
+                  body: const TrainingSessionPage(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Debug builds only: opens the Kashi screens that aren't reachable from

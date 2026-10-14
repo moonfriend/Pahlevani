@@ -253,7 +253,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CompletePage), findsOneWidget);
-    expect(find.text('Tile 1 is set in your shamseh.'), findsOneWidget);
+    expect(find.text('Today is marked in your calendar.'), findsOneWidget);
 
     await tester.tap(find.text('Return home'));
     await tester.pumpAndSettle();
