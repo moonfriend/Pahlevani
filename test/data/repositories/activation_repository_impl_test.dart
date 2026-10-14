@@ -9,11 +9,13 @@ class _FakeRemote implements ActivationRemoteDataSource {
   bool activated = false;
   bool offline = false;
   bool codeValid = true;
+  bool gateNotInstalled = false;
   Map<String, dynamic>? gateRow;
 
   @override
   Future<bool> isActivated() async {
     if (offline) throw Exception('offline');
+    if (gateNotInstalled) throw const ActivationGateNotInstalledException();
     return activated;
   }
 
@@ -48,6 +50,13 @@ void main() {
     expect(await repo.isActivated('u1'), isTrue);
     expect(await repo.isActivated('someone-else'), isFalse,
         reason: 'remembered per account');
+  });
+
+  test(
+      'a database without the gate (before migration 0045) does not lock '
+      'anyone out — it restricts nothing either', () async {
+    remote.gateNotInstalled = true;
+    expect(await repo.isActivated('u1'), isTrue);
   });
 
   test('offline and never activated here: locked', () async {

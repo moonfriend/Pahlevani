@@ -2,8 +2,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../domain/repositories/activation_repository.dart';
 
+/// The database has no activation gate (migration 0045 not applied): it
+/// restricts nothing, so the app shouldn't either.
+class ActivationGateNotInstalledException implements Exception {
+  const ActivationGateNotInstalledException();
+}
+
 abstract class ActivationRemoteDataSource {
-  /// public.is_activated() for the signed-in user (migration 0045).
+  /// public.is_activated() for the signed-in user (migration 0045). Throws
+  /// [ActivationGateNotInstalledException] when the function doesn't exist.
   Future<bool> isActivated();
 
   /// public.redeem_activation_code(). Throws
@@ -22,9 +29,20 @@ class ActivationRemoteDataSourceImpl implements ActivationRemoteDataSource {
 
   static const _timeout = Duration(seconds: 10);
 
+  /// PostgREST: "Could not find the function … in the schema cache".
+  static const _functionNotFound = 'PGRST202';
+
   @override
-  Future<bool> isActivated() async =>
-      await _client.rpc<bool>('is_activated').timeout(_timeout);
+  Future<bool> isActivated() async {
+    try {
+      return await _client.rpc<bool>('is_activated').timeout(_timeout);
+    } on PostgrestException catch (e) {
+      if (e.code == _functionNotFound) {
+        throw const ActivationGateNotInstalledException();
+      }
+      rethrow;
+    }
+  }
 
   @override
   Future<void> redeem(String code) async {

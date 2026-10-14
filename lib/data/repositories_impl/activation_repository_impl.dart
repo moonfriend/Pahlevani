@@ -32,6 +32,11 @@ class ActivationRepositoryImpl implements ActivationRepository {
         await prefs.remove(activatedKey(userId));
       }
       return activated;
+    } on ActivationGateNotInstalledException {
+      // Nothing is restricted on this database yet; the gate switches on by
+      // itself once migration 0045 is applied. Not remembered on purpose.
+      AppLogger.w('Activation gate not installed on this database — open');
+      return true;
     } catch (error) {
       AppLogger.w('Activation check failed — using this device’s memory',
           error: error);
