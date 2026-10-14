@@ -39,6 +39,17 @@ void main() {
       expect(row.isUserCreated, isFalse); // default
     });
 
+    test('reads the Home slot and the meel flag (migration 0043)', () {
+      final row = TrainingSessionRow.fromJson(
+          {'id': 1, 'home_position': 2, 'needs_meel': true});
+      expect(row.homePosition, 2);
+      expect(row.needsMeel, isTrue);
+
+      final bare = TrainingSessionRow.fromJson({'id': 1});
+      expect(bare.homePosition, isNull, reason: 'not on Home');
+      expect(bare.needsMeel, isFalse);
+    });
+
     test('invalid created_at string yields null (tryParse)', () {
       final row = TrainingSessionRow.fromJson({
         'id': 1,

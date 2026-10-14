@@ -18,6 +18,13 @@ class TrainingSession {
   /// be assigned to any number of trainees.
   final String? ownerTrainerId;
 
+  /// Home's slot for this session (admin-set): 1 = the main card, 2 and
+  /// 3 = the small cards; null = not on Home.
+  final int? homePosition;
+
+  /// The session uses meel; Home tags it for people without meel yet.
+  final bool needsMeel;
+
   TrainingSession({
     required this.id,
     required this.title,
@@ -28,6 +35,8 @@ class TrainingSession {
     this.isUserCreated = false,
     this.isPublic = true,
     this.ownerTrainerId,
+    this.homePosition,
+    this.needsMeel = false,
   });
 
   TrainingSession copyWith({
@@ -40,6 +49,8 @@ class TrainingSession {
     bool? isUserCreated,
     bool? isPublic,
     String? ownerTrainerId,
+    int? homePosition,
+    bool? needsMeel,
   }) {
     return TrainingSession(
       id: id ?? this.id,
@@ -51,6 +62,8 @@ class TrainingSession {
       isUserCreated: isUserCreated ?? this.isUserCreated,
       isPublic: isPublic ?? this.isPublic,
       ownerTrainerId: ownerTrainerId ?? this.ownerTrainerId,
+      homePosition: homePosition ?? this.homePosition,
+      needsMeel: needsMeel ?? this.needsMeel,
     );
   }
 }

@@ -55,6 +55,13 @@ class HiveTrainingSession extends HiveObject {
   @HiveField(9)
   final String? ownerTrainerId;
 
+  /// Home's slot (migration 0043). Nullable: older boxes read null.
+  @HiveField(10)
+  final int? homePosition;
+
+  @HiveField(11, defaultValue: false)
+  final bool needsMeel;
+
   HiveTrainingSession({
     required this.id,
     required this.title,
@@ -66,6 +73,8 @@ class HiveTrainingSession extends HiveObject {
     this.isPublic,
     this.deprecatedAssignedToUserId,
     this.ownerTrainerId,
+    this.homePosition,
+    this.needsMeel = false,
   });
 
   factory HiveTrainingSession.fromJson(Map<String, dynamic> json) {
@@ -81,6 +90,8 @@ class HiveTrainingSession extends HiveObject {
       titleFa: json['title_fa'] as String?,
       isPublic: json['is_public'] as bool? ?? true,
       ownerTrainerId: json['owner_trainer_id'] as String?,
+      homePosition: (json['home_position'] as num?)?.toInt(),
+      needsMeel: json['needs_meel'] as bool? ?? false,
     );
   }
 
@@ -94,6 +105,8 @@ class HiveTrainingSession extends HiveObject {
         if (titleFa != null) 'title_fa': titleFa,
         'is_public': isPublic ?? true,
         if (ownerTrainerId != null) 'owner_trainer_id': ownerTrainerId,
+        if (homePosition != null) 'home_position': homePosition,
+        'needs_meel': needsMeel,
       };
 
   factory HiveTrainingSession.fromDomain(TrainingSession s) {
@@ -107,6 +120,8 @@ class HiveTrainingSession extends HiveObject {
       titleFa: s.titleFa,
       isPublic: s.isPublic,
       ownerTrainerId: s.ownerTrainerId,
+      homePosition: s.homePosition,
+      needsMeel: s.needsMeel,
     );
   }
 
@@ -121,6 +136,8 @@ class HiveTrainingSession extends HiveObject {
       isUserCreated: isUserCreated,
       isPublic: isPublic ?? true,
       ownerTrainerId: ownerTrainerId,
+      homePosition: homePosition,
+      needsMeel: needsMeel,
     );
   }
 }

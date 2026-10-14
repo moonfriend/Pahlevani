@@ -46,6 +46,8 @@ TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
       createdAt: r.createdAt,
       isPublic: r.isPublic ?? true,
       ownerTrainerId: r.ownerTrainerId,
+      homePosition: r.homePosition,
+      needsMeel: r.needsMeel ?? false,
     );
 
 /// Your schema only exposes `reps_to_do`. If you later add time-based items,

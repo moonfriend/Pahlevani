@@ -228,6 +228,13 @@ void main() {
       expect(s.difficulty, 3);
     });
 
+    test('carries the Home slot and the meel flag', () {
+      final s = mapSession(
+          TrainingSessionRow(id: 1, homePosition: 1, needsMeel: true));
+      expect(s.homePosition, 1);
+      expect(s.needsMeel, isTrue);
+    });
+
     test('defaults title to Sample Session when null', () {
       final s = mapSession(row(title: null));
       expect(s.title, 'Sample Session');

@@ -1098,7 +1098,7 @@ def tab_movements():
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SB_ITEMS            = "sb_items"           # list[{exercise_id, reps_to_do, is_tracked, uid}]
-_SB_META             = "sb_meta"            # {title, title_fa, description, difficulty}
+_SB_META             = "sb_meta"            # {title, title_fa, description, difficulty, home_position, needs_meel}
 _SB_MODE             = "sb_mode"            # "new" | "edit"
 _SB_SID              = "sb_sid"             # session id being edited
 _SB_PENDING_OP       = "sb_pending_op"      # deferred remove op applied before next render
@@ -1116,9 +1116,12 @@ def _sb_reset():
     st.session_state["sb_titlefa"] = ""
     st.session_state["sb_desc"]    = ""
     st.session_state["sb_diff"]    = 2
+    st.session_state["sb_home"]    = None
+    st.session_state["sb_meel"]    = False
     _clear_rep_keys()
     st.session_state[_SB_ITEMS] = []
-    st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
+    st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2,
+                                   "home_position": None, "needs_meel": False}
     st.session_state[_SB_SID]   = None
 
 def _clear_rep_keys():
@@ -1186,15 +1189,21 @@ def tab_sessions():
             _titlefa = _str(s_row.get("title_fa"))
             _desc    = _str(s_row.get("description"))
             _diff    = int(s_row.get("difficulty") or 2)
+            _home    = s_row.get("home_position")
+            _home    = None if _home is None or pd.isna(_home) else int(_home)
+            _meel    = _as_bool(s_row.get("needs_meel"))
             # Directly set widget state BEFORE the widgets render so the fields
             # reflect the newly selected session without needing an extra rerun.
             st.session_state["sb_title"]   = _title
             st.session_state["sb_titlefa"] = _titlefa
             st.session_state["sb_desc"]    = _desc
             st.session_state["sb_diff"]    = _diff
+            st.session_state["sb_home"]    = _home
+            st.session_state["sb_meel"]    = _meel
             st.session_state[_SB_META] = {
                 "title": _title, "title_fa": _titlefa,
                 "description": _desc, "difficulty": _diff,
+                "home_position": _home, "needs_meel": _meel,
             }
             st.session_state[_SB_ITEMS] = [
                 {
@@ -1227,10 +1236,23 @@ def tab_sessions():
     with c2:
         desc       = st.text_area("Description", value=meta.get("description", ""), key="sb_desc", height=100)
         difficulty = st.slider("Difficulty", 1, 5, value=meta.get("difficulty", 2), key="sb_diff")
+        home_options = [None, 1, 2, 3]
+        home_position = st.selectbox(
+            "On the app's Home", home_options,
+            index=home_options.index(meta.get("home_position")),
+            format_func=lambda p: {None: "Not on Home", 1: "1 · main card",
+                                   2: "2 · small card", 3: "3 · small card"}[p],
+            key="sb_home",
+            help="One session per slot: saving moves any other session out of this slot. "
+                 "A trainer-assigned session replaces slot 1 for its trainee.")
+        needs_meel = st.checkbox(
+            "Needs meel", value=bool(meta.get("needs_meel", False)), key="sb_meel",
+            help="Home tags this session for people who don't have meel yet.")
 
     st.session_state[_SB_META] = {
         "title": title, "title_fa": title_fa,
         "description": desc, "difficulty": difficulty,
+        "home_position": home_position, "needs_meel": needs_meel,
     }
 
     # ── Exercise list ─────────────────────────────────────────────────────────
@@ -1398,9 +1420,19 @@ def tab_sessions():
                 "title_fa":    title_fa.strip() or None,
                 "description": desc.strip(),
                 "difficulty":  difficulty,
+                "home_position": home_position,
+                "needs_meel":  needs_meel,
             }
 
             sid = st.session_state.get(_SB_SID)
+            if home_position is not None:
+                # One session per Home slot (unique index, migration 0043):
+                # free the slot first so the save never trips it.
+                q = db.table("training_session").update({"home_position": None}) \
+                    .eq("home_position", home_position)
+                if sid:
+                    q = q.neq("id", sid)
+                q.execute()
             if mode == "Edit existing session" and sid:
                 # Update session metadata
                 db.table("training_session").update(meta_payload).eq("id", sid).execute()
