@@ -48,6 +48,8 @@ class OnboardingCard:
     is_active: bool = True
     position: int = 0
     id: int | None = None
+    # (label, https url) buttons under the text, at most three (migration 0046).
+    links: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.title_en or not self.title_en.strip():
@@ -59,6 +61,11 @@ class OnboardingCard:
         # schemes an admin could paste by mistake.
         if url is not None and not url.startswith("https://"):
             raise ValueError("The image URL must start with https://")
+        if len(self.links) > MAX_LINKS:
+            raise ValueError(f"At most {MAX_LINKS} buttons per card.")
+        for label, link in self.links:
+            if not label.strip() or not link.startswith("https://"):
+                raise ValueError("Each button needs a label and an https:// link.")
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> OnboardingCard:
@@ -72,6 +79,10 @@ class OnboardingCard:
             image_url=row.get("image_url"),
             builtin_image=row.get("builtin_image") or "figure",
             is_active=bool(row.get("is_active", True)),
+            links=tuple(
+                (str(l.get("label", "")), str(l.get("url", "")))
+                for l in (row.get("links") or [])
+            ),
         )
 
     def to_row(self) -> dict[str, Any]:
@@ -85,11 +96,39 @@ class OnboardingCard:
             "image_url": _clean(self.image_url),
             "builtin_image": self.builtin_image,
             "is_active": self.is_active,
+            "links": [{"label": label.strip(), "url": link.strip()}
+                      for label, link in self.links],
         }
 
     def with_changes(self, **changes: Any) -> OnboardingCard:
         """A validated copy with [changes] applied."""
         return replace(self, **changes)
+
+
+MAX_LINKS = 3
+
+
+def parse_links(text: str) -> tuple[tuple[str, str], ...]:
+    """Buttons from the admin's text: one `label | https://link` per line,
+    blank lines ignored. Raises ValueError for a malformed line."""
+    links = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if "|" not in line:
+            raise ValueError(f"Write each button as `label | https://link` — got: {line.strip()}")
+        label, link = (part.strip() for part in line.split("|", 1))
+        if not label or not link.startswith("https://"):
+            raise ValueError(f"Each button needs a label and an https:// link — got: {line.strip()}")
+        links.append((label, link))
+    if len(links) > MAX_LINKS:
+        raise ValueError(f"At most {MAX_LINKS} buttons per card.")
+    return tuple(links)
+
+
+def links_text(links: tuple[tuple[str, str], ...]) -> str:
+    """The admin's text for [links]: the inverse of parse_links."""
+    return "\n".join(f"{label} | {link}" for label, link in links)
 
 
 def next_position(cards: list[OnboardingCard]) -> int:

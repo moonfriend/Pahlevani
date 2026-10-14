@@ -47,4 +47,27 @@ void main() {
     final copy = OnboardingCardRow.fromJson(original.toJson());
     expect(copy.toDomain(), original.toDomain());
   });
+
+  test('link buttons: up to three, https only, labelled; cached with the card',
+      () {
+    final r = OnboardingCardRow.fromJson({
+      ...row,
+      'links': [
+        {'label': 'Make your own', 'url': 'https://rahaavi.com/meel/diy'},
+        {'label': 'Order', 'url': 'https://rahaavi.com/meel/order'},
+        {'label': 'Bad', 'url': 'http://example.com'},
+        {'label': '', 'url': 'https://example.com'},
+        {'label': 'Pre-order', 'url': 'https://rahaavi.com/meel/pre'},
+        {'label': 'Fourth', 'url': 'https://example.com/4'},
+      ],
+    });
+    final card = r.toDomain()!;
+    expect(card.links.map((l) => l.label),
+        ['Make your own', 'Order', 'Pre-order']);
+    expect(OnboardingCardRow.fromJson(r.toJson()).toDomain(), card);
+  });
+
+  test('no links column (before migration 0046): no buttons', () {
+    expect(OnboardingCardRow.fromJson(row).toDomain()!.links, isEmpty);
+  });
 }

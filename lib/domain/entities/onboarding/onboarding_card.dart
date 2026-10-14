@@ -13,6 +13,18 @@ enum BuiltinOnboardingImage {
   shamseh,
 }
 
+/// A button under a card's text, opening a page on our website (e.g. the
+/// meel card's "Order").
+class OnboardingLink extends Equatable {
+  const OnboardingLink({required this.label, required this.url});
+
+  final String label;
+  final String url;
+
+  @override
+  List<Object?> get props => [label, url];
+}
+
 /// One first-open onboarding card. Edited in the admin panel (table
 /// `onboarding_cards`), so cards change without an app update.
 class OnboardingCard extends Equatable {
@@ -21,6 +33,7 @@ class OnboardingCard extends Equatable {
     required this.body,
     this.imageUrl,
     this.builtinImage = BuiltinOnboardingImage.figure,
+    this.links = const [],
   });
 
   final String title;
@@ -30,8 +43,11 @@ class OnboardingCard extends Equatable {
   final String? imageUrl;
   final BuiltinOnboardingImage builtinImage;
 
+  /// Up to three buttons under the text (migration 0046).
+  final List<OnboardingLink> links;
+
   @override
-  List<Object?> get props => [title, body, imageUrl, builtinImage];
+  List<Object?> get props => [title, body, imageUrl, builtinImage, links];
 }
 
 /// Shown until the server's cards have been fetched once, and whenever the

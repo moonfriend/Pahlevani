@@ -193,6 +193,8 @@ def test_onboarding_cards_fetch(cur: psycopg2.cursor) -> None:
         _optional(row, "image_url", str)
         _optional(row, "title_fa", str)
         _optional(row, "body_fa", str)
+        if "links" in row:  # migration 0046
+            assert isinstance(row["links"], list), "onboarding_cards.links: a list"
 
 
 def test_home_announcement_fetch(cur: psycopg2.cursor) -> None:

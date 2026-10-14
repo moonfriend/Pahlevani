@@ -49,6 +49,8 @@ from morshed_admin import set_default_morshed
 from activation_gate import Activation, LockedScreen, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
+    links_text,
+    parse_links,
     BUILTIN_IMAGE_LABELS,
     BUILTIN_IMAGES,
     OnboardingCard,
@@ -3286,11 +3288,16 @@ def _onboarding_fields(prefix: str, card: OnboardingCard | None) -> dict:
     if card and card.image_url:
         remove_image = st.checkbox("Remove the uploaded image (use the built-in picture)",
                                    key=f"{prefix}_remove_image")
+    links = st.text_area(
+        "Buttons (optional, up to 3) — one per line: `label | https://link`",
+        value=links_text(card.links) if card else "",
+        height=80, key=f"{prefix}_links",
+        help="e.g. `Order | https://rahaavi.com/meel/order` — shown under the text.")
     active = st.toggle("Active (shown in the app)", value=card.is_active if card else True,
                        key=f"{prefix}_active")
     return {"title_en": title_en, "body_en": body_en, "title_fa": title_fa,
             "body_fa": body_fa, "builtin_image": builtin, "is_active": active,
-            "upload": upload, "remove_image": remove_image}
+            "upload": upload, "remove_image": remove_image, "links": links}
 
 
 def _resolve_image_url(fields: dict, current: str | None) -> str | None:
@@ -3374,6 +3381,7 @@ def tab_onboarding():
                             builtin_image=fields["builtin_image"],
                             is_active=fields["is_active"],
                             image_url=_resolve_image_url(fields, card.image_url),
+                            links=parse_links(fields["links"]),
                         )
                     except ValueError as exc:
                         st.error(str(exc))
@@ -3407,6 +3415,7 @@ def tab_onboarding():
                     is_active=fields["is_active"],
                     position=next_position(cards),
                     image_url=_resolve_image_url(fields, None),
+                    links=parse_links(fields["links"]),
                 )
             except ValueError as exc:
                 st.error(str(exc))

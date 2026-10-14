@@ -9,6 +9,7 @@ class OnboardingCardRow {
     required this.bodyEn,
     this.imageUrl,
     this.builtinImage,
+    this.links = const [],
   });
 
   final int position;
@@ -17,6 +18,9 @@ class OnboardingCardRow {
   final String? imageUrl;
   final String? builtinImage;
 
+  /// Raw `links` (migration 0046): [{label, url}, …].
+  final List<Map<String, dynamic>> links;
+
   factory OnboardingCardRow.fromJson(Map<String, dynamic> m) =>
       OnboardingCardRow(
         position: (m['position'] as num?)?.toInt() ?? 0,
@@ -24,6 +28,10 @@ class OnboardingCardRow {
         bodyEn: m['body_en'] as String? ?? '',
         imageUrl: m['image_url'] as String?,
         builtinImage: m['builtin_image'] as String?,
+        links: [
+          for (final l in (m['links'] as List?) ?? const [])
+            if (l is Map) Map<String, dynamic>.from(l),
+        ],
       );
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +40,7 @@ class OnboardingCardRow {
         'body_en': bodyEn,
         'image_url': imageUrl,
         'builtin_image': builtinImage,
+        'links': links,
       };
 
   static const _builtins = {
@@ -51,6 +60,20 @@ class OnboardingCardRow {
       body: bodyEn.trim(),
       imageUrl: (url != null && url.startsWith('https://')) ? url : null,
       builtinImage: _builtins[builtinImage] ?? BuiltinOnboardingImage.figure,
+      links: _validLinks(),
     );
+  }
+
+  /// Labelled https links only, at most three (the table allows three).
+  List<OnboardingLink> _validLinks() {
+    final valid = <OnboardingLink>[];
+    for (final l in links) {
+      final label = (l['label'] as String?)?.trim() ?? '';
+      final url = (l['url'] as String?)?.trim() ?? '';
+      if (label.isNotEmpty && url.startsWith('https://')) {
+        valid.add(OnboardingLink(label: label, url: url));
+      }
+    }
+    return valid.take(3).toList();
   }
 }

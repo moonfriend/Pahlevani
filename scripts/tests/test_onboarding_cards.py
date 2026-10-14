@@ -12,8 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from onboarding_cards import (  # noqa: E402
     BUILTIN_IMAGES,
     OnboardingCard,
+    links_text,
     move_patches,
     next_position,
+    parse_links,
     r2_key_for,
 )
 
@@ -125,6 +127,29 @@ class R2Keys(unittest.TestCase):
     def test_only_image_extensions_are_allowed(self):
         with self.assertRaises(ValueError):
             r2_key_for("T", "script.html", b"<html>")
+
+
+class OnboardingLinksTest(unittest.TestCase):
+    def test_parses_label_pipe_url_lines(self):
+        self.assertEqual(
+            parse_links("Make your own | https://rahaavi.com/a\n\n Order|https://rahaavi.com/b "),
+            (("Make your own", "https://rahaavi.com/a"), ("Order", "https://rahaavi.com/b")))
+
+    def test_rejects_bad_lines(self):
+        with self.assertRaises(ValueError):
+            parse_links("Order https://rahaavi.com/b")  # no |
+        with self.assertRaises(ValueError):
+            parse_links("Order | http://rahaavi.com/b")  # not https
+        with self.assertRaises(ValueError):
+            parse_links("\n".join(f"L{i} | https://x.com/{i}" for i in range(4)))
+
+    def test_round_trips_through_the_row(self):
+        card = OnboardingCard(title_en="What you need",
+                              links=(("Order", "https://rahaavi.com/b"),))
+        row = card.to_row()
+        self.assertEqual(row["links"], [{"label": "Order", "url": "https://rahaavi.com/b"}])
+        self.assertEqual(OnboardingCard.from_row({**row, "id": 1}).links, card.links)
+        self.assertEqual(links_text(card.links), "Order | https://rahaavi.com/b")
 
 
 if __name__ == "__main__":

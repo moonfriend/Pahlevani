@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
@@ -203,6 +204,23 @@ class _OnboardingCard extends StatelessWidget {
             Text(card.body,
                 style: KashiTextStyles.body
                     .copyWith(fontSize: 15, color: colors.textBody)),
+            if (card.links.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final link in card.links)
+                    OutlinedButton(
+                      onPressed: () => launchUrl(Uri.parse(link.url),
+                          mode: LaunchMode.externalApplication),
+                      style: OutlinedButton.styleFrom(
+                          shape: const RoundedRectangleBorder()),
+                      child: Text(link.label),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       );

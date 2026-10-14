@@ -124,4 +124,20 @@ void main() {
           reason: 'offline first open falls back to the built-in picture');
     });
   });
+
+  testWidgets('a card shows its link buttons (the meel card)', (tester) async {
+    await _pump(tester, cards: const [
+      OnboardingCard(
+        title: 'What you need',
+        body: 'A small space, a mat, and meel.',
+        links: [
+          OnboardingLink(label: 'Make your own', url: 'https://rahaavi.com/a'),
+          OnboardingLink(label: 'Order', url: 'https://rahaavi.com/b'),
+        ],
+      ),
+    ]);
+    expect(
+        find.widgetWithText(OutlinedButton, 'Make your own'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Order'), findsOneWidget);
+  });
 }
