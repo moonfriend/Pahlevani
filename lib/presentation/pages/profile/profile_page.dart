@@ -90,6 +90,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   style: KashiTextStyles.body.copyWith(
                       fontSize: 12.5, height: 1.55, color: colors.textMuted),
                 ),
+                if (_signedInEmail case final email?) _Account(email: email),
                 if (_isTrainer) const _TrainerTools(),
                 if (kDebugMode) const _DesignPreviews(),
               ],
@@ -99,6 +100,11 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+
+  String? get _signedInEmail => switch (context.watch<AuthCubit>().state) {
+        AuthAuthenticated(:final user) => user.email ?? '',
+        _ => null,
+      };
 
   bool get _isTrainer => switch (context.watch<AuthCubit>().state) {
         AuthAuthenticated(:final user) => user.isTrainer,
@@ -205,6 +211,68 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _note(String text, KashiColors colors) => Text(text,
       style:
           KashiTextStyles.body.copyWith(fontSize: 13, color: colors.textMuted));
+}
+
+/// The signed-in account: sign out, or delete it (with its activation and
+/// profile) after a confirmation.
+class _Account extends StatelessWidget {
+  const _Account({required this.email});
+
+  final String email;
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final auth = context.read<AuthCubit>();
+    final delete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+            'Your account, your activation and your profile are deleted for '
+            'good. Training history on this device stays on this device. '
+            'To use Pahlevani again you’ll need a new activation code.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (delete == true) await auth.deleteAccount();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    Widget entry(String label, VoidCallback onTap, {Color? color}) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(label,
+              style: KashiTextStyles.ui
+                  .copyWith(color: color ?? colors.textPrimary)),
+          onTap: onTap,
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const KashiSectionLabel('Account'),
+          if (email.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(email,
+                  style: KashiTextStyles.ui
+                      .copyWith(fontSize: 13, color: colors.textMuted)),
+            ),
+          entry('Sign out', () => context.read<AuthCubit>().signOut()),
+          entry('Delete my account', () => _confirmDelete(context),
+              color: Theme.of(context).colorScheme.error),
+        ],
+      ),
+    );
+  }
 }
 
 /// Trainers only (`profiles.is_trainer`): the full session list, where a

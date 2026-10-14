@@ -5,6 +5,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fvp/fvp.dart' as fvp;
+import 'package:pahlevani/domain/repositories/activation_repository.dart';
+import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
+import 'package:pahlevani/presentation/pages/access/access_gate.dart';
 import 'package:pahlevani/data/services/pahlevani_audio_handler.dart';
 import 'package:pahlevani/firebase_options.dart';
 import 'package:flutter/material.dart';
@@ -158,6 +161,11 @@ class PahlevaniApp extends StatelessWidget {
               AuthCubit(repository: getIt<AuthRepository>())..initialize(),
           lazy: false,
         ),
+        // Release 1's activation gate (Patreon members, migration 0045).
+        BlocProvider<ActivationCubit>(
+          create: (_) =>
+              ActivationCubit(repository: getIt<ActivationRepository>()),
+        ),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) => MaterialApp(
@@ -170,11 +178,16 @@ class PahlevaniApp extends StatelessWidget {
           // the first-open splash.
           home: VersionGate(
             child: FirstRunGate(
-              child: AppShell(
-                tabs: mainTabs(),
-                railFooter: BlocProvider.value(
-                  value: getIt<TrainingHistoryCubit>()..load(),
-                  child: const RailUser(),
+              child: AccessGate(
+                // Before activation the server returned no content.
+                onActivated: () =>
+                    context.read<TrainingSessionCubit>().resync(),
+                child: AppShell(
+                  tabs: mainTabs(),
+                  railFooter: BlocProvider.value(
+                    value: getIt<TrainingHistoryCubit>()..load(),
+                    child: const RailUser(),
+                  ),
                 ),
               ),
             ),

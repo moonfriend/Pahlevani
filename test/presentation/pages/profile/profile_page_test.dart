@@ -29,8 +29,9 @@ const _morsheds = [
 ];
 
 class _Harness {
-  _Harness(this.settings, this.catalog, this.catalogRepo);
+  _Harness(this.settings, this.catalog, this.catalogRepo, this.authRepo);
   final SettingsCubit settings;
+  final FakeAuthRepository authRepo;
   final AudioCatalogCubit catalog;
   final FakeAudioCatalogRepository catalogRepo;
 }
@@ -60,7 +61,8 @@ Future<_Harness> _pump(
   final catalogRepo =
       FakeAudioCatalogRepository(morsheds: morsheds, selectedMorshedId: 1);
   final catalog = AudioCatalogCubit(repository: catalogRepo);
-  final auth = AuthCubit(repository: FakeAuthRepository(initialUser: user));
+  final authRepo = FakeAuthRepository(initialUser: user);
+  final auth = AuthCubit(repository: authRepo);
   final settings = SettingsCubit();
   for (final c in [history, catalog, auth, settings]) {
     addTearDown(c.close);
@@ -83,7 +85,7 @@ Future<_Harness> _pump(
       home: const ProfilePage(),
     ),
   ));
-  return _Harness(settings, catalog, catalogRepo);
+  return _Harness(settings, catalog, catalogRepo, authRepo);
 }
 
 void main() {
@@ -233,5 +235,46 @@ void main() {
             isTrainer: true));
     expect(find.text('Sessions and assignments', skipOffstage: false),
         findsOneWidget);
+  });
+
+  testWidgets('Account: sign out', (tester) async {
+    final h = await _pump(tester,
+        user: const AppUser(
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: 1));
+    final signOut = find.text('Sign out', skipOffstage: false);
+    await tester.ensureVisible(signOut);
+    await tester.pumpAndSettle();
+    await tester.tap(signOut);
+    await tester.pumpAndSettle();
+    expect(h.authRepo.signOutCallCount, 1);
+  });
+
+  testWidgets('Account: delete asks first; Cancel keeps the account',
+      (tester) async {
+    final h = await _pump(tester,
+        user: const AppUser(
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: 1));
+    final delete = find.text('Delete my account', skipOffstage: false);
+    await tester.ensureVisible(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete your account?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(h.authRepo.deleteAccountCallCount, 0);
+
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+    expect(h.authRepo.deleteAccountCallCount, 1);
   });
 }

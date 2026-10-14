@@ -65,6 +65,9 @@ class _SpyRepository implements TrainingSessionRepository {
   @override
   Future<DomainSnapshot> syncFromRemote() async => _snapshot;
 
+  /// Test helper: what the server returns from now on.
+  set serverSnapshot(DomainSnapshot snap) => _snapshot = snap;
+
   @override
   Future<TrainingSession> saveOwnedSession({
     required TrainingSession session,
@@ -566,5 +569,30 @@ void main() {
 
       expect(cubit.libraryMoves.map((e) => e.id), [3, 1]);
     });
+
+    test('resync() loads what the server now allows (after activation)',
+        () async {
+      final repo = _SpyRepository(DomainSnapshot(
+          sessionsById: const {},
+          itemsBySessionId: const {},
+          exercisesById: const {}));
+      final cubit = _makeCubit(repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      expect(homeSessionCount(cubit), 0, reason: 'locked: nothing readable');
+
+      repo.serverSnapshot = DomainSnapshot(
+          sessionsById: {1: _session(1)},
+          itemsBySessionId: const {},
+          exercisesById: const {});
+      await cubit.resync();
+
+      expect(homeSessionCount(cubit), 1);
+    });
   });
 }
+
+int homeSessionCount(TrainingSessionCubit cubit) => switch (cubit.state) {
+      TrainingSessionLoaded(:final uiModel) => uiModel.trainingSessions.length,
+      _ => -1,
+    };

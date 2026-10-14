@@ -12,6 +12,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:pahlevani/domain/entities/activation/locked_screen_text.dart';
+import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
+import 'package:pahlevani/domain/repositories/activation_repository.dart';
 import 'package:pahlevani/domain/entities/info/info_link.dart';
 import 'package:pahlevani/domain/repositories/announcement_repository.dart';
 import 'package:pahlevani/presentation/bloc/announcement/announcement_cubit.dart';
@@ -106,7 +110,15 @@ void main() {
     );
     getIt.registerLazySingleton<VersionGateRepository>(
         () => FakeVersionGateRepository());
-    getIt.registerLazySingleton<AuthRepository>(() => FakeAuthRepository());
+    // Signed in, consented and activated: the journeys start past the
+    // release-1 gate (the gate itself: test/presentation/pages/access/).
+    getIt.registerLazySingleton<AuthRepository>(() => FakeAuthRepository(
+        initialUser: const AppUser(
+            id: 'member-1',
+            email: 'member@example.com',
+            consentAccepted: true,
+            termsVersion: currentTermsVersion)));
+    getIt.registerLazySingleton<ActivationRepository>(() => _ActivatedMember());
     // Page's initState reads this; default online so the no-connection
     // dialog never fires during the journey tests.
     getIt.registerLazySingleton<ConnectivityService>(
@@ -343,4 +355,14 @@ class _NoAnnouncement implements AnnouncementRepository {
   Future<String?> seenKey() async => null;
   @override
   Future<void> markSeen(String contentKey) async {}
+}
+
+class _ActivatedMember implements ActivationRepository {
+  @override
+  Future<bool> isActivated(String userId) async => true;
+  @override
+  Future<void> redeem(String userId, String code) async {}
+  @override
+  Future<LockedScreenText> lockedScreenText() async =>
+      LockedScreenText.fallback;
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
@@ -88,6 +89,23 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
       });
     }).catchError((_) {})); // silent: Hive data already shown
+  }
+
+  /// Fetches everything from the server again and shows it — after the
+  /// account was activated, the server returns what it hid before
+  /// (migration 0045). Offline, the shown sessions stay.
+  Future<void> resync() async {
+    try {
+      await _refreshAudioCatalog();
+      _currentTSSnapshot = await _sessionRepository.syncFromRemote();
+      _currentDownloadStatus =
+          await _downloadRepository.getInitialDownloadStatuses();
+      if (!isClosed) {
+        emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      }
+    } catch (e) {
+      AppLogger.w('Session resync failed — keeping what is shown', error: e);
+    }
   }
 
   /// Loads download statuses from the repository.
