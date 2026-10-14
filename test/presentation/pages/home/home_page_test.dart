@@ -119,7 +119,10 @@ void main() {
     testWidgets('greets a signed-in user by name', (tester) async {
       await _pump(tester,
           user: const AppUser(
-              id: 'u', email: 'sara@example.com', consentAccepted: true));
+              id: 'u',
+              email: 'sara@example.com',
+              consentAccepted: true,
+              termsVersion: 1));
       expect(find.text('Salam, sara'), findsOneWidget);
     });
   });
@@ -169,7 +172,10 @@ void main() {
     testWidgets("a trainer's session takes the main card", (tester) async {
       await _pump(tester,
           user: const AppUser(
-              id: 'me', email: 'sara@example.com', consentAccepted: true),
+              id: 'me',
+              email: 'sara@example.com',
+              consentAccepted: true,
+              termsVersion: 1),
           sessions: [
             (session: _session(1, 'Full', slot: 1), moves: 9, minutes: 60),
             (

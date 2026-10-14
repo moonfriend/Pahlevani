@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
@@ -35,8 +36,11 @@ void main() {
     test('emits AuthAuthenticated when the cached session has consented',
         () async {
       final repo = FakeAuthRepository(
-          initialUser:
-              const AppUser(id: 'u1', email: 'a@b.com', consentAccepted: true));
+          initialUser: const AppUser(
+              id: 'u1',
+              email: 'a@b.com',
+              consentAccepted: true,
+              termsVersion: 1));
       final cubit = AuthCubit(repository: repo);
       addTearDown(cubit.close);
 
@@ -242,6 +246,71 @@ void main() {
     });
   });
 
+  group('terms version', () {
+    test('a user who accepted an older version of the terms is asked again',
+        () async {
+      final repo = FakeAuthRepository(
+          initialUser:
+              const AppUser(id: 'u1', email: 'a@b.com', consentAccepted: true));
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      expect(cubit.state, isA<AuthNeedsConsent>());
+    });
+
+    test('accepting records the current version and the marketing choice',
+        () async {
+      final repo = FakeAuthRepository(
+          initialUser: const AppUser(id: 'u1', email: 'a@b.com'));
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.acceptConsent(marketingOptIn: true);
+
+      final user = (cubit.state as AuthAuthenticated).user;
+      expect(user.termsVersion, currentTermsVersion);
+      expect(user.marketingOptIn, isTrue);
+    });
+  });
+
+  group('deleteAccount()', () {
+    test('deletes the account and ends signed out', () async {
+      final repo = FakeAuthRepository(
+          initialUser: const AppUser(
+              id: 'u1',
+              email: 'a@b.com',
+              consentAccepted: true,
+              termsVersion: currentTermsVersion));
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.deleteAccount();
+
+      expect(repo.deleteAccountCallCount, 1);
+      expect(cubit.state, isA<AuthAnonymous>());
+    });
+
+    test('a failed delete keeps the user signed in and says so', () async {
+      final repo = FakeAuthRepository(
+          initialUser: const AppUser(
+              id: 'u1',
+              email: 'a@b.com',
+              consentAccepted: true,
+              termsVersion: currentTermsVersion))
+        ..throwOnDeleteAccount = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.deleteAccount();
+
+      expect(cubit.state, isA<AuthFailure>());
+      expect((cubit.state as AuthFailure).previous, isA<AuthAuthenticated>());
+    });
+  });
+
   group('acceptConsent()', () {
     test('success transitions AuthNeedsConsent to AuthAuthenticated', () async {
       final repo = FakeAuthRepository(
@@ -292,8 +361,11 @@ void main() {
   group('signOut() / declineConsentAndSignOut()', () {
     test('signOut() emits AuthAnonymous', () async {
       final repo = FakeAuthRepository(
-          initialUser:
-              const AppUser(id: 'u1', email: 'a@b.com', consentAccepted: true));
+          initialUser: const AppUser(
+              id: 'u1',
+              email: 'a@b.com',
+              consentAccepted: true,
+              termsVersion: 1));
       final cubit = AuthCubit(repository: repo);
       addTearDown(cubit.close);
       await cubit.initialize();

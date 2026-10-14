@@ -8,6 +8,8 @@ class FakeAuthRepository implements AuthRepository {
   bool throwOnSignIn = false;
   bool throwOnSignUp = false;
   bool throwOnAcceptConsent = false;
+  bool throwOnDeleteAccount = false;
+  int deleteAccountCallCount = 0;
   bool throwOnGoogleSignIn = false;
   bool throwOnSignUpWithInviteCode = false;
   bool throwInvalidInviteCode = false;
@@ -130,13 +132,24 @@ class FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AppUser> acceptPrivacyConsent() async {
+  Future<AppUser> acceptPrivacyConsent(
+      {required int termsVersion, required bool marketingOptIn}) async {
     acceptPrivacyConsentCallCount++;
     if (throwOnAcceptConsent) throw Exception('Could not save consent');
-    final updated = (_currentUser ?? const AppUser(id: 'user-1'))
-        .copyWith(consentAccepted: true, consentedAt: DateTime.now());
+    final updated = (_currentUser ?? const AppUser(id: 'user-1')).copyWith(
+        consentAccepted: true,
+        termsVersion: termsVersion,
+        marketingOptIn: marketingOptIn,
+        consentedAt: DateTime.now());
     _currentUser = updated;
     return updated;
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteAccountCallCount++;
+    if (throwOnDeleteAccount) throw Exception('Could not delete account');
+    _currentUser = null;
   }
 
   @override

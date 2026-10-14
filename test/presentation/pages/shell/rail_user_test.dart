@@ -28,7 +28,10 @@ void main() {
     final auth = AuthCubit(
         repository: FakeAuthRepository(
             initialUser: const AppUser(
-                id: '1', email: 'sara@x.org', consentAccepted: true)));
+                id: '1',
+                email: 'sara@x.org',
+                consentAccepted: true,
+                termsVersion: 1)));
     addTearDown(history.close);
     addTearDown(auth.close);
     await tester.runAsync(() async {

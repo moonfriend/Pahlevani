@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 part 'auth_state.dart';
@@ -52,7 +53,7 @@ class AuthCubit extends Cubit<AuthState> {
   void _emitForUser(AppUser? user) {
     if (user == null) {
       emit(const AuthAnonymous());
-    } else if (!user.consentAccepted) {
+    } else if (!user.hasAcceptedTerms(currentTermsVersion)) {
       emit(AuthNeedsConsent(user));
     } else {
       emit(AuthAuthenticated(user));
@@ -170,11 +171,13 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// Only acts while gated behind consent — a no-op from any other state.
-  Future<void> acceptConsent() async {
+  /// Records the current terms version; [marketingOptIn] is optional.
+  Future<void> acceptConsent({bool marketingOptIn = false}) async {
     final current = state;
     if (current is! AuthNeedsConsent) return;
     try {
-      final user = await _repo.acceptPrivacyConsent();
+      final user = await _repo.acceptPrivacyConsent(
+          termsVersion: currentTermsVersion, marketingOptIn: marketingOptIn);
       if (!isClosed) emit(AuthAuthenticated(user));
     } catch (e, st) {
       AppLogger.w('acceptPrivacyConsent failed', error: e, stackTrace: st);
@@ -191,6 +194,21 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> declineConsentAndSignOut() => signOut();
+
+  /// Permanently deletes the account, then the user is signed out. On
+  /// failure the user stays signed in and sees why.
+  Future<void> deleteAccount() async {
+    final current = state;
+    try {
+      await _repo.deleteAccount();
+      if (!isClosed) emit(const AuthAnonymous());
+    } catch (e, st) {
+      AppLogger.w('deleteAccount failed', error: e, stackTrace: st);
+      if (!isClosed) {
+        emit(AuthFailure(message: e.toString(), previous: current));
+      }
+    }
+  }
 
   @override
   Future<void> close() async {

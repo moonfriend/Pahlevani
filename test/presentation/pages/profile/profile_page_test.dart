@@ -99,7 +99,10 @@ void main() {
   testWidgets('a signed-in user is named after their email', (tester) async {
     await _pump(tester,
         user: const AppUser(
-            id: 'u', email: 'sara@example.com', consentAccepted: true));
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: 1));
     expect(find.text('sara'), findsOneWidget);
     expect(find.text('No sessions yet'), findsOneWidget);
   });
@@ -213,7 +216,10 @@ void main() {
   testWidgets('no Trainer tools for a trainee', (tester) async {
     await _pump(tester,
         user: const AppUser(
-            id: 'u', email: 'sara@example.com', consentAccepted: true));
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: 1));
     expect(find.text('Trainer tools', skipOffstage: false), findsNothing);
   });
 
@@ -223,6 +229,7 @@ void main() {
             id: 't',
             email: 'coach@example.com',
             consentAccepted: true,
+            termsVersion: 1,
             isTrainer: true));
     expect(find.text('Sessions and assignments', skipOffstage: false),
         findsOneWidget);
