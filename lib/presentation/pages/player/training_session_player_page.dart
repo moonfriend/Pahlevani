@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:pahlevani/core/release_features.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
@@ -602,6 +603,18 @@ class _StageState extends State<_Stage> {
                 else
                   // No video or photo for this move yet.
                   const MovePlaceholder(),
+                // On the web the video is a browser <video> element that
+                // takes every click over it, so the tap that shows the
+                // controls (and the controls themselves) never reached
+                // Flutter. This invisible layer stops clicks there; the
+                // controls are painted above it. Elsewhere the video is
+                // drawn by Flutter and this is a plain pass-through.
+                Positioned.fill(
+                  child: PointerInterceptor(
+                    intercepting: kIsWeb,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
                 // Controls: a tap on the video shows them for a while;
                 // while paused they stay up.
                 if (controlsVisible)

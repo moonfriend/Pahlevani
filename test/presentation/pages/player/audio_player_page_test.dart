@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
@@ -393,6 +394,39 @@ void main() {
       expect(find.byType(VideoScrubBar), findsOneWidget);
       expect(find.byTooltip('Pause'), findsOneWidget,
           reason: 'tapping the video no longer pauses');
+    });
+
+    testWidgets(
+        'web: the video\'s browser element cannot swallow the tap — an '
+        'interceptor covers the whole stage, under the controls',
+        (tester) async {
+      await open(tester);
+      final stageRect = tester.getRect(stage());
+      await tester.tap(stage());
+      await tester.pump();
+
+      final interceptor = find.byType(PointerInterceptor);
+      expect(interceptor, findsOneWidget);
+      expect(
+          tester.widget<PointerInterceptor>(interceptor).intercepting, isFalse,
+          reason: 'only the web has a browser element to intercept');
+      expect(tester.getRect(interceptor), stageRect);
+
+      // Painted before (below) the pause button, so the button stays on top.
+      final stack = tester.widget<Stack>(
+          find.ancestor(of: interceptor, matching: find.byType(Stack)).first);
+      final interceptorIndex = stack.children.indexWhere((c) => find
+          .descendant(of: find.byWidget(c), matching: interceptor)
+          .evaluate()
+          .isNotEmpty);
+      final controlsIndex = stack.children.indexWhere((c) => find
+          .descendant(
+              of: find.byWidget(c),
+              matching: find.bySemanticsLabel('Pause video'))
+          .evaluate()
+          .isNotEmpty);
+      expect(interceptorIndex, isNonNegative);
+      expect(interceptorIndex, lessThan(controlsIndex));
     });
 
     testWidgets(
