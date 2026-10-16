@@ -28,6 +28,7 @@ class LearningMove {
     this.variations = const [],
     this.photo,
     this.videoSrc,
+    this.videoComingSoon = false,
   });
 
   /// A Library sample move (placeholder catalogue, no video).
@@ -75,6 +76,9 @@ class LearningMove {
       videoSrc: (learningVideoSrc == null || learningVideoSrc.isEmpty)
           ? null
           : learningVideoSrc,
+      // Whether the move has a learning video at all — not whether it can
+      // play right now (it may simply not be downloaded yet).
+      videoComingSoon: exercise.videoUrl?.isEmpty ?? true,
     );
   }
 
@@ -102,6 +106,11 @@ class LearningMove {
   /// The playable learning video (local file, or URL on web); null hides the
   /// play button.
   final String? videoSrc;
+
+  /// No learning video has been made for this move yet: the still carries
+  /// a "coming soon" label asking for support. Never set for the Library's
+  /// placeholder samples.
+  final bool videoComingSoon;
 }
 
 /// Opens [move]'s learning card as a pop-up over the dimmed page behind it:
@@ -351,10 +360,11 @@ class _LearningCardPageState extends State<LearningCardPage> {
     );
   }
 
-  /// The still, or the pahlevan illustration when there is none.
+  /// The still, or the pahlevan illustration when there is none; labelled
+  /// "coming soon" while the move has no learning video.
   Widget _photo() {
     final photo = _move.photo;
-    return photo == null
+    final still = photo == null
         ? const MovePlaceholder()
         : Image(
             image: photo,
@@ -362,6 +372,12 @@ class _LearningCardPageState extends State<LearningCardPage> {
             alignment: const Alignment(0, -.4),
             errorBuilder: (_, __, ___) => const MovePlaceholder(),
           );
+    if (!_move.videoComingSoon) return still;
+    return Stack(fit: StackFit.expand, children: [
+      still,
+      const PositionedDirectional(
+          top: 14, start: 14, end: 14, child: _ComingSoonLabel()),
+    ]);
   }
 
   Widget _header(KashiColors colors) {
@@ -513,6 +529,39 @@ class _LearningCardPageState extends State<LearningCardPage> {
           for (final cue in _move.cues) _Cue(text: cue),
         ],
       ],
+    );
+  }
+}
+
+/// The label on a still whose move has no learning video yet.
+class _ComingSoonLabel extends StatelessWidget {
+  const _ComingSoonLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xCC0B1638)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Training video coming soon',
+                  style: KashiTextStyles.ui.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white)),
+              const SizedBox(height: 2),
+              Text('Support us so we can make more, faster.',
+                  style: KashiTextStyles.ui
+                      .copyWith(fontSize: 12.5, color: Colors.white70)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

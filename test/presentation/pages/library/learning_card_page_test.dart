@@ -276,6 +276,27 @@ void main() {
       expect(find.byType(LearntToggle), findsNothing);
     });
 
+    testWidgets(
+        'no learning video yet: the still carries a "coming soon" label '
+        'asking for support', (tester) async {
+      await open(tester, shena);
+      expect(find.text('Training video coming soon'), findsOneWidget);
+      expect(
+          find.text('Support us so we can make more, faster.'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a move with a learning video has no label, even before the video '
+        'is downloaded', (tester) async {
+      await open(
+          tester,
+          const Exercise(
+              id: 1,
+              name: 'Shena',
+              videoUrl: 'https://example.com/learning/1-shena.mp4'));
+      expect(find.text('Training video coming soon'), findsNothing);
+    });
+
     testWidgets('no video or photo: the female pahlevan illustration',
         (tester) async {
       await open(tester, shena);
@@ -320,6 +341,15 @@ void main() {
       await tester.pumpAndSettle();
       return results;
     }
+
+    testWidgets('the "coming soon" label sits on the media, not the text',
+        (tester) async {
+      await openWide(tester);
+      final media =
+          tester.getRect(find.byKey(const ValueKey('learning-card-media')));
+      final label = tester.getRect(find.text('Training video coming soon'));
+      expect(media.contains(label.center), isTrue);
+    });
 
     testWidgets('a centred 920px two-column card: media left, text right',
         (tester) async {
