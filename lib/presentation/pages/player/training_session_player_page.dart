@@ -19,6 +19,7 @@ import 'package:pahlevani/domain/entities/training_session/training_session.dart
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
+import 'package:pahlevani/domain/usecases/player/resolve_learning_video.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
 import 'package:pahlevani/domain/repositories/tracking/training_history_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
@@ -220,17 +221,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// engine against the dialog's own dismissal on-device.
   Future<void> _promptLearningMode(
       BuildContext context, int index, Exercise exercise) async {
-    final track = _cubit.state.tracks[index];
-    final shouldStart = await showLearningCard(
-      context,
-      LearningMove.fromExercise(
-        exercise,
-        media: track.media,
-        videoReady: track.videoReady,
-        target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
-      ),
-      actionLabel: 'Go',
-    );
+    final move = await _learningMove(index, exercise);
+    if (!context.mounted) return;
+    final shouldStart =
+        await showLearningCard(context, move, actionLabel: 'Go');
     if (shouldStart && mounted) {
       unawaited(_cubit.startCurrentTrack());
     }
@@ -243,15 +237,22 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final exercise = _cubit.exerciseAt(index);
     if (exercise == null) return;
     _cubit.pause();
+    final move = await _learningMove(index, exercise);
+    if (!context.mounted) return;
+    await showLearningCard(context, move);
+  }
+
+  /// The learning card for track [index]: the track's already-resolved
+  /// still, and the move's learning video where it can play.
+  Future<LearningMove> _learningMove(int index, Exercise exercise) async {
     final track = _cubit.state.tracks[index];
-    await showLearningCard(
-      context,
-      LearningMove.fromExercise(
-        exercise,
-        media: track.media,
-        videoReady: track.videoReady,
-        target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
-      ),
+    final learningVideo = await ResolveLearningVideo(
+        getIt<DownloadRepository>())(exercise.videoUrl, useRemoteMedia: kIsWeb);
+    return LearningMove.fromExercise(
+      exercise,
+      media: track.media,
+      learningVideoSrc: learningVideo,
+      target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
     );
   }
 

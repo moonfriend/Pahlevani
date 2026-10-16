@@ -42,18 +42,18 @@ class LearningMove {
         photo: AssetImage(move.image),
       );
 
-  /// A session's move. [media] and [videoReady] are the already-resolved
-  /// media (local file where downloaded): the video plays only when
-  /// [videoReady], otherwise the poster or photo shows. [target] is set for
-  /// a counted move.
+  /// A session's move. [media] is the already-resolved media (local file
+  /// where downloaded); it gives the card its still — the photo, or the
+  /// follow-along video's poster. The card plays only the learning video,
+  /// [learningVideoSrc] (see `ResolveLearningVideo`), never the follow-along
+  /// one. [target] is set for a counted move.
   factory LearningMove.fromExercise(
     Exercise exercise, {
     required ExerciseMedia media,
-    required bool videoReady,
+    required String? learningVideoSrc,
     int? target,
     int? minutes,
   }) {
-    final src = media.src ?? '';
     final still = switch (media.type) {
       'photo' => media.src,
       'video' => media.poster,
@@ -72,8 +72,9 @@ class LearningMove {
       photo: (still == null || still.isEmpty)
           ? null
           : ExerciseImageProvider(still),
-      videoSrc:
-          (videoReady && media.type == 'video' && src.isNotEmpty) ? src : null,
+      videoSrc: (learningVideoSrc == null || learningVideoSrc.isEmpty)
+          ? null
+          : learningVideoSrc,
     );
   }
 
@@ -98,8 +99,8 @@ class LearningMove {
   /// The still; null shows the pahlevan illustration.
   final ImageProvider? photo;
 
-  /// A playable video (local file, or URL on web); null hides the play
-  /// button.
+  /// The playable learning video (local file, or URL on web); null hides the
+  /// play button.
   final String? videoSrc;
 }
 

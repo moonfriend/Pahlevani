@@ -170,7 +170,7 @@ void main() {
                 context,
                 LearningMove.fromExercise(exercise,
                     media: exercise.media,
-                    videoReady: false,
+                    learningVideoSrc: null,
                     target: target,
                     minutes: minutes),
                 actionLabel: actionLabel,
@@ -310,7 +310,7 @@ void main() {
               onPressed: () async => results.add(await showLearningCard(
                   context,
                   LearningMove.fromExercise(shena,
-                      media: shena.media, videoReady: false, target: 40))),
+                      media: shena.media, learningVideoSrc: null, target: 40))),
               child: const Text('open'),
             ),
           ),
@@ -361,7 +361,7 @@ void main() {
               onPressed: () => showLearningCard(
                   context,
                   LearningMove.fromExercise(shena,
-                      media: shena.media, videoReady: false)),
+                      media: shena.media, learningVideoSrc: null)),
               child: const Text('open'),
             ),
           ),

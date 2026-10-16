@@ -13,7 +13,8 @@ import 'kashi/video_scrub_bar.dart';
 /// thing making sound (the underlying track audio hasn't started yet).
 /// Tap-to-play rather than autoplay, so opening either surface never starts
 /// audio the user didn't ask for. A tap also shows a progress bar for a few
-/// seconds to skip through the video.
+/// seconds to skip through the video. A speed button (1× → 1.5× → 2×) lets
+/// people get through a long explanation faster.
 class ExerciseDemoVideoPlayer extends StatefulWidget {
   const ExerciseDemoVideoPlayer({super.key, required this.src});
   final String src;
@@ -31,6 +32,10 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
   bool _showProgress = false;
   Timer? _hideProgress;
   static const _progressVisibleFor = Duration(seconds: 3);
+
+  /// The speeds the button cycles through, starting at normal.
+  static const _speeds = [1.0, 1.5, 2.0];
+  int _speedIndex = 0;
 
   @override
   void initState() {
@@ -68,6 +73,13 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
       _controller.play();
     }
     _revealProgress();
+  }
+
+  /// The next speed; leaves play/pause as it is.
+  void _cycleSpeed() {
+    if (!_ready) return;
+    setState(() => _speedIndex = (_speedIndex + 1) % _speeds.length);
+    _controller.setPlaybackSpeed(_speeds[_speedIndex]);
   }
 
   void _revealProgress() {
@@ -130,6 +142,15 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                         size: 32),
                   ),
                 ),
+              if (_ready)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _SpeedButton(
+                    speed: _speeds[_speedIndex],
+                    onPressed: _cycleSpeed,
+                  ),
+                ),
               if (_ready && _showProgress)
                 Positioned(
                   left: 0,
@@ -154,6 +175,47 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The playback-speed button: the current speed ("1.5×"); a tap moves on.
+class _SpeedButton extends StatelessWidget {
+  const _SpeedButton({required this.speed, required this.onPressed});
+
+  final double speed;
+  final VoidCallback onPressed;
+
+  String get _label =>
+      '${speed == speed.roundToDouble() ? speed.toInt() : speed}×';
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Playback speed $_label',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.black45,
+        child: InkWell(
+          onTap: onPressed,
+          child: ConstrainedBox(
+            // A 48px touch target, even though the label is small.
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Center(
+              widthFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(_label,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
           ),
         ),
       ),
