@@ -1005,10 +1005,9 @@ void main() {
         .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
     await _pumpAndLoad(tester);
 
-    // Never plays in this test, so pumpAndSettle is safe here. In this
-    // 800px (tablet) window the learning card is a centred card: leave it
-    // with its ✕.
-    await tester.tap(find.byTooltip('Close'));
+    // Never plays in this test, so pumpAndSettle is safe here. The card
+    // has no ✕: leave it with a tap beside it.
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
 
     expect(find.text('Go'), findsNothing);

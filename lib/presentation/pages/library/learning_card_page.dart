@@ -103,18 +103,18 @@ class LearningMove {
   final String? videoSrc;
 }
 
-/// Opens [move]'s learning card over a session or the player: a full page
-/// on phones, a centred two-column card over the dimmed page on tablets and
-/// in the web layout. Resolves to true when the action was pressed, false when
-/// the card was closed (Back, ✕ or a tap beside it) — so a caller acts only
-/// once the card has fully closed. The video starts straight away, as the
-/// design asks when the card is opened from a session.
+/// Opens [move]'s learning card as a pop-up over the dimmed page behind it:
+/// a one-column card on phones, a two-column card on tablets and in the web
+/// layout. Resolves to true when the action was pressed, false when the card
+/// was closed (system Back or a tap beside it) — so a caller acts only once
+/// the card has fully closed. The video starts straight away, as the design
+/// asks when the card is opened from a session.
 Future<bool> showLearningCard(
   BuildContext context,
   LearningMove move, {
   String actionLabel = 'Got it',
 }) async {
-  final result = await _pushLearningCard(
+  final result = await pushLearningCard(
     context,
     LearningCardPage(
       move: move,
@@ -125,11 +125,9 @@ Future<bool> showLearningCard(
   return result ?? false;
 }
 
-Future<bool?> _pushLearningCard(BuildContext context, LearningCardPage page) {
-  if (KashiLayout.of(context).isPhone) {
-    return Navigator.push<bool>(
-        context, MaterialPageRoute(builder: (_) => page));
-  }
+/// Shows [page] as a pop-up over the dimmed current page. The card has no
+/// close button of its own: its action, system Back or a tap beside it.
+Future<bool?> pushLearningCard(BuildContext context, LearningCardPage page) {
   return showGeneralDialog<bool>(
     context: context,
     barrierDismissible: true,
@@ -191,6 +189,10 @@ class _LearningCardPageState extends State<LearningCardPage> {
   static const _photoHeight = 262.0;
   static const _maxWidth = 480.0;
 
+  /// Keeps the phone card clearly smaller than the page behind it.
+  static const _phoneCardMargin =
+      EdgeInsets.symmetric(horizontal: 16, vertical: 32);
+
   LearningMove get _move => widget.move;
   bool get _hasVariations => _move.variations.isNotEmpty;
   MoveVariation? get _selected =>
@@ -215,39 +217,44 @@ class _LearningCardPageState extends State<LearningCardPage> {
     final colors = Theme.of(context).extension<KashiColors>()!;
     if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
     final footer = _learntToggle;
-    return Scaffold(
-      backgroundColor: colors.ground,
-      body: Center(
+    return SafeArea(
+      minimum: _phoneCardMargin,
+      child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _maxWidth),
-          child: Column(
-            children: [
-              _header(colors),
-              // The title tucks up beside the star tip, as in the design;
-              // the video frame has no star edge to tuck into.
-              Expanded(
-                child: Transform.translate(
-                  offset: Offset(0, _videoOpen ? 0 : -30),
-                  child: _details(colors),
+          child: Material(
+            key: const ValueKey('learning-card'),
+            color: colors.ground,
+            clipBehavior: Clip.hardEdge,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _header(colors),
+                // The title tucks up beside the star tip, as in the design;
+                // the video frame has no star edge to tuck into.
+                Flexible(
+                  child: Transform.translate(
+                    offset: Offset(0, _videoOpen ? 0 : -30),
+                    child: _details(colors, shrinkWrap: true),
+                  ),
                 ),
-              ),
-              SafeArea(
-                top: false,
-                minimum: const EdgeInsets.fromLTRB(22, 0, 22, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (footer != null) ...[
-                      footer,
-                      const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (footer != null) ...[
+                        footer,
+                        const SizedBox(height: 10),
+                      ],
+                      KashiActionButton(
+                          label: widget.actionLabel, onPressed: _act),
                     ],
-                    KashiActionButton(
-                        label: widget.actionLabel, onPressed: _act),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -308,50 +315,31 @@ class _LearningCardPageState extends State<LearningCardPage> {
                     ),
                   ),
                   Expanded(
-                    child: Stack(children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: _details(colors,
-                                padding:
-                                    const EdgeInsets.fromLTRB(30, 30, 30, 12)),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(30, 0, 30, 28),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                if (footer != null) ...[
-                                  footer,
-                                  const SizedBox(height: 10),
-                                ],
-                                KashiActionButton(
-                                    label: widget.actionLabel, onPressed: _act),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _details(colors,
+                              padding:
+                                  const EdgeInsets.fromLTRB(30, 30, 30, 12)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(30, 0, 30, 28),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (footer != null) ...[
+                                footer,
+                                const SizedBox(height: 10),
                               ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      PositionedDirectional(
-                        top: 16,
-                        end: 16,
-                        child: Material(
-                          color: colors.inset,
-                          child: IconButton(
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.maybePop(context, false),
-                            icon: const Icon(Icons.close, size: 18),
-                            color: colors.textPrimary,
-                            style: IconButton.styleFrom(
-                              shape: const RoundedRectangleBorder(),
-                              fixedSize: const Size(40, 40),
-                            ),
+                              KashiActionButton(
+                                  label: widget.actionLabel, onPressed: _act),
+                            ],
                           ),
                         ),
-                      ),
-                    ]),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -376,7 +364,6 @@ class _LearningCardPageState extends State<LearningCardPage> {
   }
 
   Widget _header(KashiColors colors) {
-    final top = MediaQuery.paddingOf(context).top;
     final videoSrc = _move.videoSrc;
     return SizedBox(
       height: _photoHeight + 8,
@@ -402,28 +389,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                     ),
                   ),
           ),
-          PositionedDirectional(
-            start: 14,
-            top: top + 16,
-            child: _SquareButton(
-              tooltip: 'Back',
-              icon: const BackButtonIcon(),
-              onPressed: () => Navigator.maybePop(context, false),
-            ),
-          ),
-          if (_videoOpen)
-            PositionedDirectional(
-              end: 14,
-              top: top + 16,
-              child: _SquareButton(
-                // The video plays in place of the photo; ✕ leaves the card,
-                // like Back.
-                tooltip: 'Close',
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.maybePop(context, false),
-              ),
-            )
-          else if (videoSrc != null)
+          if (!_videoOpen && videoSrc != null)
             // The azure play square over the photo's edge, ringed in ground.
             PositionedDirectional(
               end: 12,
@@ -454,7 +420,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
   }
 
   Widget _details(KashiColors colors,
-      {EdgeInsets padding = const EdgeInsets.fromLTRB(22, 0, 22, 12)}) {
+      {EdgeInsets padding = const EdgeInsets.fromLTRB(22, 0, 22, 12),
+      bool shrinkWrap = false}) {
     final selected = _selected;
     final reps = selected?.reps ?? _move.target;
     final nameFa = _move.nameFa;
@@ -472,6 +439,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 .copyWith(fontSize: 15, color: colors.farsiAccent)),
     ];
     return ListView(
+      shrinkWrap: shrinkWrap,
       padding: padding,
       children: [
         Wrap(
@@ -544,34 +512,6 @@ class _LearningCardPageState extends State<LearningCardPage> {
           for (final cue in _move.cues) _Cue(text: cue),
         ],
       ],
-    );
-  }
-}
-
-/// A square ground-coloured icon button over the photo or video.
-class _SquareButton extends StatelessWidget {
-  const _SquareButton(
-      {required this.tooltip, required this.icon, required this.onPressed});
-
-  final String tooltip;
-  final Widget icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KashiColors>()!;
-    return Material(
-      color: colors.ground,
-      child: IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        icon: icon,
-        color: colors.textPrimary,
-        style: IconButton.styleFrom(
-          shape: const RoundedRectangleBorder(),
-          fixedSize: const Size(44, 44),
-        ),
-      ),
     );
   }
 }

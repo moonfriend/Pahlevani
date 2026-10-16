@@ -26,8 +26,8 @@ Future<void> _pump(WidgetTester tester, SampleMove move,
     home: Builder(
       builder: (context) => Scaffold(
         body: TextButton(
-          onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => LearningCardPage.sample(move))),
+          onPressed: () =>
+              pushLearningCard(context, LearningCardPage.sample(move)),
           child: const Text('open'),
         ),
       ),
@@ -103,11 +103,32 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
-  testWidgets('Back returns to the previous page', (tester) async {
+  testWidgets('a tap beside the card returns to the previous page',
+      (tester) async {
     await _pump(tester, _shena);
-    await tester.tap(find.byTooltip('Back'));
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
     expect(find.byType(LearningCardPage), findsNothing);
+  });
+
+  testWidgets(
+      'phone: a pop-up card smaller than the screen, over a dimmed page, '
+      'with no Back or ✕ — the action button is the way out', (tester) async {
+    await _pump(tester, _shena);
+    final card = tester.getRect(find.byKey(const ValueKey('learning-card')));
+    expect(card.width, lessThan(360));
+    expect(card.height, lessThan(740));
+    expect(card.left, greaterThan(0));
+    expect(card.top, greaterThan(0));
+    expect(find.text('open'), findsOneWidget,
+        reason: 'the page behind stays, dimmed');
+    expect(
+        tester
+            .widgetList<ModalBarrier>(find.byType(ModalBarrier))
+            .any((b) => b.color != null && b.color!.a > 0),
+        isTrue);
+    expect(find.byTooltip('Back'), findsNothing);
+    expect(find.byTooltip('Close'), findsNothing);
   });
 
   for (final size in const [Size(360, 740), Size(320, 568), Size(1440, 900)]) {
@@ -169,7 +190,7 @@ void main() {
             scrollable: find.byType(Scrollable).first);
 
     testWidgets(
-        'the same full-page card as the Library, with the move\'s '
+        'the same card as the Library, with the move\'s '
         'content: name, Farsi, reps, description, steps and cues',
         (tester) async {
       await open(tester, shena, target: 40, minutes: 3);
@@ -215,7 +236,8 @@ void main() {
       expect(find.text('30 reps'), findsOneWidget);
     });
 
-    testWidgets('the action returns true; Back returns false', (tester) async {
+    testWidgets('the action returns true; a tap beside the card false',
+        (tester) async {
       final results = await open(tester, shena);
       await tester.tap(find.text('Got it'));
       await tester.pumpAndSettle();
@@ -223,7 +245,7 @@ void main() {
 
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Back'));
+      await tester.tapAt(const Offset(4, 4));
       await tester.pumpAndSettle();
       expect(results, [true, false]);
     });
@@ -313,20 +335,17 @@ void main() {
       expect(find.text('Back long'), findsOneWidget);
     });
 
-    testWidgets('✕ and a tap beside the card close it without acting',
+    testWidgets('no ✕; a tap beside the card closes it without acting',
         (tester) async {
       final results = await openWide(tester);
-      await tester.tap(find.byTooltip('Close'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Close'), findsNothing);
       await tester.tapAt(const Offset(40, 40));
       await tester.pumpAndSettle();
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Got it'));
       await tester.pumpAndSettle();
-      expect(results, [false, false, true]);
+      expect(results, [false, true]);
     });
 
     testWidgets('tablet: the same two-column card, fitted to the screen',
