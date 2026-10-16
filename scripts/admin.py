@@ -496,8 +496,12 @@ def encode_video(
     return result.returncode == 0
 
 def extract_poster(video_path: str, out_path: str, timestamp: float = 1.0) -> bool:
-    cmd = ["ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
-           "-frames:v", "1", "-update", "1", "-q:v", "3", out_path]
+    cmd = ["ffmpeg", "-y", "-ss", str(timestamp)]
+    if video_path.startswith(("http://", "https://")):
+        # r2.dev refuses some default user agents (403).
+        cmd += ["-user_agent", "Mozilla/5.0"]
+    cmd += ["-i", video_path,
+            "-frames:v", "1", "-update", "1", "-q:v", "3", out_path]
     result = subprocess.run(cmd, capture_output=True, timeout=30)
     return result.returncode == 0
 
@@ -535,6 +539,13 @@ def duration_from_bytes(data: bytes) -> int | None:
         return round(audio.info.length)
     except Exception:
         return None
+
+def card_image_key(movement_id: int, name: str, ext: str, now: datetime) -> str:
+    """R2 key for a movement's learning-card image. A new key on every change:
+    the app caches media by URL, so reusing a key would never refresh phones
+    that already have the old image."""
+    return (f"{R2_VIDEO_POSTER_PREFIX}{movement_id}-{slugify(name)}"
+            f"-card-{now:%Y%m%d%H%M%S}{ext}")
 
 def slugify(text: str) -> str:
     """Lower-case, spaces to underscores, strip non-alphanumeric."""
@@ -851,6 +862,91 @@ def _render_movement_video_section(movement_id: int, mov_row: pd.Series) -> None
                 st.rerun()
 
 
+def _save_card_image(movement_id: int, mov_row: pd.Series, url: str) -> None:
+    """Points the movement's still (and its video row's poster) at [url]; the
+    video itself and the media type are left alone."""
+    get_client().table("movement").update(
+        {"media_poster": url}).eq("id", movement_id).execute()
+    video_id = mov_row.get("video_id")
+    if video_id is not None and not pd.isna(video_id):
+        get_client().table("video").update(
+            {"poster_url": url}).eq("id", int(video_id)).execute()
+
+
+def _render_movement_card_image_section(movement_id: int, mov_row: pd.Series) -> None:
+    """The still the app's learning card shows (with its "video coming soon"
+    label) — for a video move, its poster. Pick a frame from the video or
+    upload an image; the video is never changed."""
+    st.markdown("**Card image** (the still on the learning card)")
+    if (mov_row.get("media_type") or "none") != "video" or not mov_row.get("media_src"):
+        st.caption("Only for moves with a video — a photo move's photo is its "
+                   "card image (change it under Movement info below).")
+        return
+
+    cur_poster = mov_row.get("media_poster") or ""
+    if cur_poster:
+        st.image(cur_poster, caption="Current card image", width=280)
+    else:
+        st.info("No card image yet — the app shows the pahlevan illustration.")
+
+    name = mov_row.get("name") or f"movement-{movement_id}"
+    frame_key = f"card_frame_path_{movement_id}"
+    tab_frame, tab_upload = st.tabs(["🎞️ Frame from the video", "📤 Upload image"])
+
+    with tab_frame:
+        seconds = st.number_input(
+            "Second in the video", min_value=0.0, value=1.0, step=0.5,
+            key=f"card_frame_s_{movement_id}",
+        )
+        if st.button("🎞️ Preview frame", key=f"card_frame_prev_{movement_id}"):
+            out = Path(tempfile.mkdtemp()) / f"card_{movement_id}.jpg"
+            with st.spinner("Grabbing the frame…"):
+                ok = extract_poster(mov_row["media_src"], str(out), float(seconds))
+            if ok:
+                st.session_state[frame_key] = str(out)
+            else:
+                st.error("Could not grab a frame there — is the second inside the video?")
+        frame = st.session_state.get(frame_key)
+        if frame:
+            st.image(frame, caption="Preview", width=280)
+            if st.button("✅ Use this frame", type="primary",
+                         key=f"card_frame_use_{movement_id}"):
+                try:
+                    url = upload_asset_to_r2(
+                        frame, card_image_key(movement_id, name, ".jpg", datetime.now()),
+                        "image/jpeg")
+                    _save_card_image(movement_id, mov_row, url)
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+                else:
+                    st.session_state.pop(frame_key, None)
+                    st.success("✅ Card image saved.")
+                    bust_cache()
+                    st.rerun()
+
+    with tab_upload:
+        uploaded = st.file_uploader(
+            "Choose image (jpg / png / webp)", type=["jpg", "jpeg", "png", "webp"],
+            key=f"card_upload_{movement_id}",
+        )
+        if uploaded:
+            st.image(uploaded, caption="Preview", width=280)
+            ext = Path(uploaded.name).suffix.lower()
+            mime = {".png": "image/png", ".webp": "image/webp"}.get(ext, "image/jpeg")
+            if st.button("Upload & use", type="primary", key=f"card_upload_btn_{movement_id}"):
+                try:
+                    url = upload_bytes_to_r2(
+                        uploaded.getvalue(),
+                        card_image_key(movement_id, name, ext, datetime.now()), mime)
+                    _save_card_image(movement_id, mov_row, url)
+                except Exception as e:
+                    st.error(f"Upload failed: {e}")
+                else:
+                    st.success("✅ Card image saved.")
+                    bust_cache()
+                    st.rerun()
+
+
 def _render_movement_photo_section(movement_id: int, mov_row: pd.Series) -> None:
     st.markdown("**Movement info**")
     cur_type = mov_row.get("media_type") or "none"
@@ -1069,6 +1165,8 @@ def tab_movements():
         _render_movement_details_form(movement_id, mov_row)
         st.divider()
         _render_movement_video_section(movement_id, mov_row)
+        st.divider()
+        _render_movement_card_image_section(movement_id, mov_row)
         st.divider()
         _render_movement_photo_section(movement_id, mov_row)
         st.divider()
