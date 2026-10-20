@@ -45,7 +45,9 @@ android {
 
     defaultConfig {
         applicationId = "com.pahlevani.app"
-        minSdk = flutter.minSdkVersion
+        // Pinned above Flutter 3.29's default (21) — Play's automatic
+        // protection rejects bundles with a minimum SDK below 24.
+        minSdk = 24
         // Pinned above Flutter 3.29's default (35) — Google Play requires
         // targeting API 36 (Android 16) from Nov 1, 2026. Unlike compileSdk,
         // this does change runtime behavior (Android 16's new
