@@ -225,7 +225,7 @@ lib/
                      (SessionPlayerCubit, MoveProgressCubit) + pages/player/ — see "Data flow (playing a session)"
 
 test/                mirrors lib/; shared fakes in test/fakes/ (no credentials needed)
-supabase/migrations/ numbered SQL — next free number is 0042 (0035–0039 Path/Fitness, 0040 onboarding cards, 0041 media sizes); never reuse a number
+supabase/migrations/ numbered SQL — next free number is 0049 (0047/0048 = Release 1 legacy read bridge + cutover; see scripts/db/rehearse_prod_migrations.sh); never reuse a number
 scripts/             admin.py (Streamlit admin), with_admin_creds.sh, wt.sh (worktrees), one-off tools
 docs/                plans and runbooks
 ```
