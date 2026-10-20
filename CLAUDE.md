@@ -2,7 +2,57 @@
 
 ## Project Purpose
 
+> **Release 1 hides several built features** (Progress, Path, Fitness test, the old session list, the Rep log, …). Read `docs/hidden_features.md` before deleting "unused" code or bringing a feature back.
+
 Flutter app for practising **Pahlevani** — traditional Persian warrior fitness. Users browse training sessions, each composed of ordered exercises with audio guidance, download sessions for offline use, and play through exercises in sequence with repetition tracking.
+
+---
+
+## Workspace, worktrees & context boundaries (read first)
+
+**Where an agent may look by default — only these:**
+
+| Path | What it is |
+|---|---|
+| `~/StudioProjects/Pahlevani/` | the main checkout — the one repo (`.git` lives here) |
+| `~/StudioProjects/Pahlevani-worktrees/<branch>/` | one worktree per active parallel task (same repo, other branch) |
+
+An agent works inside **its own** checkout (the main one or its assigned worktree) and does
+not read other worktrees unless the task is explicitly about them.
+
+**Off-limits unless the user asks for them in the current task** — do not `ls`, `find`,
+`grep`, read, or glob into these, and never search `~/StudioProjects/` as a whole:
+
+| Path | Why |
+|---|---|
+| `~/StudioProjects/pahlevani-admin-creds/` | admin-tier secrets. Only ever consumed indirectly via `scripts/with_admin_creds.sh` — never read, printed, or copied |
+| `~/StudioProjects/pahlevani_ui/` | design sources (large, mostly binary). Read a specific file only when the user points to it |
+| `~/StudioProjects/pahlevani-reports/` | past reports — historical, may be stale. Write a new report there only when asked |
+| any other sibling folder (old clones, backups, `tmp*`) | stale copies; reading them feeds outdated code or secrets into context |
+
+Within the repo, prefer targeted searches over whole-tree sweeps and skip generated or
+vendored output (`build/`, `.dart_tool/`, `*.g.dart`, `ios/Pods/`, `.venv/`).
+
+### Parallel work: one task = one branch = one worktree
+
+Use `scripts/wt.sh` (documented in its header):
+
+```bash
+scripts/wt.sh new feat/my-task          # new branch from main → ../Pahlevani-worktrees/feat-my-task
+scripts/wt.sh new feat/x some-base      # …or from another base branch
+scripts/wt.sh new existing/branch       # check out an existing branch in its own worktree
+scripts/wt.sh list                      # what exists
+scripts/wt.sh path feat/my-task         # where it is
+scripts/wt.sh done feat/my-task         # remove the worktree once merged (must be clean; branch kept)
+```
+
+`new` links (never copies) the gitignored `env/*.env` files from the main checkout and runs
+`flutter pub get`, so the worktree can build and run straight away. Rules:
+
+- Start each parallel agent **inside its worktree directory**, not in the main checkout.
+- Remove a worktree as soon as its branch is merged (`wt.sh done`). Keep at most a few alive.
+- A branch can only be checked out in one place at a time — git enforces this.
+- No full clones or backup copies of the repo under `~/StudioProjects/`.
 
 ---
 
@@ -12,13 +62,15 @@ Flutter app for practising **Pahlevani** — traditional Persian warrior fitness
 |---|---|
 | UI Framework | Flutter / Material 3 |
 | Language | Dart ≥ 3.0 |
-| State Management | `flutter_bloc` ^8 — **Cubits only**, no full Blocs |
+| State Management | `flutter_bloc` ^8 — Cubits by default; a full `Bloc` when it earns its keep |
 | Dependency Injection | `get_it` ^7 (singleton `getIt` in `di/dependency_injection.dart`) |
-| Local Database | `hive_flutter` ^1 (code-gen via `hive_generator`) |
+| Local Database | `hive` ^2 / `hive_flutter` ^1 (code-gen via `hive_generator`; typeIds 0–3 in `lib/data/models/hive_models.dart`) |
 | Remote Backend | Supabase (`supabase_flutter` ^2) |
 | HTTP / Downloads | `dio` ^5 |
-| Audio Playback | `audioplayers` ^5 |
-| Audio Service Abstraction | `AudioPlayerService` (domain interface) + `AudioPlayersServiceImpl` (data) |
+| Audio Playback | `just_audio` (Android/iOS/web) + `audio_service` (lock screen / notification); `audioplayers` only for the Linux desktop dev build |
+| Audio Service Abstraction | `AudioPlayerService` (domain interface); impls in `lib/data/services/` (`JustAudioPlayerService`, `JustAudioWebPlayerService`, `AudioPlayersServiceImpl`) |
+| Video | `video_player` (+ `fvp` for Linux/Windows desktop) — muted exercise demo videos synced to the audio |
+| Auth | Supabase Auth + `google_sign_in` |
 | Crash Reporting | `firebase_crashlytics` ^4 + `firebase_core` ^3 |
 | Structured Logging | `logger` ^2 via `AppLogger` (`lib/core/utils/app_logger.dart`) |
 | Persistence | `shared_preferences` ^2 (download-status tracking) |
@@ -74,6 +126,17 @@ and the `scripts/*.py` one-off tools (see their own docstrings for exact invocat
 
 **Never put a service-role key in anything under `env/`.** Those files get compiled
 straight into the app via `--dart-define` — only the **anon/public** key belongs there.
+
+**No repo-local file should ever hold an actual secret value — full stop.** Not a scratch
+`.env`, not `scripts/.streamlit/secrets.toml`, not a prod DB dump under
+`supabase/db_snapshot/`. Every one of those is gitignored, which only stops it from being
+*pushed* — it still sits in plaintext on disk, and a stray full-repo backup/clone copies it
+right along with the code (this happened: a 2026-08-28 backup folder carried a live
+service-role key and a prod data/auth dump for over a month before anyone noticed). If a
+script needs a credential, it reads it live from `pahlevani-admin-creds/` via
+`scripts/with_admin_creds.sh` — it never gets copied into a file inside the repo tree, not
+even temporarily. Treat any local file that violates this as a rotate-the-credential
+incident, not a cleanup task.
 
 ---
 
@@ -145,96 +208,26 @@ fixed here.
 
 ## Key Directories
 
+Folder-level map only — list a folder to see its files (file lists here go stale).
+
 ```
 lib/
-├── firebase_options.dart                    # GENERATED by flutterfire configure — do not edit
-├── main.dart                                # App entry point; Firebase init + error handlers
-│
-├── core/
-│   ├── config.dart                          # Supabase URL + anon key constants
-│   ├── di/dependency_injection.dart         # GetIt wiring (singleton pattern)
-│   ├── theme/                               # PahlevaniTheme, PahlevaniColors
-│   └── utils/
-│       ├── app_logger.dart                  # AppLogger — wraps logger + Crashlytics forwarding
-│       └── image_transform.dart             # supabaseImageTransformUrl() (500×500, quality 80)
-│
-├── data/
-│   ├── datasources/training_session/
-│   │   ├── training_session_local_database.dart     # Hive box management
-│   │   ├── training_session_local_datasource.dart   # File I/O, SharedPrefs, Dio downloads
-│   │   └── training_session_remote_datasource.dart  # Supabase table fetches
-│   ├── dtos/                                # Raw row types from DB
-│   │   ├── exercise_row.dart
-│   │   ├── training_item_row.dart
-│   │   ├── training_session_row.dart
-│   │   └── movement_row.dart
-│   ├── mappers/
-│   │   ├── row_to_domain.dart               # DTO → domain entity conversion
-│   │   └── snapshot_builders.dart           # Builds DomainSnapshot and SessionDetail
-│   ├── models/
-│   │   ├── hive_models.dart                 # @HiveType models (typeIds 0–2)
-│   │   └── hive_models.g.dart              # GENERATED — never edit manually
-│   ├── repositories_impl/
-│   │   ├── training_session_repository_impl.dart
-│   │   └── download_repository_impl.dart    # File downloads, cache, status tracking
-│   └── services/
-│       └── audio_players_service_impl.dart  # AudioPlayerService backed by audioplayers pkg
-│
-├── domain/
-│   ├── entities/
-│   │   ├── audio/training_item_with_audio.dart   # Bridge type used by player cubit
-│   │   └── training_session/
-│   │       ├── exercise.dart          # Exercise (leaf: name, author, audioUrl, repsDefault, media)
-│   │       ├── prescription.dart      # sealed: RepsPresc | TimePresc
-│   │       ├── session_details.dart   # SessionDetail + ItemDetail (read models for UI)
-│   │       ├── training_item.dart     # TrainingItem (join row: sessionId, exerciseId, position, Prescription)
-│   │       └── training_session.dart  # TrainingSession (metadata only, no embedded items)
-│   ├── repositories/
-│   │   ├── training_session_repository.dart
-│   │   └── download_repository.dart
-│   ├── services/
-│   │   └── audio_player_service.dart        # Abstract AudioPlayerService interface
-│   └── usecases/
-│       └── get_trainingsessions.dart
-│
-├── presentation/
-│   ├── bloc/
-│   │   ├── player/audio_player_cubit.dart          # TrainingSessionPlayerCubit
-│   │   ├── settings/settings_cubit.dart            # Theme / settings persistence
-│   │   └── training_session/
-│   │       ├── training_session_cubit.dart          # Session list + edit routing
-│   │       ├── training_session_state.dart          # Sealed states
-│   │       └── training_sessions_ui_model.dart      # UI model (sessions + download statuses)
-│   ├── pages/
-│   │   ├── player/training_session_player_page.dart  # Audio player page (AudioPlayerPage)
-│   │   └── training_session/
-│   │       ├── training_sessions_page.dart           # Session list (home page)
-│   │       ├── edit_training_session_page.dart       # Create/edit session
-│   │       └── download_status.dart                  # DownloadStatus enum
-│   └── widgets/
-│       ├── common/                          # DifficultyPips, DownloadRing, PersianPattern
-│       ├── player/                          # PlayerControls, ProgressBar, TrackImageWidget, TrackListItem
-│       ├── exercise_image_provider.dart     # Local-vs-remote ImageProvider dispatch
-│       └── playlist_card.dart
-│
-test/
-├── core/utils/                              # image_transform_test.dart
-├── data/
-│   ├── datasources/                         # local_database, local_datasource tests
-│   ├── dtos/                                # DTO round-trip tests
-│   ├── mappers/                             # row_to_domain, snapshot_builders tests
-│   ├── repositories/                        # download_repository, training_session_repository tests
-│   └── services/                            # audio_players_service_impl tests
-├── domain/entities/                         # training_item_with_audio tests
-├── fakes/                                   # FakeTrainingSessionRepository, FakeDownloadRepository,
-│                                            # FakeAudioPlayerService, buildTestSnapshot()
-└── presentation/
-    ├── bloc/player/                          # audio_player_cubit_test
-    ├── bloc/settings/                        # settings_cubit_test
-    ├── bloc/training_session/               # training_session_cubit_test
-    ├── pages/player/                         # audio_player_page_test
-    ├── pages/training_session/              # training_sessions_page_test
-    └── widgets/                             # exercise_image_provider, track_image_widget tests
+├── main.dart, firebase_options.dart (GENERATED — do not edit)
+├── core/            config, di/dependency_injection.dart (GetIt), theme/, utils/ (AppLogger, image transform)
+├── domain/          entities/ · repositories/ · services/ · usecases/ — pure Dart, grouped by area:
+│                    training_session, audio (player bridge), audio_catalog (Morshed / recordings),
+│                    auth, release (version gate), tracking (history)
+├── data/            datasources/ (Supabase remote + Hive/SharedPrefs local) · dtos/ · mappers/
+│                    (row_to_domain, snapshot_builders) · models/ (Hive models + generated adapters) ·
+│                    repositories_impl/ · services/ (audio engines, OS media session handler)
+└── presentation/    bloc/<area>/ (Cubits, Blocs when needed) · pages/<area>/ · widgets/<area>/
+                     player: domain/player/ (MoveTimeline, PlaybackClock) + bloc/player/
+                     (SessionPlayerCubit, MoveProgressCubit) + pages/player/ — see "Data flow (playing a session)"
+
+test/                mirrors lib/; shared fakes in test/fakes/ (no credentials needed)
+supabase/migrations/ numbered SQL — next free number is 0049 (0047/0048 = Release 1 legacy read bridge + cutover; see scripts/db/rehearse_prod_migrations.sh); never reuse a number
+scripts/             admin.py (Streamlit admin), with_admin_creds.sh, wt.sh (worktrees), one-off tools
+docs/                plans and runbooks
 ```
 
 ---
@@ -251,7 +244,7 @@ Presentation  →  Domain  ←  Data
 |---|---|
 | **Domain** | Entities, repository interfaces, use cases. Pure Dart — no Flutter or package imports. |
 | **Data** | Implements repositories. Owns DTOs, Hive models, mappers, remote/local data sources. |
-| **Presentation** | Cubits consume repositories/use-cases. Widgets consume Cubits. |
+| **Presentation** | Cubits/Blocs consume repositories/use-cases. Widgets consume Cubits/Blocs. |
 
 ### Data flow (fetching sessions)
 ```
@@ -267,56 +260,65 @@ Supabase tables
 
 ### Data flow (playing a session)
 ```
-DomainSnapshot
-  → buildSessionDetail(sessionId, snap)  →  SessionDetail
-    → TrainingSessionPlayerCubit.loadTracks()
-      → List<TrainingItemWithAudio>  →  AudioPlayerState  →  TrainingSessionPlayerPage
+BuildPlaybackQueue (domain use case: session moves + Morshed recordings + local files)
+  → SessionPlayerCubit  — which move, play/pause (the only authority), sealed state
+      commands ↓                    ↑ MoveTargetReached → next move
+  → MoveTimeline (domain/player) — runs the audio engine, PlaybackClock, move length/rep
+      → progress (fast)  → MoveProgressCubit → rep counter, progress bar
+      → events (rare: started/seeked/looped) + progress → VideoFollower → demo video
 ```
+Rule: fast data (position) never goes into SessionPlayerState; the video follows the
+timeline, never page rebuilds.
 
 ---
 
-## New Data Model (refactor/new-data-model branch)
+## Data Model
 
-The refactor replaces the old flat `TrainingSession.items: List<TrainingSessionItem>` with a **normalised three-table model**:
+Normalised content model (Supabase tables → `DomainSnapshot`):
 
 | Entity | Role |
 |---|---|
-| `TrainingSession` | Metadata only (id, title, description, difficulty). No embedded items. |
-| `Exercise` | Reusable movement (name, author, audioUrl, repetitionsDefault). |
-| `TrainingItem` | Join row: `sessionId + exerciseId + position + Prescription`. |
+| `TrainingSession` | Metadata only (id, title/titleFa, description, difficulty, ownership). No embedded items. |
+| `Exercise` / `Movement` | Reusable move: name, media (photo/video + anchor), movement type → resolved Morshed audio recording. |
+| `TrainingItem` | Join row: `sessionId + exerciseId + position + Prescription` (+ `isTracked`). |
 | `Prescription` | Sealed: `RepsPresc(count)` or `TimePresc(seconds)`. |
 | `DomainSnapshot` | In-memory cache: `sessionsById`, `itemsBySessionId`, `exercisesById`. |
-| `SessionDetail` | Read model assembled from snapshot for one session. Contains `List<ItemDetail>`. |
-| `ItemDetail` | `TrainingItem + Exercise` — the unit the player works with. |
-| `TrainingItemWithAudio` | Bridge entity adding resolved local/remote audio path to `ItemDetail`. |
+| `SessionDetail` / `ItemDetail` | Read models assembled from the snapshot; `ItemDetail` = item + exercise, the unit the player works with. |
+| `TrainingItemWithAudio` | Player bridge entity: resolved local/remote audio + media paths. |
 
 ---
 
-## Current Status (as of 2026-06-13)
+## Current Status (as of 2026-10-02 — update this when merging a feature)
 
-The normalised data model refactor is **complete**. The app is functional on `main`:
+Live on `main`: session list (Supabase, Hive-first), player with Athlete / Learning /
+Zoorkhaneh modes, exercise demo videos with audio "sarzarb" anchor sync, offline downloads,
+Morshed (audio recording) choice, training history + tracked rep counts, auth (Supabase +
+Google, invite codes), trainer session assignment, version gate, web build (Cloudflare).
 
-- Sessions list loads from Supabase; Hive-first on subsequent launches
-- Player auto-plays with 4-track lookahead audio caching
-- Download button caches audio + images; progress ring covers both phases
-- URL-hash filenames: stale media self-invalidates when a trainer updates a URL
-- User-created sessions stored locally; never overwritten by remote sync
-- `AudioPlayerService` extracted as a domain interface, injected via GetIt
-- Firebase Crashlytics wired up on `feat/crash-reporting` (pending merge)
-- 250+ unit, widget, and integration tests; CI enforces ≥50% coverage
+Deliberately **not** on `main` yet (still in development): the **Path** progression backbone
+(`feat/path-backbone`) and the **Fitness Test** module (`feat/fitness-test`), integrated together
+on `integrate/path-fitness`. Don't build on them from `main`-based branches.
 
-**Open branches:**
-- `feat/crash-reporting` — Firebase Crashlytics + AppLogger (ready to merge after Firebase project setup)
-- `test/cache-image-size` — 4 additional cacheImage tests (ready to merge)
+Next up:
+- **Kashi UX redesign** on `new-ux-design` — done step by step with the user. Design source
+  is `~/StudioProjects/pahlevani_ui/Pahlevani_design_brand_colors.zip` (outside the repo; see
+  boundaries above — investigate it together with the user, don't sweep it).
+- **Player refactor** — plan in `docs/player_refactor_plan.md` on `chore/ux-redesign-prep`
+  (single engine-derived clock; Phases 0–2 before the new Player screen).
+
+Open branches change too often to list here — run `git branch -vv` and `scripts/wt.sh list`.
 
 ---
 
 ## Coding Conventions
 
 - **File names**: `snake_case`. Class names: `PascalCase`.
-- **Cubits only** — no `Bloc` + events pattern. All state management via `Cubit<State>`.
+- **Cubit by default, Bloc when needed** (rule relaxed 2026-10-06). Start with a `Cubit<State>`; use a
+  `Bloc` + events where it clearly helps — e.g. event transformers (`restartable`, `droppable`),
+  many input sources (UI, lock screen, keyboard) that benefit from logged event objects, or
+  `emit.forEach` over a stream. Flag the choice as a design decision.
 - **Equatable** on state classes for equality; `sealed` keyword on state hierarchies.
-- **Hive type IDs**: `HiveTrainingSession=0`, `HiveExercise=1`, `HiveTrainingSessionItem=2`. Increment sequentially; never reuse a type ID.
+- **Hive type IDs**: declared only in `lib/data/models/hive_type_ids.dart` (`HiveTypeIds`, currently 0–8) and registered only via `registerHiveAdapter()`, which throws on a clash. Add every new adapter to `test/data/models/hive_type_ids_test.dart`. Increment sequentially; never reuse or renumber a shipped type ID.
 - **Always run `build_runner`** after any change to `@HiveType` or `@HiveField` annotations.
 - **`DomainSnapshot` is the single in-memory truth.** Do not bypass it by going directly to local DB in the presentation layer.
 - **Use `AppLogger`** (`lib/core/utils/app_logger.dart`) instead of `print()`. Use `.d()` for debug, `.w()` for handled errors, `.e()` for unexpected failures.
@@ -349,15 +351,13 @@ You are an elite, senior software engineer and system architect. You write excep
 
 ## 5. Security & Performance
 - Never hardcode credentials, secrets, or environment-specific variables. Use environment variables.
-  - **⚠️ Temporary exemptions (backlog item: migrate to secure config):**
-    - `lib/core/config.dart` — Supabase URL + anon key are hardcoded. Supabase anon keys are public by design (RLS enforces security server-side), but the approach should be revisited.
-    - `lib/firebase_options.dart` — Firebase client API key is hardcoded. Firebase client keys are public by design (App Check + Security Rules enforce access), but the approach should be revisited.
+  - `lib/core/config.dart` and `lib/firebase_options.dart` read every key via `String.fromEnvironment` (`--dart-define-from-file=env/…`) — keep it that way; see Credentials Setup above.
 - Validate and sanitize all external inputs.
 - Optimize for computational efficiency (Big O) where appropriate, without sacrificing readability.
 
 ## 6. Language-Specific Constraints
 - **Python** (admin scripts): Strictly use `pydantic` models or standard `dataclasses` for data validation, serialization, and complex payload passing. Do not use raw, unstructured dictionaries for domain entities.
-- **Flutter/Dart**: Strictly use `flutter_bloc` Cubits — no Riverpod, no `setState` in complex widget trees, no raw `ChangeNotifier`. Exclusively use Material 3 widgets.
+- **Flutter/Dart**: Strictly use `flutter_bloc` (Cubits by default, Blocs when needed) — no Riverpod, no `setState` in complex widget trees, no raw `ChangeNotifier`. Exclusively use Material 3 widgets.
 
 ## 7. Execution Rules for Claude
 - If a requirement is ambiguous, stop and ask for clarification. Do not guess.

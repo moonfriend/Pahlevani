@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import 'kashi/video_scrub_bar.dart';
+
 /// Standalone demonstration-video player, shared by the ⓘ info page and
 /// Learning Mode's pre-track prompt — plays with its own original audio and
 /// exposes a visible play/pause control, since in both places it's the only
 /// thing making sound (the underlying track audio hasn't started yet).
 /// Tap-to-play rather than autoplay, so opening either surface never starts
-/// audio the user didn't ask for.
+/// audio the user didn't ask for. A tap also shows a progress bar for a few
+/// seconds to skip through the video. A speed button (1× → 1.5× → 2×) lets
+/// people get through a long explanation faster.
 class ExerciseDemoVideoPlayer extends StatefulWidget {
   const ExerciseDemoVideoPlayer({super.key, required this.src});
   final String src;
@@ -22,6 +27,15 @@ class ExerciseDemoVideoPlayer extends StatefulWidget {
 class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
   late final VideoPlayerController _controller;
   bool _ready = false;
+
+  /// A tap shows the progress bar for a while, so the user can skip.
+  bool _showProgress = false;
+  Timer? _hideProgress;
+  static const _progressVisibleFor = Duration(seconds: 3);
+
+  /// The speeds the button cycles through, starting at normal.
+  static const _speeds = [1.0, 1.5, 2.0];
+  int _speedIndex = 0;
 
   @override
   void initState() {
@@ -58,10 +72,32 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
     } else {
       _controller.play();
     }
+    _revealProgress();
+  }
+
+  /// The next speed; leaves play/pause as it is.
+  void _cycleSpeed() {
+    if (!_ready) return;
+    setState(() => _speedIndex = (_speedIndex + 1) % _speeds.length);
+    _controller.setPlaybackSpeed(_speeds[_speedIndex]);
+  }
+
+  void _revealProgress() {
+    setState(() => _showProgress = true);
+    _hideProgress?.cancel();
+    _hideProgress = Timer(_progressVisibleFor, () {
+      if (mounted) setState(() => _showProgress = false);
+    });
+  }
+
+  void _seek(Duration position) {
+    _controller.seekTo(position);
+    _revealProgress();
   }
 
   @override
   void dispose() {
+    _hideProgress?.cancel();
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
@@ -106,7 +142,80 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                         size: 32),
                   ),
                 ),
+              if (_ready)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _SpeedButton(
+                    speed: _speeds[_speedIndex],
+                    onPressed: _cycleSpeed,
+                  ),
+                ),
+              if (_ready && _showProgress)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x000B1638), Color(0xCC0B1638)],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 16, 14, 6),
+                      child: VideoScrubBar(
+                        position: _controller.value.position,
+                        duration: _controller.value.duration,
+                        onSeek: _seek,
+                      ),
+                    ),
+                  ),
+                ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The playback-speed button: the current speed ("1.5×"); a tap moves on.
+class _SpeedButton extends StatelessWidget {
+  const _SpeedButton({required this.speed, required this.onPressed});
+
+  final double speed;
+  final VoidCallback onPressed;
+
+  String get _label =>
+      '${speed == speed.roundToDouble() ? speed.toInt() : speed}×';
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Playback speed $_label',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.black45,
+        child: InkWell(
+          onTap: onPressed,
+          child: ConstrainedBox(
+            // A 48px touch target, even though the label is small.
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Center(
+              widthFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(_label,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
           ),
         ),
       ),

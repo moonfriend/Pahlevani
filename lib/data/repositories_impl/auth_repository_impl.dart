@@ -76,6 +76,8 @@ class AuthRepositoryImpl implements AuthRepository {
       consentedAt: row['consented_at'] == null
           ? null
           : DateTime.parse(row['consented_at'] as String),
+      termsVersion: (row['terms_version'] as num?)?.toInt(),
+      marketingOptIn: row['marketing_opt_in'] as bool? ?? false,
     );
   }
 
@@ -272,14 +274,16 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AppUser> acceptPrivacyConsent() async {
+  Future<AppUser> acceptPrivacyConsent(
+      {required int termsVersion, required bool marketingOptIn}) async {
     final authUser = _client.auth.currentUser;
     if (authUser == null) {
       throw StateError('acceptPrivacyConsent() called with no signed-in user');
     }
     Map<String, dynamic> row;
     try {
-      row = await _markConsentAccepted(authUser.id);
+      row =
+          await _markConsentAccepted(authUser.id, termsVersion, marketingOptIn);
     } on sb.PostgrestException catch (e) {
       // PGRST116: the update matched 0 rows — the on_auth_user_created
       // trigger (0013_profiles_and_consent.sql) hasn't landed yet. That
@@ -291,14 +295,16 @@ class AuthRepositoryImpl implements AuthRepository {
       await _client
           .from('profiles')
           .insert({'id': authUser.id, 'email': authUser.email});
-      row = await _markConsentAccepted(authUser.id);
+      row =
+          await _markConsentAccepted(authUser.id, termsVersion, marketingOptIn);
     }
     final user = _userFromRow(authUser.id, authUser.email, row);
     _cachedProfile = user;
     return user;
   }
 
-  Future<Map<String, dynamic>> _markConsentAccepted(String userId) {
+  Future<Map<String, dynamic>> _markConsentAccepted(
+      String userId, int termsVersion, bool marketingOptIn) {
     // .select().single() after .update() throws on 0 rows / RLS reject /
     // network error — this must never silently look like success.
     return _client
@@ -306,10 +312,21 @@ class AuthRepositoryImpl implements AuthRepository {
         .update({
           'consent_accepted': true,
           'consented_at': DateTime.now().toUtc().toIso8601String(),
+          'terms_version': termsVersion,
+          'marketing_opt_in': marketingOptIn,
         })
         .eq('id', userId)
         .select()
         .single();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    // delete_my_account() (migration 0045) deletes auth.users' own row;
+    // profile and activation go with it (on delete cascade).
+    await _client.rpc('delete_my_account');
+    _cachedProfile = null;
+    await _client.auth.signOut();
   }
 
   @override

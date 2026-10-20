@@ -28,6 +28,8 @@ const testExercise1 = Exercise(
   name: 'Shena',
   audioFileUrl: 'https://example.com/shena.mp3',
   repetitionsDefault: 3,
+  // Something to learn from, so Learning mode shows its card.
+  description: 'A wave-like press on the board.',
 );
 
 const testExercise2 = Exercise(
@@ -35,6 +37,7 @@ const testExercise2 = Exercise(
   name: 'Kabbadeh',
   audioFileUrl: 'https://example.com/kabbadeh.mp3',
   repetitionsDefault: 1,
+  description: 'Swing the kabbadeh overhead.',
 );
 
 const testExercise3 = Exercise(

@@ -1,3 +1,5 @@
+import 'package:pahlevani/domain/entities/training_session/move_variation.dart';
+
 class ExerciseMedia {
   final String type; // 'video' | 'photo' | 'none'
   final String? src;
@@ -45,6 +47,16 @@ class Exercise {
   /// audio-shaped fields below stay null.
   final int? movementTypeId;
 
+  /// Up to 3 "pay attention to" points, shown in the player and the
+  /// learning card (`movement_info.cues`). Empty when none are entered.
+  final List<String> cues;
+
+  /// Numbered how-to steps for the learning card. Empty when none.
+  final List<String> steps;
+
+  /// Lighter → harder variants, lightest first. Empty when none.
+  final List<MoveVariation> variations;
+
   const Exercise({
     required this.id,
     this.movementId,
@@ -59,5 +71,17 @@ class Exercise {
     this.videoUrl,
     this.audioAnchorMs,
     this.movementTypeId,
+    this.cues = const [],
+    this.steps = const [],
+    this.variations = const [],
   });
+
+  /// Whether there is anything to learn this move from: a video (the
+  /// follow-along demo or an educational one) or explanation text. Only
+  /// such moves get a learning card in Learning mode and the Library.
+  bool get hasLearningContent =>
+      (media.type == 'video' && media.hasAsset) ||
+      (videoUrl?.isNotEmpty ?? false) ||
+      (description?.trim().isNotEmpty ?? false) ||
+      steps.isNotEmpty;
 }

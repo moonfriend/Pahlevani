@@ -43,6 +43,9 @@ abstract class AudioPlayerService {
   /// Enable or disable seamless looping of the current source.
   Future<void> setLooping(bool loop);
 
+  /// Output volume, 0 (silent) to 1 (full). Playback keeps running at 0.
+  Future<void> setVolume(double volume);
+
   /// Release all resources. Call once when the owner is disposed.
   Future<void> dispose();
 }

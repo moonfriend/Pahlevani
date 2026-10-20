@@ -30,23 +30,6 @@ class TrainingSessionLoaded extends TrainingSessionState {
   List<Object?> get props => [uiModel];
 }
 
-// Represents state during an active download
-class TrainingSessionDownloading extends TrainingSessionState {
-  final TrainingSessionsUiModel uiModel;
-  final Map<int, double> downloadProgress; // Progress map
-  final int downloadingTrainingSessionId; // ID being downloaded
-
-  const TrainingSessionDownloading({
-    required this.uiModel,
-    required this.downloadProgress,
-    required this.downloadingTrainingSessionId,
-  });
-
-  @override
-  List<Object?> get props =>
-      [uiModel, downloadProgress, downloadingTrainingSessionId];
-}
-
 // Represents an error state (fetching or downloading)
 class TrainingSessionError extends TrainingSessionState {
   final String message;

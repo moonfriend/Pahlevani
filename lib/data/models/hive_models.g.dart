@@ -27,13 +27,15 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       isPublic: fields[7] as bool?,
       deprecatedAssignedToUserId: fields[8] as String?,
       ownerTrainerId: fields[9] as String?,
+      homePosition: fields[10] as int?,
+      needsMeel: fields[11] == null ? false : fields[11] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveTrainingSession obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -53,7 +55,11 @@ class HiveTrainingSessionAdapter extends TypeAdapter<HiveTrainingSession> {
       ..writeByte(8)
       ..write(obj.deprecatedAssignedToUserId)
       ..writeByte(9)
-      ..write(obj.ownerTrainerId);
+      ..write(obj.ownerTrainerId)
+      ..writeByte(10)
+      ..write(obj.homePosition)
+      ..writeByte(11)
+      ..write(obj.needsMeel);
   }
 
   @override
@@ -92,13 +98,16 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       videoUrl: fields[15] as String?,
       videoAnchorMs: fields[17] as int?,
       movementTypeId: fields[18] as int?,
+      cues: (fields[19] as List?)?.cast<String>(),
+      steps: (fields[20] as List?)?.cast<String>(),
+      variationsJson: fields[21] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveExercise obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -126,7 +135,13 @@ class HiveExerciseAdapter extends TypeAdapter<HiveExercise> {
       ..writeByte(17)
       ..write(obj.videoAnchorMs)
       ..writeByte(18)
-      ..write(obj.movementTypeId);
+      ..write(obj.movementTypeId)
+      ..writeByte(19)
+      ..write(obj.cues)
+      ..writeByte(20)
+      ..write(obj.steps)
+      ..writeByte(21)
+      ..write(obj.variationsJson);
   }
 
   @override

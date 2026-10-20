@@ -140,4 +140,115 @@ void main() {
       expect(stats.single.displayName, 'New Name');
     });
   });
+
+  group('recentMovementCounts', () {
+    TrackedMovementCount count(MovementKey key, String name, int n) =>
+        TrackedMovementCount(key: key, displayName: name, count: n);
+
+    test('per move: counts in completion order, latest last', () {
+      final records = [
+        // Deliberately out of order: the helper sorts by completedAt.
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 12),
+            counts: [count(_sheno, 'Shena', 38)]),
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 10),
+            counts: [count(_sheno, 'Shena', 34), count(_meel, 'Meel', 44)]),
+        _record(
+            id: 'c',
+            completedAt: DateTime(2026, 9, 14),
+            counts: [count(_sheno, 'Shena', 42)]),
+      ];
+
+      final trends = recentMovementCounts(records);
+      final shena = trends.firstWhere((t) => t.key == _sheno);
+      final meel = trends.firstWhere((t) => t.key == _meel);
+
+      expect(shena.counts, [34, 38, 42]);
+      expect(shena.latest, 42);
+      expect(meel.counts, [44]);
+    });
+
+    test('keeps only the last [limit] counts', () {
+      final records = [
+        for (var day = 1; day <= 9; day++)
+          _record(
+              id: '$day',
+              completedAt: DateTime(2026, 9, day),
+              counts: [count(_sheno, 'Shena', day)]),
+      ];
+
+      expect(recentMovementCounts(records, limit: 6).single.counts,
+          [4, 5, 6, 7, 8, 9]);
+    });
+
+    test('most recently logged move first; latest display name wins', () {
+      final records = [
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 1),
+            counts: [count(_sheno, 'Sheno (old)', 30)]),
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 2),
+            counts: [count(_meel, 'Meel', 40)]),
+        _record(
+            id: 'c',
+            completedAt: DateTime(2026, 9, 3),
+            counts: [count(_sheno, 'Shena', 31)]),
+      ];
+
+      final trends = recentMovementCounts(records);
+      expect(trends.map((t) => t.key), [_sheno, _meel]);
+      expect(trends.first.displayName, 'Shena');
+    });
+
+    test('no records → no trends', () {
+      expect(recentMovementCounts(const []), isEmpty);
+    });
+  });
+
+  group('mostCountedMovements', () {
+    TrackedMovementCount count(MovementKey key, String name, int n) =>
+        TrackedMovementCount(key: key, displayName: name, count: n);
+
+    test('orders moves by total reps, most first, with their recent counts',
+        () {
+      final records = [
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 1),
+            counts: [count(_sheno, 'Shena', 10), count(_meel, 'Meel', 30)]),
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 2),
+            counts: [count(_sheno, 'Shena', 12), count(_meel, 'Meel', 31)]),
+      ];
+
+      final top = mostCountedMovements(records);
+      expect(top.map((t) => t.key), [_meel, _sheno]);
+      expect(top.first.latest, 31);
+    });
+
+    test('equal totals: the most recently logged move first', () {
+      final records = [
+        _record(
+            id: 'a',
+            completedAt: DateTime(2026, 9, 1),
+            counts: [count(_sheno, 'Shena', 20)]),
+        _record(
+            id: 'b',
+            completedAt: DateTime(2026, 9, 2),
+            counts: [count(_meel, 'Meel', 20)]),
+      ];
+
+      expect(mostCountedMovements(records).map((t) => t.key), [_meel, _sheno]);
+    });
+
+    test('no records → nothing', () {
+      expect(mostCountedMovements(const []), isEmpty);
+    });
+  });
 }

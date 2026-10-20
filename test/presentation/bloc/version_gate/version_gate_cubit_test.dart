@@ -6,6 +6,22 @@ import '../../../fakes/fake_version_gate_repository.dart';
 
 void main() {
   group('check()', () {
+    test('never blocks on the web: the page is always the latest build',
+        () async {
+      final repo = FakeVersionGateRepository()
+        ..config = const VersionGateConfig(
+            minSupportedBuildNumber: 99,
+            updateMessage: 'Update now',
+            forceUpdate: true);
+      final cubit = VersionGateCubit(
+          repository: repo, currentBuildNumber: 0, isWeb: true);
+      addTearDown(cubit.close);
+
+      await cubit.check();
+
+      expect(cubit.state, isA<VersionGateOk>());
+    });
+
     test('emits VersionGateOk when force_update is false', () async {
       final repo = FakeVersionGateRepository()
         ..config = const VersionGateConfig(

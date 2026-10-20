@@ -13,6 +13,15 @@ void main() {
       expect(morshed.name, 'Sirvan Norouzi');
       expect(morshed.photoUrl, 'https://x/y.jpg');
     });
+
+    test('maps is_default (migration 0041); missing column → not default', () {
+      expect(
+          mapMorshed(MorshedRow.fromJson(
+              {'id': 1, 'name': 'A', 'is_default': true})).isDefault,
+          isTrue);
+      expect(mapMorshed(MorshedRow.fromJson({'id': 2, 'name': 'B'})).isDefault,
+          isFalse);
+    });
   });
 
   group('mapMovementAudioTrack', () {

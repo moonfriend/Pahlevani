@@ -1,16 +1,22 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:equatable/equatable.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/prescription.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
+import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/usecases/library/library_moves.dart'
+    as catalogue;
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -20,13 +26,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   final TrainingSessionRepository _sessionRepository;
   final DownloadRepository _downloadRepository;
   final AudioCatalogRepository _audioCatalogRepository;
-  StreamSubscription? _downloadSubscription;
 
   // Store current data locally in cubit to avoid passing it around in states excessively
   // todo: design issue: data should go in the state
   DomainSnapshot _currentTSSnapshot = NullDomainSnapshot();
   Map<int, DownloadStatus> _currentDownloadStatus = {};
-  final Map<int, double> _currentDownloadProgress = {};
 
   // Cached alongside _currentTSSnapshot so buildTrainingSessionsUiModel() can
   // stay synchronous — refreshed on initialize() and whenever the athlete's
@@ -48,7 +52,11 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
   Future<void> _refreshAudioCatalog() async {
     try {
       _audioTracks = await _audioCatalogRepository.getMovementAudioTracks();
-      _selectedMorshedId = await _audioCatalogRepository.getSelectedMorshedId();
+      // Same rule as the player and downloads: choice, else the default.
+      _selectedMorshedId = effectiveMorshedId(
+        selectedId: await _audioCatalogRepository.getSelectedMorshedId(),
+        morsheds: await _audioCatalogRepository.getMorsheds(),
+      );
     } catch (_) {
       // Leave previous values in place — duration estimates just go stale,
       // this should never take the sessions list down.
@@ -81,6 +89,23 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
       });
     }).catchError((_) {})); // silent: Hive data already shown
+  }
+
+  /// Fetches everything from the server again and shows it — after the
+  /// account was activated, the server returns what it hid before
+  /// (migration 0045). Offline, the shown sessions stay.
+  Future<void> resync() async {
+    try {
+      await _refreshAudioCatalog();
+      _currentTSSnapshot = await _sessionRepository.syncFromRemote();
+      _currentDownloadStatus =
+          await _downloadRepository.getInitialDownloadStatuses();
+      if (!isClosed) {
+        emit(TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
+      }
+    } catch (e) {
+      AppLogger.w('Session resync failed — keeping what is shown', error: e);
+    }
   }
 
   /// Loads download statuses from the repository.
@@ -123,68 +148,6 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
     }
   }
 
-  /// Initiates download for a specific training session.
-  Future<void> downloadTrainingSession(int sessionId) async {
-    final detail = getSessionDetail(sessionId);
-    if (detail == null) {
-      emit(TrainingSessionError(
-        message: 'Session $sessionId not found in snapshot.',
-        uiModel: buildTrainingSessionsUiModel(),
-      ));
-      return;
-    }
-
-    if (_currentDownloadStatus[sessionId] == DownloadStatus.downloading) return;
-
-    await _downloadSubscription?.cancel();
-    _currentDownloadStatus[sessionId] = DownloadStatus.downloading;
-    _currentDownloadProgress[sessionId] = 0.0;
-    emit(TrainingSessionDownloading(
-      uiModel: buildTrainingSessionsUiModel(),
-      downloadProgress: Map.of(_currentDownloadProgress),
-      downloadingTrainingSessionId: sessionId,
-    ));
-
-    try {
-      final stream = _downloadRepository.downloadTrainingSession(detail);
-      _downloadSubscription = stream.listen(
-        (progress) {
-          _currentDownloadProgress[sessionId] = progress;
-          emit(TrainingSessionDownloading(
-            uiModel: buildTrainingSessionsUiModel(),
-            downloadProgress: Map.of(_currentDownloadProgress),
-            downloadingTrainingSessionId: sessionId,
-          ));
-        },
-        onError: (error) {
-          _currentDownloadStatus[sessionId] = DownloadStatus.error;
-          _currentDownloadProgress.remove(sessionId);
-          emit(TrainingSessionError(
-            message: 'Download failed: $error',
-            uiModel: buildTrainingSessionsUiModel(),
-          ));
-        },
-        onDone: () {
-          _downloadRepository
-              .isTrainingSessionDownloaded(sessionId, detail.items)
-              .then((ok) {
-            _currentDownloadStatus[sessionId] =
-                ok ? DownloadStatus.downloaded : DownloadStatus.error;
-            _currentDownloadProgress.remove(sessionId);
-            emit(
-                TrainingSessionLoaded(uiModel: buildTrainingSessionsUiModel()));
-          });
-        },
-      );
-    } catch (e) {
-      _currentDownloadStatus[sessionId] = DownloadStatus.error;
-      _currentDownloadProgress.remove(sessionId);
-      emit(TrainingSessionError(
-          message: 'Failed to start download: $e',
-          uiModel: buildTrainingSessionsUiModel()));
-    }
-  }
-
   TrainingSessionsUiModel buildTrainingSessionsUiModel() {
     final itemCounts = <int, int>{};
     final durations = <int, int>{};
@@ -195,31 +158,12 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       var total = 0;
       var allKnown = true;
       for (final item in items) {
-        final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
-        if (exercise == null) {
+        final seconds = moveDurationSeconds(item);
+        if (seconds == null) {
           allKnown = false;
-          continue;
+        } else {
+          total += seconds;
         }
-        // Same resolution the player actually plays through, exactly like
-        // resolveAudioTrack's callers elsewhere — there is no more legacy
-        // per-exercise fallback, so when this comes up null the item's
-        // duration is simply unknown (handled by allKnown below).
-        final resolved = resolveAudioTrack(
-          movementTypeId: exercise.movementTypeId,
-          chosenMorshedId: _selectedMorshedId,
-          availableTracks: _audioTracks,
-        );
-        final trackDuration = resolved?.durationSeconds;
-        final defaultReps =
-            resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
-        if (trackDuration == null) {
-          allKnown = false;
-          continue;
-        }
-        final repsToDo = item.prescription is RepsPresc
-            ? (item.prescription as RepsPresc).count
-            : defaultReps;
-        total += (trackDuration / defaultReps * repsToDo).round();
       }
       if (allKnown) durations[sessionId] = total;
     }
@@ -229,6 +173,38 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
       sessionItemCounts: itemCounts,
       sessionDurations: durations,
     );
+  }
+
+  /// Whether [sessionId]'s media is on the device (not downloaded when the
+  /// statuses aren't known yet).
+  DownloadStatus downloadStatusOf(int sessionId) =>
+      _currentDownloadStatus[sessionId] ?? DownloadStatus.notDownloaded;
+
+  /// The Library's moves: every loaded move once, sorted by name.
+  List<Exercise> get libraryMoves =>
+      catalogue.libraryMoves(_currentTSSnapshot.exercisesById.values);
+
+  /// Estimated play seconds of one session move with the athlete's
+  /// Morshed, or null when unknown (exercise missing, or no recording).
+  int? moveDurationSeconds(TrainingItem item) {
+    final exercise = _currentTSSnapshot.exercisesById[item.exerciseId];
+    if (exercise == null) return null;
+    // Same resolution the player actually plays through — there is no more
+    // legacy per-exercise fallback, so when this comes up null the move's
+    // duration is simply unknown.
+    final resolved = resolveAudioTrack(
+      movementTypeId: exercise.movementTypeId,
+      chosenMorshedId: _selectedMorshedId,
+      availableTracks: _audioTracks,
+    );
+    final trackDuration = resolved?.durationSeconds;
+    if (trackDuration == null) return null;
+    final defaultReps =
+        resolved?.repetitionsDefault ?? exercise.repetitionsDefault;
+    final repsToDo = item.prescription is RepsPresc
+        ? (item.prescription as RepsPresc).count
+        : defaultReps;
+    return (trackDuration / defaultReps * repsToDo).round();
   }
 
   /// Returns the detailed item list for a session, built from the in-memory snapshot.
@@ -334,11 +310,5 @@ class TrainingSessionCubit extends Cubit<TrainingSessionState> {
         uiModel: buildTrainingSessionsUiModel(),
       ));
     }
-  }
-
-  @override
-  Future<void> close() {
-    _downloadSubscription?.cancel();
-    return super.close();
   }
 }

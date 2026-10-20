@@ -1,9 +1,17 @@
+import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
+import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
+import 'package:pahlevani/domain/repositories/media_size_repository.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/training_session/exercise.dart';
+import 'package:pahlevani/domain/entities/training_session/prescription.dart';
+import 'package:pahlevani/domain/entities/training_session/training_item.dart';
 import 'package:pahlevani/domain/entities/training_session/session_assignment.dart';
 import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/entities/training_session/training_session.dart';
@@ -15,10 +23,13 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
+import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -74,17 +85,31 @@ class _StubRepository implements TrainingSessionRepository {
 }
 
 class _StubDownloadRepository implements DownloadRepository {
-  @override
-  Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
+  _StubDownloadRepository({this.statuses = const {}});
+  final Map<int, DownloadStatus> statuses;
 
   @override
-  Stream<double> downloadTrainingSession(SessionDetail session) =>
-      const Stream.empty();
+  Future<void> markTrainingSessionDownloaded(int sessionId) async {}
+
+  /// Files treated as already on the device.
+  final Set<String> localUrls = {};
 
   @override
-  Future<bool> isTrainingSessionDownloaded(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
+  Future<Set<String>> localUrlsIn(DownloadPlan plan) async =>
+      plan.urls.intersection(localUrls);
+
+  @override
+  Stream<DownloadProgress> downloadPlan(DownloadPlan plan,
+          {Map<String, int> knownSizes = const {}}) =>
+      Stream.value(DownloadProgress(
+          filesDone: plan.files.length,
+          filesTotal: plan.files.length,
+          bytesDone: 0,
+          bytesTotal: 0));
+
+  @override
+  Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async =>
+      statuses;
 
   @override
   Future<String?> getLocalAudioPath(ItemDetail item) async => null;
@@ -93,25 +118,7 @@ class _StubDownloadRepository implements DownloadRepository {
   Future<String?> getLocalImagePath(String imageUrl) async => null;
 
   @override
-  Future<String?> cacheAudio(ItemDetail item) async => null;
-
-  @override
-  Future<String> resolvePlayableAudioPath(ItemDetail item) async =>
-      item.exercise.audioFileUrl ?? '';
-
-  @override
-  Future<String?> cacheImage(String url) async => null;
-
-  @override
   Future<String?> getLocalVideoPath(String videoUrl) async => null;
-
-  @override
-  Future<String?> cacheVideo(String url) async => null;
-
-  @override
-  Future<bool> checkAllCachedAndMark(
-          int sessionId, List<ItemDetail> items) async =>
-      false;
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -127,9 +134,26 @@ final _snapshot = DomainSnapshot(
         difficulty: 3,
         isUserCreated: true),
   },
-  itemsBySessionId: {},
-  exercisesById: {},
+  // Session A has one move, so its preview can be started.
+  itemsBySessionId: {
+    1: const [
+      TrainingItem(
+          id: 1,
+          sessionId: 1,
+          exerciseId: 1,
+          position: 0,
+          prescription: RepsPresc(3)),
+    ],
+  },
+  exercisesById: {
+    1: const Exercise(
+        id: 1,
+        name: 'Shena',
+        media: ExerciseMedia(type: 'photo', src: _photoUrl)),
+  },
 );
+
+const _photoUrl = 'https://cdn/shena.jpg';
 
 Widget _buildHarness(TrainingSessionCubit cubit, SettingsCubit settingsCubit) {
   return MultiBlocProvider(
@@ -183,6 +207,29 @@ void main() {
 
     expect(find.text('Session A'), findsOneWidget);
     expect(find.text('Session B'), findsOneWidget);
+  });
+
+  testWidgets('on a wide screen the list keeps a readable width, centred',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+    await cubit.fetchTrainingSessions();
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    final list = tester.getRect(find.byType(RefreshIndicator));
+    expect(list.width, lessThanOrEqualTo(760));
+    expect(list.center.dx, closeTo(720, 1));
   });
 
   testWidgets('header title does not overflow at a narrow device width',
@@ -364,10 +411,13 @@ void main() {
 
   // ── Mode-selection dialog ──────────────────────────────────────────────────
 
+  late _StubDownloadRepository downloadsStub;
+
   void registerPlayerFakes() {
     getIt.registerSingleton<TrainingSessionRepository>(
         _StubRepository(_snapshot));
-    getIt.registerSingleton<DownloadRepository>(_StubDownloadRepository());
+    downloadsStub = _StubDownloadRepository();
+    getIt.registerSingleton<DownloadRepository>(downloadsStub);
     getIt.registerSingleton<AudioCatalogRepository>(
         FakeAudioCatalogRepository());
     getIt.registerSingleton<LearntExercisesRepository>(
@@ -377,81 +427,169 @@ void main() {
         FakePlayerNotificationService());
     getIt.registerSingleton<TrainingHistoryRepository>(
         FakeTrainingHistoryRepository());
+    getIt.registerSingleton<MediaSizeRepository>(_NoSizes());
+    getIt.registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+    getIt.registerLazySingleton<AudioCatalogCubit>(
+        () => AudioCatalogCubit(repository: getIt<AudioCatalogRepository>()));
   }
 
-  testWidgets(
-      'tapping a session card shows Athlete/Learning/Zoorkhaneh options',
+  // The mode-selection tests are about an already-downloaded session — an
+  // undownloaded one asks to download first (see the download gate tests).
+  Future<TrainingSessionCubit> downloadedSessionCubit() async {
+    final cubit = TrainingSessionCubit(
+      sessionRepository: _StubRepository(_snapshot),
+      downloadRepository: _StubDownloadRepository(statuses: {
+        for (final id in _snapshot.sessionsById.keys)
+          id: DownloadStatus.downloaded
+      }),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    );
+    await cubit.loadInitialStatuses();
+    await cubit.fetchTrainingSessions();
+    return cubit;
+  }
+
+  testWidgets('tapping a session card opens its preview', (tester) async {
+    registerPlayerFakes();
+    final cubit = await downloadedSessionCubit();
+    final settingsCubit = SettingsCubit();
+    addTearDown(cubit.close);
+    addTearDown(settingsCubit.close);
+
+    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.pump();
+
+    await tester.tap(find.text('Session A'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionPreviewPage), findsOneWidget);
+    expect(find.text('Zoorkhaneh mode'), findsNothing,
+        reason: 'Zoorkhaneh lives in the session menu, not the preview');
+  });
+
+  testWidgets('Start in the preview opens the player in Learning mode',
       (tester) async {
     registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
+    final cubit = await downloadedSessionCubit();
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
     addTearDown(settingsCubit.close);
 
-    await cubit.fetchTrainingSessions();
     await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
     await tester.pump();
 
     await tester.tap(find.text('Session A'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Athlete mode'), findsOneWidget);
-    expect(find.text('Learning Mode'), findsOneWidget);
-    expect(find.text('Zoorkhaneh mode'), findsOneWidget);
+    final player = tester.widget<AudioPlayerPage>(find.byType(AudioPlayerPage));
+    expect(player.mode, PlayerMode.learning);
   });
 
-  testWidgets('choosing a mode opens the player', (tester) async {
+  testWidgets('long-pressing a session offers Zoorkhaneh mode', (tester) async {
     registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
+    final cubit = await downloadedSessionCubit();
     final settingsCubit = SettingsCubit();
     addTearDown(cubit.close);
     addTearDown(settingsCubit.close);
 
-    await cubit.fetchTrainingSessions();
     await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
     await tester.pump();
 
-    await tester.tap(find.text('Session A'));
+    await tester.longPress(find.text('Session A'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Athlete mode'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AudioPlayerPage), findsOneWidget);
-  });
-
-  testWidgets('dismissing the mode dialog does not open the player',
-      (tester) async {
-    registerPlayerFakes();
-    final cubit = TrainingSessionCubit(
-      sessionRepository: _StubRepository(_snapshot),
-      downloadRepository: _StubDownloadRepository(),
-      audioCatalogRepository: FakeAudioCatalogRepository(),
-    );
-    final settingsCubit = SettingsCubit();
-    addTearDown(cubit.close);
-    addTearDown(settingsCubit.close);
-
-    await cubit.fetchTrainingSessions();
-    await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+    await tester.tap(find.text('Play in Zoorkhaneh mode'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    await tester.tap(find.text('Session A'));
-    await tester.pumpAndSettle();
-
-    // Tap the scrim, outside the dialog's content, to dismiss without
-    // picking a mode.
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AudioPlayerPage), findsNothing);
-    expect(find.text('Session A'), findsOneWidget);
+    final player = tester.widget<AudioPlayerPage>(find.byType(AudioPlayerPage));
+    expect(player.mode, PlayerMode.zoorkhaneh);
   });
+
+  // ── Download before play ───────────────────────────────────────────────────
+
+  group('download gate', () {
+    Future<void> openList(WidgetTester tester) async {
+      registerPlayerFakes();
+      final cubit = TrainingSessionCubit(
+        sessionRepository: _StubRepository(_snapshot),
+        downloadRepository: _StubDownloadRepository(),
+        audioCatalogRepository: FakeAudioCatalogRepository(),
+      );
+      final settingsCubit = SettingsCubit();
+      addTearDown(cubit.close);
+      addTearDown(settingsCubit.close);
+      await cubit.fetchTrainingSessions();
+      await tester.pumpWidget(_buildHarness(cubit, settingsCubit));
+      await tester.pump();
+    }
+
+    const question =
+        'Are you ready to download all the data of this training session?';
+
+    Future<void> startFromPreview(WidgetTester tester) async {
+      await tester.tap(find.text('Session A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('starting an undownloaded session asks to download it first',
+        (tester) async {
+      await openList(tester);
+      await startFromPreview(tester);
+
+      expect(find.text(question), findsOneWidget);
+      expect(find.byType(AudioPlayerPage), findsNothing);
+    });
+
+    testWidgets('"Not now" stays on the list (no streaming playback)',
+        (tester) async {
+      await openList(tester);
+      await startFromPreview(tester);
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SessionPreviewPage), findsOneWidget);
+      expect(find.byType(AudioPlayerPage), findsNothing);
+    });
+
+    testWidgets(
+        'once everything is on the device, it goes straight on — no '
+        'dialog', (tester) async {
+      // (The download itself is covered by media_download_dialog_test.)
+      await openList(tester);
+      downloadsStub.localUrls.add(_photoUrl);
+      await startFromPreview(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text(question), findsNothing);
+      expect(find.byType(AudioPlayerPage), findsOneWidget);
+    });
+
+    testWidgets("the card's download ring opens the download dialog",
+        (tester) async {
+      await openList(tester);
+      await tester.tap(find.byType(DownloadRing).first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Audio only'), findsOneWidget);
+    });
+  });
+}
+
+class _NoSizes implements MediaSizeRepository {
+  @override
+  Future<Map<String, int>> sizesFor(Set<String> urls) async => {};
+}
+
+class _MemoryPrefs implements DownloadPreferencesRepository {
+  DownloadTier? tier;
+  @override
+  Future<DownloadTier?> getPreferredTier() async => tier;
+  @override
+  Future<void> setPreferredTier(DownloadTier t) async => tier = t;
 }

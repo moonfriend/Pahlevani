@@ -5,6 +5,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fvp/fvp.dart' as fvp;
+import 'package:pahlevani/domain/repositories/activation_repository.dart';
+import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
+import 'package:pahlevani/presentation/pages/access/access_gate.dart';
 import 'package:pahlevani/data/services/pahlevani_audio_handler.dart';
 import 'package:pahlevani/firebase_options.dart';
 import 'package:flutter/material.dart';
@@ -16,14 +19,21 @@ import 'package:pahlevani/core/utils/app_logger.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 import 'package:pahlevani/domain/repositories/version_gate_repository.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
+import 'package:pahlevani/domain/repositories/onboarding_repository.dart';
+import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
+import 'package:pahlevani/presentation/bloc/onboarding/onboarding_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
-import 'package:pahlevani/presentation/pages/training_session/training_sessions_page.dart';
+import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
+import 'package:pahlevani/presentation/pages/shell/main_tabs.dart';
+import 'package:pahlevani/presentation/widgets/first_run_gate.dart';
 import 'package:pahlevani/presentation/widgets/version_gate/version_gate.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
+import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,6 +136,15 @@ class PahlevaniApp extends StatelessWidget {
           create: (_) => SettingsCubit()..load(),
           lazy: false,
         ),
+        BlocProvider<FirstRunCubit>(
+          create: (_) => FirstRunCubit()..load(),
+          lazy: false,
+        ),
+        // Created (and fetching) only if the first-open flow runs.
+        BlocProvider<OnboardingCubit>(
+          create: (_) =>
+              OnboardingCubit(repository: getIt<OnboardingRepository>()),
+        ),
         BlocProvider<TrainingSessionCubit>(
           create: (_) => getIt<TrainingSessionCubit>()..initialize(),
           lazy: false,
@@ -142,6 +161,11 @@ class PahlevaniApp extends StatelessWidget {
               AuthCubit(repository: getIt<AuthRepository>())..initialize(),
           lazy: false,
         ),
+        // Release 1's activation gate (Patreon members, migration 0045).
+        BlocProvider<ActivationCubit>(
+          create: (_) =>
+              ActivationCubit(repository: getIt<ActivationRepository>()),
+        ),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) => MaterialApp(
@@ -150,7 +174,24 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
-          home: const VersionGate(child: TrainingSessionPage()),
+          // Version gate stays outermost: an outdated app is blocked before
+          // the first-open splash.
+          home: VersionGate(
+            child: FirstRunGate(
+              child: AccessGate(
+                // Before activation the server returned no content.
+                onActivated: () =>
+                    context.read<TrainingSessionCubit>().resync(),
+                child: AppShell(
+                  tabs: mainTabs(),
+                  railFooter: BlocProvider.value(
+                    value: getIt<TrainingHistoryCubit>()..load(),
+                    child: const RailUser(),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
+import 'package:pahlevani/domain/entities/download/download_plan.dart';
+import 'package:pahlevani/domain/repositories/download_preferences_repository.dart';
+import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
+import 'package:pahlevani/core/theme/kashi/kashi_assets.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -14,10 +21,16 @@ import 'package:pahlevani/domain/repositories/tracking/training_history_reposito
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
-import 'package:pahlevani/presentation/bloc/player/audio_player_cubit.dart';
+import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
+import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -49,6 +62,7 @@ void _registerFakes(DomainSnapshot snapshot) {
 
 Widget _buildPage(DomainSnapshot snapshot,
     {PlayerMode mode = PlayerMode.athlete}) {
+  // The Rep log tests below need it on; release 1 switches it off.
   return BlocProvider(
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
@@ -57,7 +71,8 @@ Widget _buildPage(DomainSnapshot snapshot,
     ),
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
-      home: AudioPlayerPage(trainingSession: testSession1, mode: mode),
+      home: AudioPlayerPage(
+          trainingSession: testSession1, mode: mode, repLogging: true),
     ),
   );
 }
@@ -79,6 +94,60 @@ Future<void> _pumpAndLoad(WidgetTester tester) async {
     await tester.pump();
   });
 }
+
+/// A home screen with a button that pushes the player — for flows that leave
+/// the player (Complete replaces it; Return home pops back here).
+Widget _buildLauncher(DomainSnapshot snapshot) {
+  return BlocProvider(
+    create: (_) => TrainingSessionCubit(
+      sessionRepository: FakeTrainingSessionRepository(snapshot),
+      downloadRepository: FakeDownloadRepository(),
+      audioCatalogRepository: FakeAudioCatalogRepository(),
+    ),
+    child: MaterialApp(
+      theme: PahlevaniTheme.dark(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AudioPlayerPage(
+                    trainingSession: testSession1,
+                    mode: PlayerMode.athlete,
+                    repLogging: true),
+              ),
+            ),
+            child: const Text('Open player'),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _openPlayerFromLauncher(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(800, 900));
+  addTearDown(() async {
+    await tester.binding.setSurfaceSize(null);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+  await tester.tap(find.text('Open player'));
+  await _pumpRoutes(tester);
+}
+
+/// Lets route transitions and the player's async work finish. Not
+/// pumpAndSettle: the player and the Complete screen animate continuously.
+Future<void> _pumpRoutes(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+}
+
+SessionPlayerCubit _playerCubit(WidgetTester tester) => tester
+    .element(find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+    .read<SessionPlayerCubit>();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -120,12 +189,13 @@ void main() {
 
   // ── Full UI after tracks load ──────────────────────────────────────────────
 
-  testWidgets('shows session header after tracks load', (tester) async {
+  testWidgets('shows the move count and the current move after load',
+      (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    expect(find.text('PLAY ALONG'), findsOneWidget);
-    expect(find.text(testSession1.title), findsAtLeastNWidgets(1));
+    expect(find.text('Move 1 of 2'), findsOneWidget);
+    expect(find.text('Shena'), findsOneWidget);
   });
 
   testWidgets('enables the wakelock while the player page is active',
@@ -134,6 +204,19 @@ void main() {
     await _pumpAndLoad(tester);
 
     expect(await fakeWakelock.enabled, isTrue);
+  });
+
+  testWidgets(
+      'a wake lock the platform refuses does not break the player '
+      '(Linux without a screensaver service)', (tester) async {
+    fakeWakelock.throwOnToggle = true;
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('Move 1 of 2'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('disables the wakelock when leaving the player page',
@@ -147,38 +230,25 @@ void main() {
     expect(await fakeWakelock.enabled, isFalse);
   });
 
-  testWidgets('shows back and edit buttons after tracks load', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
-  });
-
-  testWidgets('shows both track titles in the list', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    // testSession1 has items: Shena (pos 1) and Kabbadeh (pos 2)
-    expect(find.text('Shena'), findsWidgets);
-    expect(find.text('Kabbadeh'), findsWidgets);
-  });
-
-  testWidgets('shows track position numbers in the list', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.text('1'), findsWidgets);
-    expect(find.text('2'), findsWidgets);
-  });
-
-  testWidgets('shows prev (up) and next (down) transport buttons',
+  testWidgets('shows close, the menu and the transport after load',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+    expect(find.byTooltip('Close player'), findsOneWidget);
+    expect(find.byTooltip('More'), findsOneWidget);
+    expect(find.byTooltip('Previous move'), findsOneWidget);
+    expect(find.byTooltip('Next move'), findsOneWidget);
+  });
+
+  testWidgets('one progress segment per move', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    expect(find.byType(SegmentProgress), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('segment-2')), findsNothing);
   });
 
   testWidgets(
@@ -198,121 +268,311 @@ void main() {
 
     // _pumpAndLoad sizes the surface to 800x900 logical pixels.
     const screenHeight = 900.0;
-    final nextBtnRect =
-        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    final nextBtnRect = tester.getRect(find.byTooltip('Next move'));
 
     expect(nextBtnRect.bottom, lessThanOrEqualTo(screenHeight - bottomInset));
   });
 
-  testWidgets(
-      'track list extends behind the transport bar instead of stopping above it',
+  testWidgets('shows pause when playback is active', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    // After loadTracks, isPlaying=true.
+    expect(find.byTooltip('Pause'), findsOneWidget);
+  });
+
+  testWidgets('the star shows a dash before the move length is known',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // The transport bar is a transparent overlay floating over the track
-    // list (not a separate row below it) so scrolled cards stay visible
-    // through the gaps between its buttons — the list's own box must
-    // therefore extend past the transport row's top edge, not stop above it.
-    final listRect = tester.getRect(find.byType(ListView));
-    final nextBtnRect =
-        tester.getRect(find.byIcon(Icons.keyboard_arrow_down_rounded));
-
-    expect(listRect.bottom, greaterThan(nextBtnRect.top));
-  });
-
-  testWidgets('shows pause icon when playback is active', (tester) async {
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    // After loadTracks, isPlaying=true → pause icons visible
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
-  });
-
-  testWidgets('rep count pill is hidden before audio duration is known',
-      (tester) async {
-    // No audio duration has been emitted by the fake, so logicalDuration stays
-    // at Duration.zero and _RepCounter renders a SizedBox.
-    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
-    await _pumpAndLoad(tester);
-
-    expect(find.textContaining('Rep 1'), findsNothing);
+    expect(find.text('–'), findsOneWidget);
   });
 
   // ── Interactions ──────────────────────────────────────────────────────────
 
-  testWidgets('tapping play/pause button toggles playback state',
-      (tester) async {
+  testWidgets('tapping play/pause toggles playback state', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // Use .last to tap the transport button, not the track-row icon (which
-    // calls setIndexAndPlay instead of togglePlay).
-    await tester.tap(find.byIcon(Icons.pause_rounded).last);
+    await tester.tap(find.byTooltip('Pause'));
     await tester.pump();
 
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    expect(find.byTooltip('Play'), findsOneWidget);
   });
 
-  testWidgets('tapping next transport button advances track', (tester) async {
+  testWidgets('tapping next advances to the next move', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.tap(find.byTooltip('Next move'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Track list still visible with no crash
-    expect(find.text('Kabbadeh'), findsWidgets);
+    expect(find.text('Move 2 of 2'), findsOneWidget);
+    expect(find.text('Kabbadeh'), findsOneWidget);
   });
 
-  testWidgets('play/pause icon shows playing after next() from a paused state',
+  testWidgets('play/pause shows playing after next() from a paused state',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
     // Pause first.
-    await tester.tap(find.byIcon(Icons.pause_rounded).last);
+    await tester.tap(find.byTooltip('Pause'));
     await tester.pump();
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    expect(find.byTooltip('Play'), findsOneWidget);
 
     // next() always resumes playback regardless of prior pause state —
-    // the icon must reflect that, not the stale paused look.
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    // the button must reflect that, not the stale paused look.
+    await tester.tap(find.byTooltip('Next move'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+    expect(find.byTooltip('Pause'), findsOneWidget);
   });
 
-  testWidgets('tapping a track list item plays that track', (tester) async {
+  testWidgets('tapping a progress segment jumps to that move', (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    await tester.tap(find.text('Kabbadeh').first);
+    await tester.tap(find.byKey(const ValueKey('segment-1')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('Kabbadeh'), findsWidgets);
+    expect(find.text('Move 2 of 2'), findsOneWidget);
   });
 
-  testWidgets('tapping the info icon pauses playback', (tester) async {
+  testWidgets('How to pauses playback and opens the learning card',
+      (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
     // Playback auto-starts on load.
-    expect(find.byIcon(Icons.pause_rounded), findsWidgets);
+    expect(find.byTooltip('Pause'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.info_outline_rounded).first);
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('How to'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(LearningCardPage), findsOneWidget);
+    expect(find.text('Got it'), findsOneWidget);
 
-    // Now on the info page; go back to the player and confirm it's paused,
-    // not still playing (or — worse — resumed by a toggle).
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    await tester.tap(find.text('Got it'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byIcon(Icons.pause_rounded), findsNothing);
-    expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
+    // Closed again, and paused — never resumed by a toggle.
+    expect(find.text('Got it'), findsNothing);
+    expect(find.byTooltip('Play'), findsOneWidget);
+  });
+
+  group('video progress bar', () {
+    Future<FakeAudioPlayerService> open(WidgetTester tester) async {
+      late FakeAudioPlayerService audio;
+      await getIt.reset();
+      _registerFakes(buildTestSnapshot());
+      getIt.unregister<AudioPlayerService>();
+      getIt.registerFactory<AudioPlayerService>(
+          () => audio = FakeAudioPlayerService());
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      audio.emitDuration(const Duration(seconds: 30));
+      await tester.pump();
+      return audio;
+    }
+
+    Finder stage() => find.bySemanticsLabel('Show progress');
+
+    testWidgets('tapping the video shows the bar and keeps playing',
+        (tester) async {
+      await open(tester);
+      expect(find.byType(VideoScrubBar), findsNothing);
+
+      await tester.tap(stage());
+      await tester.pump();
+
+      expect(find.byType(VideoScrubBar), findsOneWidget);
+      expect(find.byTooltip('Pause'), findsOneWidget,
+          reason: 'tapping the video no longer pauses');
+    });
+
+    testWidgets(
+        'web: the video\'s browser element cannot swallow the tap — an '
+        'interceptor covers the whole stage, under the controls',
+        (tester) async {
+      await open(tester);
+      final stageRect = tester.getRect(stage());
+      await tester.tap(stage());
+      await tester.pump();
+
+      final interceptor = find.byType(PointerInterceptor);
+      expect(interceptor, findsOneWidget);
+      expect(
+          tester.widget<PointerInterceptor>(interceptor).intercepting, isFalse,
+          reason: 'only the web has a browser element to intercept');
+      expect(tester.getRect(interceptor), stageRect);
+
+      // Painted before (below) the pause button, so the button stays on top.
+      final stack = tester.widget<Stack>(
+          find.ancestor(of: interceptor, matching: find.byType(Stack)).first);
+      final interceptorIndex = stack.children.indexWhere((c) => find
+          .descendant(of: find.byWidget(c), matching: interceptor)
+          .evaluate()
+          .isNotEmpty);
+      final controlsIndex = stack.children.indexWhere((c) => find
+          .descendant(
+              of: find.byWidget(c),
+              matching: find.bySemanticsLabel('Pause video'))
+          .evaluate()
+          .isNotEmpty);
+      expect(interceptorIndex, isNonNegative);
+      expect(interceptorIndex, lessThan(controlsIndex));
+    });
+
+    testWidgets(
+        'the first tap shows a pause button on the video; it pauses, then '
+        'plays again', (tester) async {
+      await open(tester);
+      expect(find.bySemanticsLabel('Pause video'), findsNothing);
+
+      await tester.tap(stage());
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Pause video'));
+      await tester.pump();
+
+      expect(_playerCubit(tester).state.isPlaying, isFalse);
+      expect(find.byType(VideoScrubBar), findsOneWidget,
+          reason: 'paused, the controls stay up');
+
+      await tester.tap(find.bySemanticsLabel('Play video'));
+      await tester.pump();
+      expect(_playerCubit(tester).state.isPlaying, isTrue);
+    });
+
+    testWidgets('while paused the controls do not hide', (tester) async {
+      await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Pause video'));
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 5));
+
+      expect(find.bySemanticsLabel('Play video'), findsOneWidget);
+      expect(find.byType(VideoScrubBar), findsOneWidget);
+    });
+
+    testWidgets('the bar hides itself after a few seconds', (tester) async {
+      await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 4));
+
+      expect(find.byType(VideoScrubBar), findsNothing);
+    });
+
+    testWidgets('tapping the bar skips within the move', (tester) async {
+      final audio = await open(tester);
+      await tester.tap(stage());
+      await tester.pump();
+
+      final track = tester.getRect(find.byKey(VideoScrubBar.trackKey));
+      await tester
+          .tapAt(Offset(track.left + track.width * .5, track.center.dy));
+      await tester.pump();
+
+      expect(audio.seekedTo, isNotNull);
+      expect(audio.seekedTo!.inSeconds, closeTo(15, 1),
+          reason: 'half of a 30s move');
+    });
+  });
+
+  testWidgets('tapping the audio wave mutes; tapping again unmutes',
+      (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+
+    expect(_playerCubit(tester).state.isMuted, isTrue);
+    expect(find.byTooltip('Unmute'), findsOneWidget);
+    expect(find.byTooltip('Pause'), findsOneWidget,
+        reason: 'muting must not pause the session');
+
+    await tester.tap(find.byTooltip('Unmute'));
+    await tester.pump();
+    expect(_playerCubit(tester).state.isMuted, isFalse);
+  });
+
+  testWidgets('the muted sign stays visible while paused', (tester) async {
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+
+    expect(find.byTooltip('Unmute'), findsOneWidget);
+  });
+
+  testWidgets('a move without a video or photo shows the illustration',
+      (tester) async {
+    // The seed exercises have no media at all.
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+
+    final assets = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((i) => i.image)
+        .whereType<AssetImage>()
+        .map((a) => a.assetName);
+    expect(assets, contains(KashiAssets.pahlevanFemale));
+  });
+
+  testWidgets('a counted move shows its cues and counts star taps',
+      (tester) async {
+    const shena = Exercise(
+      id: 101,
+      name: 'Shena',
+      audioFileUrl: 'https://example.com/shena.mp3',
+      repetitionsDefault: 3,
+      cues: ['Back long', 'Breathe out'],
+    );
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(40),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {101: shena},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildPage(snap));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('Back long'), findsOneWidget);
+    expect(find.text('Breathe out'), findsOneWidget);
+    expect(find.text('of 40'), findsOneWidget);
+    expect(find.text('The morshed counts; you confirm after'), findsOneWidget);
+
+    // Reps only follow the audio: tapping the star or pressing Space does
+    // not change the count.
+    await tester.tap(find.byType(RepStar));
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(find.text('0'), findsOneWidget);
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
@@ -347,34 +607,9 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  // ── Completion sheet ───────────────────────────────────────────────────────
+  // ── Rep log + Complete ─────────────────────────────────────────────────────
 
-  testWidgets('shows completion sheet after all tracks finish', (tester) async {
-    final singleItemSnap = DomainSnapshot(
-      sessionsById: {testSession1.id: testSession1},
-      itemsBySessionId: {
-        testSession1.id: [testItem1]
-      },
-      exercisesById: {testExercise1.id: testExercise1},
-    );
-    await getIt.reset();
-    _registerFakes(singleItemSnap);
-
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
-
-    final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    cubit.next(); // only 1 track → isFinished: true
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(find.text('Session complete'), findsOneWidget);
-  });
-
-  testWidgets('transport button shows replay icon when session is finished',
+  testWidgets('finishing the session opens the Complete screen',
       (tester) async {
     final singleItemSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
@@ -386,27 +621,62 @@ void main() {
     await getIt.reset();
     _registerFakes(singleItemSnap);
 
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
+    await tester.pumpWidget(_buildLauncher(singleItemSnap));
+    await _openPlayerFromLauncher(tester);
 
-    expect(find.byIcon(Icons.replay_rounded), findsNothing);
+    _playerCubit(tester).next(); // only 1 move, not counted → finished
+    await _pumpRoutes(tester);
 
-    final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    cubit.next(); // only 1 track → isFinished: true
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    // The completion sheet's "Again" button also uses replay_rounded, so at
-    // least one (not exactly one) is expected once finished.
-    expect(find.byIcon(Icons.replay_rounded), findsWidgets);
-    expect(find.byIcon(Icons.pause_rounded), findsNothing,
-        reason: 'a finished session must never still show a pause icon');
+    expect(find.byType(CompletePage), findsOneWidget);
+    expect(find.text('Today is marked in your calendar.'), findsOneWidget);
+    expect(find.byType(AudioPlayerPage), findsNothing,
+        reason: 'the Complete screen replaces the player');
   });
 
-  testWidgets('completion sheet shows Done and Again buttons', (tester) async {
+  testWidgets('the run is recorded with the reps saved in the Rep log',
+      (tester) async {
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(3),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {testExercise1.id: testExercise1},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildLauncher(snap));
+    await _openPlayerFromLauncher(tester);
+
+    _playerCubit(tester).next(); // counted move → Rep log
+    await _pumpRoutes(tester);
+    expect(find.byType(RepLogPage), findsOneWidget);
+
+    await tester.tap(find.text('+'));
+    await tester.pump();
+    await tester.tap(find.text('Save and continue'));
+    await _pumpRoutes(tester);
+
+    expect(find.byType(CompletePage), findsOneWidget);
+    final history =
+        getIt<TrainingHistoryRepository>() as FakeTrainingHistoryRepository;
+    final record = history.recorded.single;
+    expect(record.sessionId, testSession1.id);
+    expect(record.movementCounts.single.count, 2,
+        reason: 'prefilled 1 from the audio (no taps), plus one');
+    expect(find.text('2'), findsWidgets,
+        reason: 'the Complete screen lists the reps logged in this run');
+  });
+
+  testWidgets('Return home leaves the Complete screen', (tester) async {
     final singleItemSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
       itemsBySessionId: {
@@ -417,53 +687,21 @@ void main() {
     await getIt.reset();
     _registerFakes(singleItemSnap);
 
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
+    await tester.pumpWidget(_buildLauncher(singleItemSnap));
+    await _openPlayerFromLauncher(tester);
+    _playerCubit(tester).next();
+    await _pumpRoutes(tester);
 
-    final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    cubit.next();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('Return home'));
+    await _pumpRoutes(tester);
 
-    expect(find.text('Done'), findsOneWidget);
-    expect(find.text('Again'), findsOneWidget);
-  });
-
-  testWidgets('tapping Again replays from beginning', (tester) async {
-    final singleItemSnap = DomainSnapshot(
-      sessionsById: {testSession1.id: testSession1},
-      itemsBySessionId: {
-        testSession1.id: [testItem1]
-      },
-      exercisesById: {testExercise1.id: testExercise1},
-    );
-    await getIt.reset();
-    _registerFakes(singleItemSnap);
-
-    await tester.pumpWidget(_buildPage(singleItemSnap));
-    await _pumpAndLoad(tester);
-
-    final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    cubit.next();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    await tester.tap(find.text('Again'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(find.text('Session complete'), findsNothing);
+    expect(find.byType(CompletePage), findsNothing);
+    expect(find.text('Open player'), findsOneWidget);
   });
 
   // ── Rep counter ────────────────────────────────────────────────────────────
 
-  testWidgets('rep counter pill visible when audio duration is emitted',
+  testWidgets('the star shows the time remaining once the length is known',
       (tester) async {
     late FakeAudioPlayerService capturedAudio;
     await getIt.reset();
@@ -490,18 +728,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    // Rep counter uses RichText; findRichText: true is required.
-    expect(find.textContaining('Rep', findRichText: true), findsWidgets);
+    // 3 reps of a 3-rep, 30s clip: the move lasts 30s.
+    expect(find.text('0:30'), findsOneWidget);
+    expect(find.text('remaining'), findsOneWidget);
 
-    // emitDuration starts _logicalTimer in the cubit. Cancel it by closing the
-    // cubit synchronously (via widget disposal) BEFORE _verifyInvariants runs —
-    // addTearDown callbacks fire after invariant checks, so they're too late.
+    // Close the cubit synchronously (via widget disposal) BEFORE
+    // _verifyInvariants runs — addTearDown callbacks fire after invariant
+    // checks, so they're too late.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
 
-  testWidgets('rep counter pill increments from Rep 1 to Rep 2 over time',
-      (tester) async {
+  testWidgets('the time remaining follows the audio', (tester) async {
     late FakeAudioPlayerService capturedAudio;
     await getIt.reset();
     getIt.registerFactory<AudioPlayerService>(() {
@@ -523,15 +761,63 @@ void main() {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
     await _pumpAndLoad(tester);
 
-    // testExercise1 has repetitionsDefault=3; a 3s duration gives exactly
-    // 1s (5 logical-timer ticks) per rep — enough headroom to land cleanly
-    // on rep 2 without the boundary rounding into rep 1 or rep 3.
+    // testExercise1 has repetitionsDefault=3; a 3s clip gives 1s per rep.
+    // The counter follows the audio engine's position, so drive it with a
+    // reading mid-way through rep 2.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
-    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+    expect(find.text('0:03'), findsOneWidget);
 
-    await tester.pump(const Duration(milliseconds: 1100));
-    expect(find.textContaining('Rep 2', findRichText: true), findsWidgets);
+    capturedAudio.emitPosition(const Duration(milliseconds: 1500));
+    await tester.pump();
+    expect(find.text('0:01'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets(
+      'audio position readings update the progress, but never rebuild the '
+      'stage (where the demo video lives)', (tester) async {
+    late FakeAudioPlayerService capturedAudio;
+    await getIt.reset();
+    getIt.registerFactory<AudioPlayerService>(() {
+      capturedAudio = FakeAudioPlayerService();
+      return capturedAudio;
+    });
+    getIt.registerSingleton<DownloadRepository>(FakeDownloadRepository());
+    getIt.registerSingleton<TrainingSessionRepository>(
+        FakeTrainingSessionRepository(buildTestSnapshot()));
+    getIt.registerSingleton<PlayerNotificationService>(
+        FakePlayerNotificationService());
+    getIt.registerSingleton<TrainingHistoryRepository>(
+        FakeTrainingHistoryRepository());
+    getIt.registerSingleton<AudioCatalogRepository>(
+        FakeAudioCatalogRepository());
+    getIt.registerSingleton<LearntExercisesRepository>(
+        FakeLearntExercisesRepository());
+
+    await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+    await _pumpAndLoad(tester);
+    capturedAudio.emitDuration(const Duration(seconds: 3));
+    await tester.pump();
+
+    // The stage's 16:9 box: a rebuilt stage would create a new widget.
+    final stage = find
+        .descendant(
+            of: find.byType(AudioPlayerPage),
+            matching: find.byType(AspectRatio))
+        .first;
+    final stageBefore = tester.widget(stage);
+    for (final ms in [200, 600, 1100]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
+
+    expect(identical(tester.widget(stage), stageBefore), isTrue,
+        reason: 'position readings must not rebuild the stage');
+    expect(find.text('0:01'), findsOneWidget,
+        reason: 'the star still follows the audio');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -554,9 +840,9 @@ void main() {
 
     // The cubit is accessible via the BlocConsumer in the tree.
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     expect(cubit.state.playingIndex, 1);
   });
 
@@ -578,9 +864,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
     expect(cubit.state.playingIndex, 0);
   });
 
@@ -688,6 +974,8 @@ void main() {
     await _pumpAndLoad(tester);
 
     expect(find.text('Go'), findsOneWidget);
+    expect(find.byType(LearningCardPage), findsOneWidget,
+        reason: 'Learning mode shows the same card as the Library');
     expect(capturedAudio.resumed, isFalse);
     expect(capturedAudio.playCallCount, 0);
   });
@@ -751,9 +1039,9 @@ void main() {
         .pumpWidget(_buildPage(buildTestSnapshot(), mode: PlayerMode.learning));
     await _pumpAndLoad(tester);
 
-    // Never plays in this test, so pumpAndSettle is safe here. Tap the
-    // barrier outside the card — the modal prompt has no back button.
-    await tester.tapAt(const Offset(10, 10));
+    // Never plays in this test, so pumpAndSettle is safe here. The card
+    // has no ✕: leave it with a tap beside it.
+    await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
 
     expect(find.text('Go'), findsNothing);
@@ -841,24 +1129,29 @@ void main() {
     // 3 reps on a 3s clip → 1s/rep.
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
-    expect(find.textContaining('Rep 1', findRichText: true), findsWidgets);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('reps'), findsOneWidget);
 
     // A single-item session in any other mode would have auto-completed
-    // (isFinished: true) once the 3s nominal target passed. Pump well past
-    // that point — zoorkhaneh mode must still be looping, uncapped rep
+    // (isFinished: true) once the 3s nominal target passed. Play well past
+    // that point — the engine loops the clip once (2.9s → 0.1s), giving a
+    // 5.6s timeline — zoorkhaneh mode must still be looping, uncapped rep
     // count climbing past the nominal total of 3, with no "of Total" shown.
-    await tester.pump(const Duration(milliseconds: 5300));
+    for (final ms in [1000, 2900, 100, 2600]) {
+      capturedAudio.emitPosition(Duration(milliseconds: ms));
+      await tester.pump();
+    }
 
     final cubit = tester
-        .element(find
-            .byType(BlocConsumer<TrainingSessionPlayerCubit, AudioPlayerState>))
-        .read<TrainingSessionPlayerCubit>();
-    expect(cubit.state.isFinished, isFalse,
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
+    expect(cubit.state, isNot(isA<PlayerFinished>()),
         reason: 'zoorkhaneh mode must not auto-complete the session');
     expect(cubit.state.playingIndex, 0);
-    expect(find.textContaining('Rep 6', findRichText: true), findsWidgets);
-    expect(find.textContaining('of 3', findRichText: true), findsNothing,
-        reason: 'zoorkhaneh mode drops the "of Total" suffix');
+    expect(find.text('6'), findsOneWidget);
+    expect(find.text('of 3'), findsNothing,
+        reason: 'zoorkhaneh mode counts on, with no target shown');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -867,7 +1160,7 @@ void main() {
   // ── Rep-color cleanup ──────────────────────────────────────────────────────
 
   testWidgets(
-      'a non-default rep count no longer shows the "custom" label or color',
+      'a non-default rep count sets the move length (no "custom" label)',
       (tester) async {
     final customRepsSnap = DomainSnapshot(
       sessionsById: {testSession1.id: testSession1},
@@ -909,10 +1202,310 @@ void main() {
     capturedAudio.emitDuration(const Duration(seconds: 3));
     await tester.pump();
 
-    expect(find.text('7×'), findsOneWidget);
+    // 7 reps of a 3-rep, 3s clip: 7s.
+    expect(find.text('0:07'), findsOneWidget);
     expect(find.textContaining('custom', findRichText: true), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  // ── Layout across window sizes ─────────────────────────────────────────────
+
+  group('player layout', () {
+    // tester.view (not setSurfaceSize) so MediaQuery reports the same size —
+    // the stage's height cap is computed from MediaQuery.
+    Future<void> openAt(WidgetTester tester, Size size) async {
+      tester.view
+        ..devicePixelRatio = 1.0
+        ..physicalSize = size;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Size stageSize(WidgetTester tester) => tester.getSize(find
+        .descendant(
+            of: find.byType(AudioPlayerPage),
+            matching: find.byType(AspectRatio))
+        .first);
+
+    testWidgets('a wide, short desktop window does not overflow',
+        (tester) async {
+      await openAt(tester, const Size(1134, 720)); // the reported window
+      expect(tester.takeException(), isNull,
+          reason: 'the player column must fit the window (no overflow)');
+      final stage = stageSize(tester);
+      expect(stage.width / stage.height, closeTo(16 / 9, 0.01),
+          reason: 'the stage keeps the videos\' 16:9 shape');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    for (final size in const [
+      Size(844, 390), // phone, landscape
+      Size(834, 1194), // tablet, portrait
+      Size(1194, 834), // tablet, landscape
+      Size(1280, 800), // small desktop window
+    ]) {
+      testWidgets('no overflow at ${size.width.toInt()}x${size.height.toInt()}',
+          (tester) async {
+        await openAt(tester, size);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+    }
+
+    testWidgets('a phone keeps the full-width stage', (tester) async {
+      await openAt(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+      expect(stageSize(tester).width, 390 - 40,
+          reason: 'phones are unaffected: stage spans the width minus margins');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    Rect rectOf(WidgetTester tester, Finder f) => tester.getRect(f.first);
+    final stage = find.descendant(
+        of: find.byType(AudioPlayerPage), matching: find.byType(AspectRatio));
+    final star = find.byType(RepStar);
+    final play = find.byTooltip('Pause');
+
+    testWidgets(
+        'How to sits at the end of the title row, under the stage\'s '
+        'right edge', (tester) async {
+      await openAt(tester, const Size(834, 1194));
+      expect(rectOf(tester, find.byTooltip('How to')).right,
+          closeTo(rectOf(tester, stage).right, 1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('phone: the star under the stage, the transport under the star',
+        (tester) async {
+      await openAt(tester, const Size(390, 844));
+      expect(
+          rectOf(tester, star).top, greaterThan(rectOf(tester, stage).bottom));
+      expect(
+          rectOf(tester, play).top, greaterThan(rectOf(tester, star).bottom));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets(
+        'tablet: the star and the transport side by side under the stage',
+        (tester) async {
+      await openAt(tester, const Size(834, 1194));
+      expect(tester.takeException(), isNull);
+      final starRect = rectOf(tester, star);
+      final playRect = rectOf(tester, play);
+      expect(starRect.top, greaterThan(rectOf(tester, stage).bottom));
+      expect(playRect.left, greaterThan(starRect.right));
+      expect(
+          playRect.center.dy, inInclusiveRange(starRect.top, starRect.bottom));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets(
+        'web: the stage on the left, a bigger star and the transport on the '
+        'right', (tester) async {
+      await openAt(tester, const Size(1440, 900));
+      expect(tester.takeException(), isNull);
+      final stageRect = rectOf(tester, stage);
+      final starRect = rectOf(tester, star);
+      expect(starRect.left, greaterThan(stageRect.right));
+      expect(starRect.width, greaterThanOrEqualTo(260));
+      expect(stageRect.height, greaterThan(450),
+          reason: 'the video takes most of the height, as in the design');
+      expect(rectOf(tester, play).top, greaterThan(starRect.bottom));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+
+  // ── Edit from the player ───────────────────────────────────────────────────
+
+  group('Edit from the player', () {
+    SessionPlayerCubit playerCubit(WidgetTester tester) => tester
+        .element(
+            find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+        .read<SessionPlayerCubit>();
+
+    // As in the app, the session list is loaded (the editor reads the
+    // session's moves from it) and shares the repository the player loads
+    // from, so a saved copy is visible to a freshly opened player.
+    Future<void> openPlayer(WidgetTester tester) async {
+      final sessionCubit = TrainingSessionCubit(
+        sessionRepository: getIt<TrainingSessionRepository>(),
+        downloadRepository: getIt<DownloadRepository>(),
+        audioCatalogRepository: getIt<AudioCatalogRepository>(),
+      );
+      await sessionCubit.fetchTrainingSessions();
+      addTearDown(sessionCubit.close);
+      await tester.pumpWidget(BlocProvider.value(
+        value: sessionCubit,
+        child: MaterialApp(
+          theme: PahlevaniTheme.dark(),
+          home: AudioPlayerPage(
+              trainingSession: testSession1, mode: PlayerMode.athlete),
+        ),
+      ));
+      await _pumpAndLoad(tester);
+    }
+
+    testWidgets('tapping Edit pauses playback before opening the editor',
+        (tester) async {
+      await openPlayer(tester);
+      expect(playerCubit(tester).state.isPlaying, isTrue);
+      final cubit = playerCubit(tester);
+
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EditTrainingSessionPage), findsOneWidget);
+      expect(cubit.state.isPlaying, isFalse,
+          reason: 'audio and the demo video must stop while editing');
+    });
+
+    testWidgets('leaving Edit without saving keeps the player paused',
+        (tester) async {
+      await openPlayer(tester);
+      final cubit = playerCubit(tester);
+
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(EditTrainingSessionPage), findsNothing);
+      expect(identical(playerCubit(tester), cubit), isTrue,
+          reason: 'cancelling must not restart the player');
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets(
+        'saving restarts a fresh, paused player for the saved copy of the '
+        'session', (tester) async {
+      await openPlayer(tester);
+      final oldCubit = playerCubit(tester);
+      final originalReps = oldCubit.state.tracks.first.effectiveRepetitions;
+
+      // Not pumpAndSettle: the audio wave animates while playing.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Edit session'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+').first); // first move: one more rep
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      // Editor closes, the copy is saved, the old player closes, the new one
+      // loads — several async hops. Closing the old player waits on real
+      // async work (not fake time), hence runAsync alongside the pumps.
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final newCubit = playerCubit(tester);
+      expect(identical(newCubit, oldCubit), isFalse,
+          reason: 'the player must start from a clean slate');
+      expect(oldCubit.isClosed, isTrue);
+      expect(newCubit.state.tracks.first.effectiveRepetitions, originalReps + 1,
+          reason: 'a server session is saved as a copy; the player must '
+              'play that copy (with the edit), not the original');
+      expect(newCubit.state.playingIndex, 0);
+      expect(newCubit.state.isPlaying, isFalse,
+          reason: 'after Save the player waits for the user to press play');
+    });
+  });
+
+  // ── Media not on the device ────────────────────────────────────────────────
+
+  group('needs download', () {
+    testWidgets(
+        'audio not on the device → explains and offers the download, never '
+        'plays', (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      expect(find.textContaining("isn't on this device"), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Download'), findsOneWidget);
+      final cubit = tester
+          .element(
+              find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+          .read<SessionPlayerCubit>();
+      expect(cubit.state.isPlaying, isFalse);
+    });
+
+    testWidgets('after downloading, the player loads and plays',
+        (tester) async {
+      final downloads = getIt<DownloadRepository>() as FakeDownloadRepository;
+      downloads.localAudioPathBuilder = (_) => null;
+      getIt
+        ..registerSingleton<MediaSizeRepository>(_NoSizes())
+        ..registerSingleton<DownloadPreferencesRepository>(_MemoryPrefs());
+
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Download'));
+      await tester.pumpAndSettle();
+      // The download completes; the files are now on the device.
+      downloads.localAudioPathBuilder = (item) => '/cached/${item.item.id}.mp3';
+      await tester.tap(find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('Download ')));
+      // Dialog finishes and closes, then the player reloads (several async
+      // hops; the playing equalizer animates forever, so no pumpAndSettle).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.textContaining("isn't on this device"), findsNothing);
+      final cubit = tester
+          .element(
+              find.byType(BlocConsumer<SessionPlayerCubit, SessionPlayerState>))
+          .read<SessionPlayerCubit>();
+      expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
+      expect(cubit.state.tracks, isNotEmpty);
+    });
+  });
+}
+
+class _NoSizes implements MediaSizeRepository {
+  @override
+  Future<Map<String, int>> sizesFor(Set<String> urls) async =>
+      {for (final u in urls) u: 1000000};
+}
+
+class _MemoryPrefs implements DownloadPreferencesRepository {
+  DownloadTier? tier;
+  @override
+  Future<DownloadTier?> getPreferredTier() async => tier;
+  @override
+  Future<void> setPreferredTier(DownloadTier t) async => tier = t;
 }

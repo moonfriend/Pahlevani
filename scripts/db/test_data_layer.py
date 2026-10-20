@@ -165,6 +165,61 @@ def test_version_gate_fetch_config(cur: psycopg2.cursor) -> None:
     _require(row, "force_update", bool)
 
 
+def test_onboarding_cards_fetch(cur: psycopg2.cursor) -> None:
+    """
+    Dart: OnboardingRemoteDataSource.fetchActiveCards()
+    SELECT * FROM onboarding_cards WHERE is_active ORDER BY position — skips if
+    the table is not yet in schema (migration 0040).
+    """
+    try:
+        cur.execute(
+            "SELECT * FROM public.onboarding_cards WHERE is_active ORDER BY position"
+        )
+    except psycopg2.errors.UndefinedTable:
+        return  # pre-migration — 0040 not yet applied
+
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    assert rows, "onboarding_cards: the migration should seed the built-in cards"
+
+    for row in rows:
+        _require(row, "position", int)
+        _require(row, "title_en", str)
+        _require(row, "body_en", str)
+        _require(row, "builtin_image", str)
+        assert row["builtin_image"] in ("figure", "figure_alt", "shamseh"), (
+            f"onboarding_cards: unknown builtin_image {row['builtin_image']!r}"
+        )
+        _optional(row, "image_url", str)
+        _optional(row, "title_fa", str)
+        _optional(row, "body_fa", str)
+        if "links" in row:  # migration 0046
+            assert isinstance(row["links"], list), "onboarding_cards.links: a list"
+
+
+def test_home_announcement_fetch(cur: psycopg2.cursor) -> None:
+    """
+    Dart: AnnouncementRemoteDataSource.fetchActive()
+    SELECT title, description, url FROM home_announcement WHERE is_active —
+    skips if the table is not yet in schema (migration 0044).
+    """
+    try:
+        cur.execute(
+            "SELECT title, description, url FROM public.home_announcement "
+            "WHERE is_active"
+        )
+    except psycopg2.errors.UndefinedTable:
+        return  # pre-migration — 0044 not yet applied
+
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    assert len(rows) == 1, "home_announcement: the migration seeds one card"
+    _require(rows[0], "title", str)
+    _require(rows[0], "description", str)
+    _require(rows[0], "url", str)
+    assert rows[0]["url"].startswith("https://")
+
+
 # ─── runner ───────────────────────────────────────────────────────────────────
 
 _TESTS = [
@@ -173,6 +228,8 @@ _TESTS = [
     ("fetchTrainingSessionItemTable()", test_fetch_training_session_items),
     ("fetchMovementTable()",            test_fetch_movements),
     ("VersionGateRepository.fetchConfig()", test_version_gate_fetch_config),
+    ("OnboardingRemoteDataSource.fetchActiveCards()", test_onboarding_cards_fetch),
+    ("AnnouncementRemoteDataSource.fetchActive()", test_home_announcement_fetch),
 ]
 
 

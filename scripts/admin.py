@@ -37,6 +37,27 @@ from mutagen.mp3 import MP3
 from supabase import create_client, Client
 
 from check_session_audio_coverage import run_coverage_check
+from media_assets import MediaAsset, record_media_asset
+from movement_learning_content import (
+    MAX_CUES,
+    LearningContent,
+    lines_from_text,
+    text_from_lines,
+    variations_from_rows,
+)
+from morshed_admin import set_default_morshed
+from activation_gate import Activation, LockedScreen, activations_csv
+from home_announcement import HomeAnnouncement
+from onboarding_cards import (
+    links_text,
+    parse_links,
+    BUILTIN_IMAGE_LABELS,
+    BUILTIN_IMAGES,
+    OnboardingCard,
+    move_patches,
+    next_position,
+    r2_key_for,
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 # Every value below comes from the process environment only — see the module
@@ -153,8 +174,59 @@ def load_items() -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=60)
+def load_path_nodes() -> pd.DataFrame:
+    """Nodes of the single default path (id=1, seeded by migration
+    0036_seed_default_path.sql) — empty if migration 0035 not applied yet."""
+    try:
+        rows = (
+            get_client().table("path_node")
+            .select("*").eq("path_id", 1).order("position").execute().data
+        )
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_path_node_items() -> pd.DataFrame:
+    try:
+        rows = (
+            get_client().table("path_node_item")
+            .select("*").order("path_node_id,position").execute().data
+        )
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
 def load_release_gate() -> dict | None:
     rows = get_client().table("app_release_gate").select("*").eq("id", 1).execute().data
+    return rows[0] if rows else None
+
+@st.cache_data(ttl=30)
+def load_onboarding_cards() -> list[dict]:
+    """Every onboarding card, inactive ones included (the service-role key
+    bypasses the active-only RLS policy the app reads through)."""
+    return (
+        get_client().table("onboarding_cards")
+        .select("*").order("position").order("id").execute().data
+    )
+
+@st.cache_data(ttl=30)
+def load_locked_screen() -> dict | None:
+    """The locked screen's single row (migration 0045)."""
+    rows = get_client().table("activation_gate").select("*").eq("id", 1).execute().data
+    return rows[0] if rows else None
+
+@st.cache_data(ttl=30)
+def load_activations() -> list[dict]:
+    """Every activation (service-role key bypasses the own-row policy)."""
+    return (get_client().table("activations")
+            .select("email, code, activated_at").order("activated_at").execute().data)
+
+@st.cache_data(ttl=30)
+def load_home_announcement() -> dict | None:
+    """The single Home card row, inactive included (service-role key)."""
+    rows = get_client().table("home_announcement").select("*").eq("id", 1).execute().data
     return rows[0] if rows else None
 
 @st.cache_data(ttl=30)
@@ -212,6 +284,39 @@ def load_movement_types() -> pd.DataFrame:
         return pd.DataFrame()
 
 @st.cache_data(ttl=60)
+def load_fitness_test_charts() -> pd.DataFrame:
+    """Fitness-test stages — empty if migration 0039 not applied yet."""
+    try:
+        rows = get_client().table("fitness_test_chart").select("*").order("sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_axes() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_axis").select("*").order("chart_id,sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_subtests() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_subtest").select("*").order("axis_id,sort_order").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
+def load_fitness_test_levels() -> pd.DataFrame:
+    try:
+        rows = get_client().table("fitness_test_level").select("*").order("subtest_id,level_number").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=60)
 def load_movement_audio_tracks() -> pd.DataFrame:
     """One Morshed's recording of one movement type, with the type/Morshed
     names joined in for display."""
@@ -245,6 +350,13 @@ def bust_cache():
     load_morsheds.clear()
     load_movement_types.clear()
     load_movement_audio_tracks.clear()
+    load_path_nodes.clear()
+    load_path_node_items.clear()
+    load_fitness_test_charts.clear()
+    load_fitness_test_axes.clear()
+    load_fitness_test_subtests.clear()
+    load_fitness_test_levels.clear()
+    load_onboarding_cards.clear()
 
 # ── Video processing (ffmpeg/ffprobe) ──────────────────────────────────────────
 # Source clips are typically 4K/huge-bitrate camera dumps, unsuitable for
@@ -384,26 +496,40 @@ def encode_video(
     return result.returncode == 0
 
 def extract_poster(video_path: str, out_path: str, timestamp: float = 1.0) -> bool:
-    cmd = ["ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
-           "-frames:v", "1", "-update", "1", "-q:v", "3", out_path]
+    cmd = ["ffmpeg", "-y", "-ss", str(timestamp)]
+    if video_path.startswith(("http://", "https://")):
+        # r2.dev refuses some default user agents (403).
+        cmd += ["-user_agent", "Mozilla/5.0"]
+    cmd += ["-i", video_path,
+            "-frames:v", "1", "-update", "1", "-q:v", "3", out_path]
     result = subprocess.run(cmd, capture_output=True, timeout=30)
     return result.returncode == 0
 
 def upload_asset_to_r2(local_path: str, r2_key: str, content_type: str) -> str:
-    """Upload a file already on disk (video/poster output from ffmpeg)."""
+    """Upload a file already on disk (video/poster output from ffmpeg).
+
+    Also records its size in media_asset (see media_assets.py) — every upload
+    goes through this function or upload_bytes_to_r2, so no path can skip it.
+    """
     get_r2_client().upload_file(
         local_path, R2_BUCKET, r2_key, ExtraArgs={"ContentType": content_type}
     )
-    return f"{R2_PUBLIC_BASE}/{r2_key}"
+    url = f"{R2_PUBLIC_BASE}/{r2_key}"
+    record_media_asset(
+        get_client(), MediaAsset(url, os.path.getsize(local_path), content_type))
+    return url
 
 def upload_bytes_to_r2(data: bytes, r2_key: str, content_type: str) -> str:
     """Upload in-memory bytes straight from a Streamlit file_uploader — no
     temp file needed (unlike upload_asset_to_r2, which is for ffmpeg output
-    that's already on disk)."""
+    that's already on disk). Records the size in media_asset, like
+    upload_asset_to_r2."""
     get_r2_client().put_object(
         Bucket=R2_BUCKET, Key=r2_key, Body=data, ContentType=content_type
     )
-    return f"{R2_PUBLIC_BASE}/{r2_key}"
+    url = f"{R2_PUBLIC_BASE}/{r2_key}"
+    record_media_asset(get_client(), MediaAsset(url, len(data), content_type))
+    return url
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -413,6 +539,13 @@ def duration_from_bytes(data: bytes) -> int | None:
         return round(audio.info.length)
     except Exception:
         return None
+
+def card_image_key(movement_id: int, name: str, ext: str, now: datetime) -> str:
+    """R2 key for a movement's learning-card image. A new key on every change:
+    the app caches media by URL, so reusing a key would never refresh phones
+    that already have the old image."""
+    return (f"{R2_VIDEO_POSTER_PREFIX}{movement_id}-{slugify(name)}"
+            f"-card-{now:%Y%m%d%H%M%S}{ext}")
 
 def slugify(text: str) -> str:
     """Lower-case, spaces to underscores, strip non-alphanumeric."""
@@ -729,6 +862,91 @@ def _render_movement_video_section(movement_id: int, mov_row: pd.Series) -> None
                 st.rerun()
 
 
+def _save_card_image(movement_id: int, mov_row: pd.Series, url: str) -> None:
+    """Points the movement's still (and its video row's poster) at [url]; the
+    video itself and the media type are left alone."""
+    get_client().table("movement").update(
+        {"media_poster": url}).eq("id", movement_id).execute()
+    video_id = mov_row.get("video_id")
+    if video_id is not None and not pd.isna(video_id):
+        get_client().table("video").update(
+            {"poster_url": url}).eq("id", int(video_id)).execute()
+
+
+def _render_movement_card_image_section(movement_id: int, mov_row: pd.Series) -> None:
+    """The still the app's learning card shows (with its "video coming soon"
+    label) — for a video move, its poster. Pick a frame from the video or
+    upload an image; the video is never changed."""
+    st.markdown("**Card image** (the still on the learning card)")
+    if (mov_row.get("media_type") or "none") != "video" or not mov_row.get("media_src"):
+        st.caption("Only for moves with a video — a photo move's photo is its "
+                   "card image (change it under Movement info below).")
+        return
+
+    cur_poster = mov_row.get("media_poster") or ""
+    if cur_poster:
+        st.image(cur_poster, caption="Current card image", width=280)
+    else:
+        st.info("No card image yet — the app shows the pahlevan illustration.")
+
+    name = mov_row.get("name") or f"movement-{movement_id}"
+    frame_key = f"card_frame_path_{movement_id}"
+    tab_frame, tab_upload = st.tabs(["🎞️ Frame from the video", "📤 Upload image"])
+
+    with tab_frame:
+        seconds = st.number_input(
+            "Second in the video", min_value=0.0, value=1.0, step=0.5,
+            key=f"card_frame_s_{movement_id}",
+        )
+        if st.button("🎞️ Preview frame", key=f"card_frame_prev_{movement_id}"):
+            out = Path(tempfile.mkdtemp()) / f"card_{movement_id}.jpg"
+            with st.spinner("Grabbing the frame…"):
+                ok = extract_poster(mov_row["media_src"], str(out), float(seconds))
+            if ok:
+                st.session_state[frame_key] = str(out)
+            else:
+                st.error("Could not grab a frame there — is the second inside the video?")
+        frame = st.session_state.get(frame_key)
+        if frame:
+            st.image(frame, caption="Preview", width=280)
+            if st.button("✅ Use this frame", type="primary",
+                         key=f"card_frame_use_{movement_id}"):
+                try:
+                    url = upload_asset_to_r2(
+                        frame, card_image_key(movement_id, name, ".jpg", datetime.now()),
+                        "image/jpeg")
+                    _save_card_image(movement_id, mov_row, url)
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+                else:
+                    st.session_state.pop(frame_key, None)
+                    st.success("✅ Card image saved.")
+                    bust_cache()
+                    st.rerun()
+
+    with tab_upload:
+        uploaded = st.file_uploader(
+            "Choose image (jpg / png / webp)", type=["jpg", "jpeg", "png", "webp"],
+            key=f"card_upload_{movement_id}",
+        )
+        if uploaded:
+            st.image(uploaded, caption="Preview", width=280)
+            ext = Path(uploaded.name).suffix.lower()
+            mime = {".png": "image/png", ".webp": "image/webp"}.get(ext, "image/jpeg")
+            if st.button("Upload & use", type="primary", key=f"card_upload_btn_{movement_id}"):
+                try:
+                    url = upload_bytes_to_r2(
+                        uploaded.getvalue(),
+                        card_image_key(movement_id, name, ext, datetime.now()), mime)
+                    _save_card_image(movement_id, mov_row, url)
+                except Exception as e:
+                    st.error(f"Upload failed: {e}")
+                else:
+                    st.success("✅ Card image saved.")
+                    bust_cache()
+                    st.rerun()
+
+
 def _render_movement_photo_section(movement_id: int, mov_row: pd.Series) -> None:
     st.markdown("**Movement info**")
     cur_type = mov_row.get("media_type") or "none"
@@ -813,12 +1031,14 @@ def _render_movement_photo_section(movement_id: int, mov_row: pd.Series) -> None
 def _render_movement_info_section(movement_id: int) -> None:
     st.markdown("**Info page content**")
     st.caption(
-        "Shown on the in-app move info page (opened via the ⓘ on a track). "
-        "The media shown there is whatever you set in the Video/Photo "
-        "sections above — nothing extra to upload here, just the description."
+        "Shown on the in-app move info page, the learning sheet and the "
+        "player. The media shown there is whatever you set in the Video/Photo "
+        "sections above — nothing extra to upload here. Every field is "
+        "optional: the app hides a section that has no content."
     )
     info_map = load_movement_info()
     cur_info = info_map.get(int(movement_id), {})
+    content = LearningContent.from_row(cur_info)
     with st.form(f"movement_info_{movement_id}"):
         desc = st.text_area(
             "Description",
@@ -826,19 +1046,69 @@ def _render_movement_info_section(movement_id: int) -> None:
             height=160,
             help="How to perform the move — cues, technique, breathing, etc.",
         )
+        cues_text = st.text_area(
+            f"Pay attention to (up to {MAX_CUES} lines)",
+            value=text_from_lines(content.cues),
+            height=100,
+            help="One short point per line. Shown in the player under the "
+            "video and on the learning sheet. Leave empty to hide.",
+        )
+        steps_text = st.text_area(
+            "Steps (one per line)",
+            value=text_from_lines(content.steps),
+            height=120,
+            help="Numbered how-to steps on the learning card. Leave empty to hide.",
+        )
+        st.caption(
+            "Variations — Lighter → Harder, lightest first. Clear a row's "
+            "name to remove it. Leave the table empty to hide the selector."
+        )
+        variation_rows = st.data_editor(
+            pd.DataFrame(
+                [v.to_json() for v in content.variations],
+                columns=["name", "level", "reps"],
+            ),
+            num_rows="dynamic",
+            use_container_width=True,
+            key=f"movement_variations_{movement_id}",
+            column_config={
+                "name": st.column_config.TextColumn("Name", required=True),
+                "level": st.column_config.TextColumn(
+                    "Level", help='Short label, e.g. "EASIER · 4 KG"'
+                ),
+                "reps": st.column_config.NumberColumn(
+                    "Reps", min_value=0, step=1, format="%d"
+                ),
+            },
+        )
         if st.form_submit_button("💾 Save info"):
+            try:
+                new_content = LearningContent(
+                    cues=lines_from_text(cues_text),
+                    steps=lines_from_text(steps_text),
+                    variations=variations_from_rows(
+                        variation_rows.to_dict("records")
+                    ),
+                )
+                payload = new_content.to_payload()
+            except ValueError as e:
+                st.error(str(e))
+                return
             try:
                 get_client().table("movement_info").upsert(
                     {
                         "movement_id": int(movement_id),
                         "description": desc.strip() or None,
+                        **payload,
                     },
                     on_conflict="movement_id",
                 ).execute()
                 load_movement_info.clear()
                 st.success("Saved move info.")
             except Exception as e:
-                st.error(f"Could not save (is migration 0005 applied?): {e}")
+                st.error(
+                    f"Could not save (are migrations 0005 and 0042 applied?): {e}"
+                )
 
 
 def tab_movements():
@@ -896,6 +1166,8 @@ def tab_movements():
         st.divider()
         _render_movement_video_section(movement_id, mov_row)
         st.divider()
+        _render_movement_card_image_section(movement_id, mov_row)
+        st.divider()
         _render_movement_photo_section(movement_id, mov_row)
         st.divider()
         _render_movement_info_section(movement_id)
@@ -945,12 +1217,13 @@ def tab_movements():
 # Tab: Sessions
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SB_ITEMS         = "sb_items"        # list[{exercise_id, reps_to_do, is_tracked, uid}]
-_SB_META          = "sb_meta"         # {title, title_fa, description, difficulty}
-_SB_MODE          = "sb_mode"         # "new" | "edit"
-_SB_SID           = "sb_sid"          # session id being edited
-_SB_PENDING_OP    = "sb_pending_op"   # deferred list op applied before next render
-_SB_PENDING_RESET = "sb_pending_reset"  # deferred metadata reset applied before text_inputs
+_SB_ITEMS            = "sb_items"           # list[{exercise_id, reps_to_do, is_tracked, uid}]
+_SB_META             = "sb_meta"            # {title, title_fa, description, difficulty, home_position, needs_meel}
+_SB_MODE             = "sb_mode"            # "new" | "edit"
+_SB_SID              = "sb_sid"             # session id being edited
+_SB_PENDING_OP       = "sb_pending_op"      # deferred remove op applied before next render
+_SB_PENDING_REORDER  = "sb_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_SB_PENDING_RESET    = "sb_pending_reset"   # deferred metadata reset applied before text_inputs
 
 def _as_bool(value) -> bool:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -963,9 +1236,12 @@ def _sb_reset():
     st.session_state["sb_titlefa"] = ""
     st.session_state["sb_desc"]    = ""
     st.session_state["sb_diff"]    = 2
+    st.session_state["sb_home"]    = None
+    st.session_state["sb_meel"]    = False
     _clear_rep_keys()
     st.session_state[_SB_ITEMS] = []
-    st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2}
+    st.session_state[_SB_META]  = {"title": "", "title_fa": "", "description": "", "difficulty": 2,
+                                   "home_position": None, "needs_meel": False}
     st.session_state[_SB_SID]   = None
 
 def _clear_rep_keys():
@@ -1033,15 +1309,21 @@ def tab_sessions():
             _titlefa = _str(s_row.get("title_fa"))
             _desc    = _str(s_row.get("description"))
             _diff    = int(s_row.get("difficulty") or 2)
+            _home    = s_row.get("home_position")
+            _home    = None if _home is None or pd.isna(_home) else int(_home)
+            _meel    = _as_bool(s_row.get("needs_meel"))
             # Directly set widget state BEFORE the widgets render so the fields
             # reflect the newly selected session without needing an extra rerun.
             st.session_state["sb_title"]   = _title
             st.session_state["sb_titlefa"] = _titlefa
             st.session_state["sb_desc"]    = _desc
             st.session_state["sb_diff"]    = _diff
+            st.session_state["sb_home"]    = _home
+            st.session_state["sb_meel"]    = _meel
             st.session_state[_SB_META] = {
                 "title": _title, "title_fa": _titlefa,
                 "description": _desc, "difficulty": _diff,
+                "home_position": _home, "needs_meel": _meel,
             }
             st.session_state[_SB_ITEMS] = [
                 {
@@ -1074,10 +1356,23 @@ def tab_sessions():
     with c2:
         desc       = st.text_area("Description", value=meta.get("description", ""), key="sb_desc", height=100)
         difficulty = st.slider("Difficulty", 1, 5, value=meta.get("difficulty", 2), key="sb_diff")
+        home_options = [None, 1, 2, 3]
+        home_position = st.selectbox(
+            "On the app's Home", home_options,
+            index=home_options.index(meta.get("home_position")),
+            format_func=lambda p: {None: "Not on Home", 1: "1 · main card",
+                                   2: "2 · small card", 3: "3 · small card"}[p],
+            key="sb_home",
+            help="One session per slot: saving moves any other session out of this slot. "
+                 "A trainer-assigned session replaces slot 1 for its trainee.")
+        needs_meel = st.checkbox(
+            "Needs meel", value=bool(meta.get("needs_meel", False)), key="sb_meel",
+            help="Home tags this session for people who don't have meel yet.")
 
     st.session_state[_SB_META] = {
         "title": title, "title_fa": title_fa,
         "description": desc, "difficulty": difficulty,
+        "home_position": home_position, "needs_meel": needs_meel,
     }
 
     # ── Exercise list ─────────────────────────────────────────────────────────
@@ -1088,20 +1383,25 @@ def tab_sessions():
     # (browser-side widget state is keyed by widget key, not session state).
     _kns = st.session_state.get(_SB_SID, "new")
 
-    # Apply any pending list operation BEFORE widgets are instantiated.
-    # (Streamlit forbids modifying widget-keyed session state after instantiation,
-    # so we defer move/remove ops to the top of the next render pass.)
-    # Reps widgets use uid-based keys (not position-based), so keys travel with
-    # items on move — no session-state key manipulation needed.
+    # Apply any pending remove BEFORE widgets are instantiated. (Streamlit
+    # forbids modifying widget-keyed session state after instantiation, so
+    # we defer it to the top of the next render pass.) Reps/tracked widgets
+    # use uid-based keys (not position-based), so keys travel with items on
+    # reorder — no session-state key manipulation needed for those.
     pending = st.session_state.pop(_SB_PENDING_OP, None)
-    if pending:
-        op = pending["op"]
-        if op == "move":
-            a, b = pending["a"], pending["b"]
-            items[a], items[b] = items[b], items[a]
-        elif op == "remove":
-            items.pop(pending["i"])
+    if pending and pending["op"] == "remove":
+        items.pop(pending["i"])
         st.session_state[_SB_ITEMS] = items
+
+    # Apply any pending reorder the same way — additionally, position widget
+    # keys must be reset to the new order here, before they're instantiated.
+    pending_reorder = st.session_state.pop(_SB_PENDING_REORDER, None)
+    if pending_reorder:
+        moved = items.pop(pending_reorder["from"])
+        items.insert(pending_reorder["to"], moved)
+        st.session_state[_SB_ITEMS] = items
+        for new_i, it in enumerate(items):
+            st.session_state[f"pos_{_kns}_{it['uid']}"] = new_i + 1
 
     # Build a lookup for display
     ex_by_id: dict[int, pd.Series] = {
@@ -1119,8 +1419,13 @@ def tab_sessions():
         ex = ex_by_id.get(item["exercise_id"])
         label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
 
-        c_name, c_reps, c_track, c_up, c_dn, c_rm = st.columns([4, 1.5, 1.6, 0.5, 0.5, 0.5])
+        c_name, c_pos, c_reps, c_track, c_rm = st.columns([3.5, 1, 1.5, 1.6, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(items), value=i + 1,
+            key=f"pos_{_kns}_{item['uid']}", label_visibility="collapsed",
+        )
         new_reps = c_reps.number_input(
             "Reps", min_value=1, max_value=999,
             value=item["reps_to_do"],
@@ -1135,14 +1440,13 @@ def tab_sessions():
             key=f"tracked_{_kns}_{item['uid']}",
         )
 
-        if c_up.button("↑", key=f"up_{_kns}_{i}", disabled=i == 0):
-            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i - 1}
-            st.rerun()
-        if c_dn.button("↓", key=f"dn_{_kns}_{i}", disabled=i == len(items) - 1):
-            st.session_state[_SB_PENDING_OP] = {"op": "move", "a": i, "b": i + 1}
-            st.rerun()
         if c_rm.button("✕", key=f"rm_{_kns}_{i}"):
             st.session_state[_SB_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(items) - 1, new_pos - 1))
+            st.session_state[_SB_PENDING_REORDER] = {"from": i, "to": target}
             st.rerun()
 
     st.session_state[_SB_ITEMS] = items
@@ -1236,9 +1540,19 @@ def tab_sessions():
                 "title_fa":    title_fa.strip() or None,
                 "description": desc.strip(),
                 "difficulty":  difficulty,
+                "home_position": home_position,
+                "needs_meel":  needs_meel,
             }
 
             sid = st.session_state.get(_SB_SID)
+            if home_position is not None:
+                # One session per Home slot (unique index, migration 0043):
+                # free the slot first so the save never trips it.
+                q = db.table("training_session").update({"home_position": None}) \
+                    .eq("home_position", home_position)
+                if sid:
+                    q = q.neq("id", sid)
+                q.execute()
             if mode == "Edit existing session" and sid:
                 # Update session metadata
                 db.table("training_session").update(meta_payload).eq("id", sid).execute()
@@ -1287,6 +1601,526 @@ def tab_sessions():
             bust_cache()
             st.session_state[_SB_PENDING_RESET] = True
             st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Path
+# ─────────────────────────────────────────────────────────────────────────────
+# The Godar / Milestone progression system: a single default path (id=1,
+# seeded by migration 0036_seed_default_path.sql) made of an ordered sequence
+# of nodes, each with an ordered checklist of items (session / video /
+# quote). A node's `kind` is either 'godar' (a small waypoint) or 'milestone'
+# (a bigger "test stage" — what was previously split into 'darvazeh'/'khan';
+# migration 0037 collapsed them since they were conceptually the same thing,
+# only ever distinguished by free-text title/title_fa and, later, graphics).
+#
+# Unlike Sessions' delete-and-reinsert-on-save (safe there because
+# training_session_item has no identity anything else references), a
+# path_node_item's id IS referenced elsewhere: the Flutter app's local
+# "mark done" progress tracking is keyed by it. A save here must preserve
+# the id of anything that isn't actually removed — update rows in place,
+# insert only genuinely new ones, delete only what's explicitly removed —
+# or every save would silently reset every athlete's progress on that node.
+# The same reasoning applies one level up to path_node itself, since deleting
+# and recreating a node would cascade-delete (and thus re-id) all its items.
+
+_PATH_ID = 1  # the single path for now — see migrations 0035/0036.
+
+_PB_NODES               = "pb_nodes"                # list[{id, kind, position, title, title_fa, subtitle, description, uid}]
+_PB_ORIGINAL_NODE_IDS   = "pb_original_node_ids"
+_PB_NODE_PENDING_OP     = "pb_node_pending_op"       # deferred remove op applied before next render
+_PB_NODE_PENDING_REORDER = "pb_node_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_PB_SELECTED_UID        = "pb_selected_uid"          # None => the node form is in "add" mode; else editing that node's uid
+_PB_FORM_LOADED_UID     = "pb_form_loaded_uid"       # which node's values are currently seeded into the node-form widgets ("__new__" for add mode)
+_PB_PENDING_FORM_RESET  = "pb_pending_form_reset"    # deferred: reseed the node form to blank/add-mode on the next render
+_PB_ITEMS               = "pb_items"                 # list[{id, item_type, training_session_id, repeat_count, video_url, video_title, quote_text, quote_author, uid}]
+_PB_ITEMS_FOR_NODE_ID   = "pb_items_for_node_id"
+_PB_ORIGINAL_ITEM_IDS   = "pb_original_item_ids"
+_PB_ITEM_PENDING_OP     = "pb_item_pending_op"       # deferred remove op applied before next render
+_PB_ITEM_PENDING_REORDER = "pb_item_pending_reorder" # deferred {"from": i, "to": j} applied before position widgets render
+_PB_PENDING_ITEM_RESET  = "pb_pending_item_reset"    # deferred: {"node_id": int, "keys": [str, ...]} — add-item fields to blank on the next render
+
+_PB_KIND_BADGE = {"godar": "🟢 Godar", "milestone": "⚔️ Milestone"}
+
+def _pb_load_nodes():
+    nodes_df = load_path_nodes()
+    nodes = [
+        {
+            "id": int(r["id"]),
+            "kind": r["kind"],
+            "position": int(r["position"]),
+            "title": r.get("title") or "",
+            "title_fa": r.get("title_fa") or "",
+            "subtitle": r.get("subtitle") or "",
+            "description": r.get("description") or "",
+            "uid": str(int(r["id"])),
+        }
+        for _, r in nodes_df.iterrows()
+    ]
+    st.session_state[_PB_NODES] = nodes
+    st.session_state[_PB_ORIGINAL_NODE_IDS] = {n["id"] for n in nodes}
+
+def _pb_seed_form_state(*, kind, title, title_fa, subtitle, description):
+    # Directly set widget-bound state so the node form reflects the new
+    # selection on the next render. Must only ever run BEFORE the matching
+    # widgets are instantiated in the current script run — Streamlit forbids
+    # mutating a widget-bound key afterwards (this is the fix for the crash
+    # the old direct post-instantiation resets caused).
+    st.session_state["pb_f_kind"] = kind
+    st.session_state["pb_f_title"] = title
+    st.session_state["pb_f_title_fa"] = title_fa
+    st.session_state["pb_f_subtitle"] = subtitle
+    st.session_state["pb_f_description"] = description
+
+def _pb_load_items(node_id: int):
+    items_df = load_path_node_items()
+    rows = (
+        items_df[items_df["path_node_id"] == node_id].sort_values("position")
+        if not items_df.empty else items_df
+    )
+    items = [
+        {
+            "id": int(r["id"]),
+            "item_type": r["item_type"],
+            "training_session_id": int(r["training_session_id"]) if pd.notna(r.get("training_session_id")) else None,
+            "repeat_count": int(r["repeat_count"]) if pd.notna(r.get("repeat_count")) else 1,
+            "video_url": r.get("video_url") or "",
+            "video_title": r.get("video_title") or "",
+            "quote_text": r.get("quote_text") or "",
+            "quote_author": r.get("quote_author") or "",
+            "uid": str(int(r["id"])),
+        }
+        for _, r in rows.iterrows()
+    ]
+    st.session_state[_PB_ITEMS] = items
+    st.session_state[_PB_ORIGINAL_ITEM_IDS] = {i["id"] for i in items}
+    st.session_state[_PB_ITEMS_FOR_NODE_ID] = node_id
+
+def tab_path():
+    st.header("Path")
+    st.caption("Design the Godar / Milestone sequence athletes progress through.")
+
+    if st.button("↺ Reload", key="pb_reload"):
+        bust_cache()
+        st.session_state.pop(_PB_NODES, None)
+        st.session_state.pop(_PB_SELECTED_UID, None)
+        st.session_state.pop(_PB_FORM_LOADED_UID, None)
+
+    if _PB_NODES not in st.session_state:
+        _pb_load_nodes()
+
+    nodes: list[dict] = st.session_state[_PB_NODES]
+
+    # Apply any pending node-list op / reorder / form reset BEFORE widgets
+    # are instantiated — Streamlit forbids mutating widget-keyed state
+    # mid-render (same reason tab_sessions() defers its exercise-list edits
+    # and its post-save reset via _SB_PENDING_RESET).
+    pending = st.session_state.pop(_PB_NODE_PENDING_OP, None)
+    if pending and pending["op"] == "remove":
+        removed = nodes.pop(pending["i"])
+        if st.session_state.get(_PB_SELECTED_UID) == removed["uid"]:
+            st.session_state[_PB_SELECTED_UID] = None
+        st.session_state[_PB_NODES] = nodes
+
+    pending_reorder = st.session_state.pop(_PB_NODE_PENDING_REORDER, None)
+    if pending_reorder:
+        moved = nodes.pop(pending_reorder["from"])
+        nodes.insert(pending_reorder["to"], moved)
+        st.session_state[_PB_NODES] = nodes
+        for new_i, n in enumerate(nodes):
+            st.session_state[f"pb_node_pos_{n['uid']}"] = new_i + 1
+
+    if st.session_state.pop(_PB_PENDING_FORM_RESET, False):
+        st.session_state[_PB_SELECTED_UID] = None
+        _pb_seed_form_state(
+            kind="godar", title="", title_fa="", subtitle="", description="",
+        )
+        st.session_state[_PB_FORM_LOADED_UID] = "__new__"
+
+    sessions_df = load_sessions()
+    session_titles = (
+        {int(r["id"]): r["title"] for _, r in sessions_df.iterrows()}
+        if not sessions_df.empty else {}
+    )
+    all_items_df = load_path_node_items()
+
+    # ── Full path at a glance ────────────────────────────────────────────────
+    # Read-only, always-expanded overview so the whole sequence — and every
+    # node's items — is visible without clicking into each node individually.
+    st.subheader("📖 Full path at a glance")
+    if not nodes:
+        st.caption("No nodes yet — add one below.")
+    for i, node in enumerate(nodes):
+        badge = _PB_KIND_BADGE.get(node["kind"], node["kind"])
+        st.markdown(f"**{i+1}. {badge} — {node['title'] or '(untitled)'}**")
+        node_items = (
+            all_items_df[all_items_df["path_node_id"] == node["id"]].sort_values("position")
+            if not all_items_df.empty else all_items_df
+        )
+        if node_items.empty:
+            st.caption("　　(no items)")
+        else:
+            for _, it in node_items.iterrows():
+                if it["item_type"] == "session":
+                    sid = int(it["training_session_id"]) if pd.notna(it.get("training_session_id")) else None
+                    st.caption(f"　　🏋️ {int(it['repeat_count'])}x {session_titles.get(sid, f'session {sid}')}")
+                elif it["item_type"] == "video":
+                    st.caption(f"　　🎬 {it.get('video_title') or it.get('video_url')}")
+                else:
+                    st.caption(f"　　💬 {(it.get('quote_text') or '')[:60]}")
+
+    st.divider()
+
+    # ── Sequence ─────────────────────────────────────────────────────────────
+    st.subheader("Sequence")
+    if not nodes:
+        st.info("No nodes yet — add one in the form below.")
+    for i, node in enumerate(nodes):
+        badge = _PB_KIND_BADGE.get(node["kind"], node["kind"])
+        c_name, c_pos, c_edit, c_rm = st.columns([4.5, 1, 1, 0.5])
+        c_name.markdown(f"**{i+1}.** {badge} — {node['title'] or '(untitled)'}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(nodes), value=i + 1,
+            key=f"pb_node_pos_{node['uid']}", label_visibility="collapsed",
+        )
+        if c_edit.button("✎ Edit", key=f"pb_edit_{node['uid']}"):
+            st.session_state[_PB_SELECTED_UID] = node["uid"]
+            _pb_load_items(node["id"])
+            st.rerun()
+        if c_rm.button("✕", key=f"pb_node_rm_{node['uid']}"):
+            st.session_state[_PB_NODE_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(nodes) - 1, new_pos - 1))
+            st.session_state[_PB_NODE_PENDING_REORDER] = {"from": i, "to": target}
+            st.rerun()
+
+    st.session_state[_PB_NODES] = nodes
+
+    st.caption("⚠️ Removing a node here only takes effect once you save the "
+               "sequence order below — it permanently deletes the node and "
+               "all its items.")
+    if st.button("💾 Save sequence order", key="pb_save_order", disabled=not nodes):
+        db = get_client()
+        with st.spinner("Saving order…"):
+            original_ids = st.session_state.get(_PB_ORIGINAL_NODE_IDS, set())
+            current_ids = {n["id"] for n in nodes}
+            for removed_id in original_ids - current_ids:
+                db.table("path_node_item").delete().eq("path_node_id", removed_id).execute()
+                db.table("path_node").delete().eq("id", removed_id).execute()
+            # Two-phase position update: writing final positions in a single
+            # pass can collide with unique(path_id, position) mid-loop — e.g.
+            # moving a node into position 0 while another node still holds
+            # position 0 there, not yet reassigned. Bump every row to a
+            # temporary position nothing else ever uses (negative) first, so
+            # no write in either phase can ever hit an occupied slot.
+            for offset, node in enumerate(nodes):
+                db.table("path_node").update({"position": -(offset + 1)}).eq("id", node["id"]).execute()
+            for pos, node in enumerate(nodes):
+                db.table("path_node").update({"position": pos}).eq("id", node["id"]).execute()
+        st.success("Sequence order saved.")
+        bust_cache()
+        st.session_state.pop(_PB_NODES, None)
+        st.rerun()
+
+    # ── Node form: one form for both "add a node" and "edit the selected
+    # node" — switches mode based on _PB_SELECTED_UID rather than rendering
+    # two separate forms.
+    st.divider()
+    selected_uid = st.session_state.get(_PB_SELECTED_UID)
+    selected_node = next((n for n in nodes if n["uid"] == selected_uid), None) if selected_uid else None
+    if selected_uid and selected_node is None:
+        # Selected node was removed from the list above but not saved yet.
+        selected_uid = None
+        st.session_state[_PB_SELECTED_UID] = None
+
+    form_target = selected_uid or "__new__"
+    if st.session_state.get(_PB_FORM_LOADED_UID) != form_target:
+        if selected_node is None:
+            _pb_seed_form_state(
+                kind="godar", title="", title_fa="", subtitle="", description="",
+            )
+        else:
+            _pb_seed_form_state(
+                kind=selected_node["kind"],
+                title=selected_node["title"], title_fa=selected_node["title_fa"],
+                subtitle=selected_node["subtitle"], description=selected_node["description"],
+            )
+        st.session_state[_PB_FORM_LOADED_UID] = form_target
+
+    if selected_node is not None:
+        c_head, c_cancel = st.columns([5, 1.3])
+        c_head.subheader(f"Editing: {selected_node['title'] or '(untitled)'}")
+        if c_cancel.button("✕ Cancel / New node", key="pb_form_cancel"):
+            st.session_state[_PB_PENDING_FORM_RESET] = True
+            st.rerun()
+    else:
+        st.subheader("Add a node")
+
+    f_kind = st.radio("Kind", ["godar", "milestone"], horizontal=True, key="pb_f_kind")
+    c1, c2 = st.columns(2)
+    with c1:
+        f_title = st.text_input("Title", key="pb_f_title")
+        f_title_fa = st.text_input("Farsi title", key="pb_f_title_fa")
+    with c2:
+        f_subtitle = st.text_input("Subtitle", key="pb_f_subtitle")
+        f_description = st.text_area("Description", key="pb_f_description", height=80)
+
+    submit_label = "💾 Save node" if selected_node is not None else "＋ Add node"
+    if st.button(submit_label, key="pb_form_submit"):
+        if not f_title.strip():
+            st.warning("Title is required.")
+        else:
+            db = get_client()
+            payload = {
+                "kind": f_kind,
+                "title": f_title.strip(),
+                "title_fa": f_title_fa.strip() or None,
+                "subtitle": f_subtitle.strip() or None,
+                "description": f_description.strip() or None,
+            }
+            if selected_node is not None:
+                db.table("path_node").update(payload).eq("id", selected_node["id"]).execute()
+                for n in nodes:
+                    if n["uid"] == selected_node["uid"]:
+                        n.update({
+                            **payload,
+                            "title_fa": f_title_fa.strip(), "subtitle": f_subtitle.strip(),
+                            "description": f_description.strip(),
+                        })
+                st.session_state[_PB_NODES] = nodes
+                bust_cache()
+                st.success("Node saved.")
+                st.rerun()
+            else:
+                result = db.table("path_node").insert({
+                    **payload, "path_id": _PATH_ID, "position": len(nodes),
+                }).execute()
+                new_id = result.data[0]["id"]
+                nodes.append({
+                    **payload, "id": new_id, "position": len(nodes),
+                    "title_fa": f_title_fa.strip(), "subtitle": f_subtitle.strip(),
+                    "description": f_description.strip(), "uid": str(new_id),
+                })
+                st.session_state[_PB_NODES] = nodes
+                st.session_state[_PB_ORIGINAL_NODE_IDS] = (
+                    st.session_state.get(_PB_ORIGINAL_NODE_IDS, set()) | {new_id}
+                )
+                bust_cache()
+                st.success(f"Node '{f_title}' added.")
+                st.session_state[_PB_PENDING_FORM_RESET] = True
+                st.rerun()
+
+    if selected_node is None:
+        return
+    node_id = selected_node["id"]
+
+    st.markdown("**Checklist items**")
+    if st.session_state.get(_PB_ITEMS_FOR_NODE_ID) != node_id:
+        _pb_load_items(node_id)
+    items: list[dict] = st.session_state[_PB_ITEMS]
+
+    pending_item = st.session_state.pop(_PB_ITEM_PENDING_OP, None)
+    if pending_item and pending_item["op"] == "remove":
+        items.pop(pending_item["i"])
+        st.session_state[_PB_ITEMS] = items
+
+    pending_item_reorder = st.session_state.pop(_PB_ITEM_PENDING_REORDER, None)
+    if pending_item_reorder:
+        moved = items.pop(pending_item_reorder["from"])
+        items.insert(pending_item_reorder["to"], moved)
+        st.session_state[_PB_ITEMS] = items
+        for new_i, it in enumerate(items):
+            st.session_state[f"pb_item_pos_{it['uid']}"] = new_i + 1
+
+    # Same deferred-reset requirement as the node form above — these keys
+    # are namespaced by node_id and instantiated further down in "Add item".
+    pending_item_reset = st.session_state.pop(_PB_PENDING_ITEM_RESET, None)
+    if pending_item_reset and pending_item_reset.get("node_id") == node_id:
+        for key in pending_item_reset.get("keys", []):
+            st.session_state[key] = ""
+
+    if not items:
+        st.caption("No items yet — add one below.")
+    for i, item in enumerate(items):
+        if item["item_type"] == "session":
+            sid = item["training_session_id"]
+            label = f"🏋️ {item['repeat_count']}x {session_titles.get(sid, f'session {sid}')}"
+        elif item["item_type"] == "video":
+            label = f"🎬 {item['video_title'] or item['video_url']}"
+        else:
+            label = f"💬 {(item['quote_text'] or '')[:60]}"
+
+        c_name, c_pos, c_rm = st.columns([6, 1, 0.5])
+        c_name.markdown(f"**{i+1}.** {label}")
+
+        new_pos = c_pos.number_input(
+            "Position", min_value=1, max_value=len(items), value=i + 1,
+            key=f"pb_item_pos_{item['uid']}", label_visibility="collapsed",
+        )
+        if c_rm.button("✕", key=f"pb_item_rm_{item['uid']}"):
+            st.session_state[_PB_ITEM_PENDING_OP] = {"op": "remove", "i": i}
+            st.rerun()
+
+        if new_pos != i + 1:
+            target = max(0, min(len(items) - 1, new_pos - 1))
+            st.session_state[_PB_ITEM_PENDING_REORDER] = {"from": i, "to": target}
+            st.rerun()
+
+    st.session_state[_PB_ITEMS] = items
+
+    if st.button("💾 Save items", key=f"pb_save_items_{node_id}", disabled=not items):
+        db = get_client()
+        with st.spinner("Saving items…"):
+            original_ids = st.session_state.get(_PB_ORIGINAL_ITEM_IDS, set())
+            current_ids = {i["id"] for i in items}
+            for removed_id in original_ids - current_ids:
+                db.table("path_node_item").delete().eq("id", removed_id).execute()
+            # Same reorder-through-a-unique-index hazard as path_node's
+            # "Save sequence order" above (unique(path_node_id, position)
+            # here) — bump existing rows to temporary, never-otherwise-used
+            # positions first so no later write in this loop can collide.
+            existing_ids = [item["id"] for item in items if item["id"] is not None]
+            for offset, item_id in enumerate(existing_ids):
+                db.table("path_node_item").update({"position": -(offset + 1)}).eq("id", item_id).execute()
+            for pos, item in enumerate(items):
+                payload = {
+                    "path_node_id": node_id,
+                    "position": pos,
+                    "item_type": item["item_type"],
+                    "training_session_id": item["training_session_id"] if item["item_type"] == "session" else None,
+                    "repeat_count": item["repeat_count"] if item["item_type"] == "session" else 1,
+                    "video_url": (item["video_url"] or None) if item["item_type"] == "video" else None,
+                    "video_title": (item["video_title"] or None) if item["item_type"] == "video" else None,
+                    "quote_text": (item["quote_text"] or None) if item["item_type"] == "quote" else None,
+                    "quote_author": (item["quote_author"] or None) if item["item_type"] == "quote" else None,
+                }
+                if item["id"] is not None:
+                    db.table("path_node_item").update(payload).eq("id", item["id"]).execute()
+                else:
+                    result = db.table("path_node_item").insert(payload).execute()
+                    item["id"] = result.data[0]["id"]
+                    item["uid"] = str(item["id"])
+        st.session_state[_PB_ITEMS] = items
+        st.session_state[_PB_ORIGINAL_ITEM_IDS] = {i["id"] for i in items}
+        bust_cache()
+        st.success("Items saved.")
+        st.rerun()
+
+    # ── Add item ─────────────────────────────────────────────────────────────
+    st.markdown("**Add item**")
+    add_kind = st.radio(
+        "Add", ["Existing session", "New session", "Video", "Quote"],
+        horizontal=True, key=f"pb_add_kind_{node_id}", label_visibility="collapsed",
+    )
+
+    if add_kind == "Existing session":
+        if sessions_df.empty:
+            st.info("No sessions yet.")
+        else:
+            opts = {f"{r['title']}  (id {int(r['id'])})": int(r["id"]) for _, r in sessions_df.iterrows()}
+            c_sel, c_rep, c_add = st.columns([4, 1.5, 1])
+            chosen_label = c_sel.selectbox(
+                "Session", list(opts.keys()), key=f"pb_add_session_select_{node_id}",
+                label_visibility="collapsed",
+            )
+            chosen_id = opts[chosen_label]
+            repeat_count = c_rep.number_input(
+                "Reps", min_value=1, max_value=99, value=1,
+                key=f"pb_add_session_reps_{node_id}", label_visibility="collapsed",
+            )
+            if c_add.button("＋ Add", key=f"pb_add_session_btn_{node_id}"):
+                items.append({
+                    "id": None, "item_type": "session", "training_session_id": chosen_id,
+                    "repeat_count": repeat_count, "video_url": "", "video_title": "",
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.rerun()
+
+    elif add_kind == "New session":
+        st.caption("Creates the session immediately (title only) — add its "
+                    "exercises in the Sessions tab.")
+        c_title, c_add = st.columns([4, 1])
+        new_session_title = c_title.text_input(
+            "New session title", key=f"pb_new_session_title_{node_id}",
+            label_visibility="collapsed", placeholder="New session title",
+        )
+        if c_add.button("＋ Create & add", key=f"pb_new_session_btn_{node_id}"):
+            if not new_session_title.strip():
+                st.warning("Title is required.")
+            else:
+                db = get_client()
+                # id column has no sequence — compute next id manually, same
+                # as tab_sessions()'s save flow.
+                max_row = db.table("training_session").select("id").order("id", desc=True).limit(1).execute()
+                next_id = (max_row.data[0]["id"] + 1) if max_row.data else 1
+                db.table("training_session").insert({
+                    "id": next_id, "title": new_session_title.strip(),
+                    "description": "", "difficulty": 2,
+                }).execute()
+                items.append({
+                    "id": None, "item_type": "session", "training_session_id": next_id,
+                    "repeat_count": 1, "video_url": "", "video_title": "",
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id, "keys": [f"pb_new_session_title_{node_id}"],
+                }
+                load_sessions.clear()
+                st.success(f"Session '{new_session_title}' created (id {next_id}) and added.")
+                st.rerun()
+
+    elif add_kind == "Video":
+        c_url, c_vtitle, c_add = st.columns([3, 3, 1])
+        v_url = c_url.text_input(
+            "Video URL", key=f"pb_add_video_url_{node_id}",
+            label_visibility="collapsed", placeholder="Video URL",
+        )
+        v_title = c_vtitle.text_input(
+            "Video title", key=f"pb_add_video_title_{node_id}",
+            label_visibility="collapsed", placeholder="Title (optional)",
+        )
+        if c_add.button("＋ Add", key=f"pb_add_video_btn_{node_id}"):
+            if not v_url.strip():
+                st.warning("A URL is required.")
+            else:
+                items.append({
+                    "id": None, "item_type": "video", "training_session_id": None,
+                    "repeat_count": 1, "video_url": v_url.strip(), "video_title": v_title.strip(),
+                    "quote_text": "", "quote_author": "", "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id,
+                    "keys": [f"pb_add_video_url_{node_id}", f"pb_add_video_title_{node_id}"],
+                }
+                st.rerun()
+
+    else:  # Quote
+        q_text = st.text_area("Quote text", key=f"pb_add_quote_text_{node_id}")
+        c_author, c_add = st.columns([4, 1])
+        q_author = c_author.text_input(
+            "Author (optional)", key=f"pb_add_quote_author_{node_id}",
+        )
+        if c_add.button("＋ Add", key=f"pb_add_quote_btn_{node_id}"):
+            if not q_text.strip():
+                st.warning("Quote text is required.")
+            else:
+                items.append({
+                    "id": None, "item_type": "quote", "training_session_id": None,
+                    "repeat_count": 1, "video_url": "", "video_title": "",
+                    "quote_text": q_text.strip(), "quote_author": q_author.strip(),
+                    "uid": uuid.uuid4().hex[:8],
+                })
+                st.session_state[_PB_ITEMS] = items
+                st.session_state[_PB_PENDING_ITEM_RESET] = {
+                    "node_id": node_id,
+                    "keys": [f"pb_add_quote_text_{node_id}", f"pb_add_quote_author_{node_id}"],
+                }
+                st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab: Session Inspector
@@ -1527,6 +2361,29 @@ def tab_audio_tracks():
             }).execute()
             bust_cache()
             st.rerun()
+
+    # ── Default Morshed (migration 0041) ─────────────────────────────────
+    # The recordings a first-time user downloads before choosing a Morshed.
+    if not morsheds.empty and "is_default" in morsheds.columns:
+        options = [None] + morsheds["id"].tolist()
+        names = dict(zip(morsheds["id"], morsheds["name"]))
+        current = next((int(r["id"]) for _, r in morsheds.iterrows()
+                        if bool(r["is_default"])), None)
+        chosen = st.selectbox(
+            "Default Morshed (downloaded by first-time users)",
+            options, index=options.index(current),
+            format_func=lambda i: "— none —" if i is None else names[i],
+            key="default_morshed",
+        )
+        if chosen != current and st.button("💾 Save default Morshed",
+                                           key="sv_default_morshed"):
+            set_default_morshed(get_client(),
+                                None if chosen is None else int(chosen))
+            st.success("Default Morshed saved.")
+            bust_cache()
+            st.rerun()
+    elif not morsheds.empty:
+        st.caption("Default Morshed: apply migration 0041 to enable.")
 
     st.divider()
 
@@ -1934,8 +2791,10 @@ def tab_grant_trainer():
 def tab_invite_codes():
     st.header("Invite Codes")
     st.caption(
-        "Trainer-issued codes gating student signup (username/password, no "
-        "email involved) — supabase/migrations/0016_invite_code_signup.sql. "
+        "Activation codes for Patreon members (release 1): an account redeems one "
+        "after signing in — give each member a code with **Max uses 1**. Who used "
+        "which code is in the **Activation** tab (migration 0045). The same codes "
+        "still gate the old username sign-up (0016). "
         "Codes are stored in plain text (the table isn't reachable through "
         "the app's API either way) so you can look one back up any time — "
         "see the table below."
@@ -2218,8 +3077,545 @@ def tab_utility():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tab: Fitness Test Criteria
+#
+# CRUD over the 4-table rubric hierarchy behind the app's Fitness Test module
+# (migration 0039_fitness_test_criteria.sql): chart -> axis -> subtest ->
+# level. The app (lib/features/fitness_test/) treats this data as read-only —
+# this tab is the only place it's ever written. Drill down chart -> axis ->
+# subtest to edit one subtest's up-to-7 levels at a time.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tab_fitness_test_criteria():
+    st.header("Fitness Test Criteria")
+    st.caption(
+        "The Haft Khan self-assessment rubric behind the app's Fitness Test "
+        "module. Each axis is a 7-level ladder (or, for scoring_logic="
+        "'average', 2 ladders averaged together) — enter each level's "
+        "requirement text and matching threshold below."
+    )
+    if st.button("↺ Reload", key="rel_fitness_test"):
+        bust_cache()
+
+    charts_df = load_fitness_test_charts()
+    axes_df = load_fitness_test_axes()
+    subtests_df = load_fitness_test_subtests()
+    levels_df = load_fitness_test_levels()
+
+    # ── Charts ──────────────────────────────────────────────────────────────
+    st.subheader("Charts (stages)")
+    if not charts_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "chart_key": st.column_config.TextColumn("Key ✏️", width=180),
+            "title": st.column_config.TextColumn("Title ✏️", width=260),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "chart_key", "title", "sort_order"]
+        edited = st.data_editor(
+            charts_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_chart_ed",
+        )
+        if st.button("💾 Save charts", key="sv_ft_chart"):
+            patches = _changed_rows(charts_df, edited, ["chart_key", "title", "sort_order"])
+            if patches:
+                save_rows("fitness_test_chart", patches)
+                st.success(f"Updated {len(patches)} chart(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No charts yet — add the first one below.")
+
+    with st.form("add_ft_chart_form", clear_on_submit=True):
+        st.markdown("**Add a chart**")
+        new_key = st.text_input("Key (e.g. 'bodyweight_midline')")
+        new_title = st.text_input("Title")
+        new_order = st.number_input("Sort order", min_value=0, step=1, value=len(charts_df))
+        if st.form_submit_button("＋ Add chart") and new_key.strip() and new_title.strip():
+            get_client().table("fitness_test_chart").insert({
+                "chart_key": new_key.strip(), "title": new_title.strip(), "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if charts_df.empty:
+        st.info("Add a chart above first.")
+        return
+
+    # ── Axes ────────────────────────────────────────────────────────────────
+    st.subheader("Axes")
+    chart_opts = {f"{r['title']} ({r['chart_key']})": int(r["id"]) for _, r in charts_df.iterrows()}
+    chart_label = st.selectbox("Chart", list(chart_opts.keys()), key="ft_axis_chart_sel")
+    chart_id = chart_opts[chart_label]
+
+    chart_axes_df = axes_df[axes_df["chart_id"] == chart_id] if not axes_df.empty else pd.DataFrame()
+    if not chart_axes_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "axis_key": st.column_config.TextColumn("Key ✏️", width=160),
+            "display_name": st.column_config.TextColumn("Display name ✏️", width=200),
+            "scoring_logic": st.column_config.SelectboxColumn("Scoring ✏️", options=["single", "average"], width=110),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "axis_key", "display_name", "scoring_logic", "sort_order"]
+        edited = st.data_editor(
+            chart_axes_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_axis_ed",
+        )
+        if st.button("💾 Save axes", key="sv_ft_axis"):
+            patches = _changed_rows(
+                chart_axes_df, edited, ["axis_key", "display_name", "scoring_logic", "sort_order"])
+            if patches:
+                save_rows("fitness_test_axis", patches)
+                st.success(f"Updated {len(patches)} axis(es).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No axes yet for this chart — add the first one below.")
+
+    with st.form("add_ft_axis_form", clear_on_submit=True):
+        st.markdown("**Add an axis to this chart**")
+        new_key = st.text_input("Key (e.g. 'horizontal_push')")
+        new_name = st.text_input("Display name")
+        new_logic = st.selectbox("Scoring logic", ["single", "average"])
+        new_order = st.number_input(
+            "Sort order", min_value=0, step=1, value=len(chart_axes_df), key="ft_axis_order")
+        if st.form_submit_button("＋ Add axis") and new_key.strip() and new_name.strip():
+            get_client().table("fitness_test_axis").insert({
+                "chart_id": chart_id, "axis_key": new_key.strip(), "display_name": new_name.strip(),
+                "scoring_logic": new_logic, "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if chart_axes_df.empty:
+        st.info("Add an axis above first.")
+        return
+
+    # ── Subtests ────────────────────────────────────────────────────────────
+    st.subheader("Subtests")
+    axis_opts = {f"{r['display_name']} ({r['axis_key']})": int(r["id"]) for _, r in chart_axes_df.iterrows()}
+    axis_label = st.selectbox("Axis", list(axis_opts.keys()), key="ft_subtest_axis_sel")
+    axis_id = axis_opts[axis_label]
+
+    axis_subtests_df = subtests_df[subtests_df["axis_id"] == axis_id] if not subtests_df.empty else pd.DataFrame()
+    if not axis_subtests_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "subtest_key": st.column_config.TextColumn("Key ✏️", width=160),
+            "display_name": st.column_config.TextColumn("Display name ✏️", width=180),
+            "needs_bodyweight": st.column_config.CheckboxColumn("Needs bodyweight ✏️", width=130),
+            "needs_height": st.column_config.CheckboxColumn("Needs height ✏️", width=110),
+            "sort_order": st.column_config.NumberColumn("Order ✏️", width=80),
+        }
+        show = ["id", "subtest_key", "display_name", "needs_bodyweight", "needs_height", "sort_order"]
+        edited = st.data_editor(
+            axis_subtests_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_subtest_ed",
+        )
+        if st.button("💾 Save subtests", key="sv_ft_subtest"):
+            patches = _changed_rows(
+                axis_subtests_df, edited,
+                ["subtest_key", "display_name", "needs_bodyweight", "needs_height", "sort_order"],
+            )
+            if patches:
+                save_rows("fitness_test_subtest", patches)
+                st.success(f"Updated {len(patches)} subtest(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption(
+            "No subtests yet for this axis — add one below. Most axes need "
+            "exactly 1 (matching its own key/name); 'average'-scoring axes "
+            "need 2."
+        )
+
+    with st.form("add_ft_subtest_form", clear_on_submit=True):
+        st.markdown("**Add a subtest to this axis**")
+        new_key = st.text_input("Key (e.g. 'handstand_hold')")
+        new_name = st.text_input("Display name")
+        new_bw = st.checkbox("Needs bodyweight")
+        new_ht = st.checkbox("Needs height")
+        new_order = st.number_input(
+            "Sort order", min_value=0, step=1, value=len(axis_subtests_df), key="ft_subtest_order")
+        if st.form_submit_button("＋ Add subtest") and new_key.strip() and new_name.strip():
+            get_client().table("fitness_test_subtest").insert({
+                "axis_id": axis_id, "subtest_key": new_key.strip(), "display_name": new_name.strip(),
+                "needs_bodyweight": new_bw, "needs_height": new_ht, "sort_order": int(new_order),
+            }).execute()
+            bust_cache()
+            st.rerun()
+
+    st.divider()
+
+    if axis_subtests_df.empty:
+        st.info("Add a subtest above first.")
+        return
+
+    # ── Levels ──────────────────────────────────────────────────────────────
+    st.subheader("Levels")
+    st.caption(
+        "One row per level (1-7). ratio_denominator set to 'bodyweight' or "
+        "'height' means the real target is threshold_value × that profile "
+        "field + ratio_offset (e.g. Broad Jump's 'Height + 30cm' level = "
+        "threshold_value 1.0, ratio_offset 30 — leave ratio_offset at 0 for "
+        "a plain percentage like '80% of height'). "
+        "continuous_from_previous=false marks a level that switches exercise "
+        "or unit from the one below it — the app scores that transition as a "
+        "whole level rather than interpolating.\n\n"
+        "Phrasing tips: for a load-ratio axis (Deadlift, Press, Farmer Carry) "
+        "always collect weight — put the rep/distance target as text in "
+        "requirement_label, e.g. '0.5x Bodyweight for 8 reps'. For a timed "
+        "exercise with a rep target (e.g. Jump Rope), phrase input_label as "
+        "'Max reps in X min' rather than mentioning 'unbroken'."
+    )
+    subtest_opts = {f"{r['display_name']} ({r['subtest_key']})": int(r["id"]) for _, r in axis_subtests_df.iterrows()}
+    subtest_label = st.selectbox("Subtest", list(subtest_opts.keys()), key="ft_level_subtest_sel")
+    subtest_id = subtest_opts[subtest_label]
+
+    subtest_levels_df = levels_df[levels_df["subtest_id"] == subtest_id] if not levels_df.empty else pd.DataFrame()
+    if not subtest_levels_df.empty:
+        cfg = {
+            "id": st.column_config.NumberColumn("ID", disabled=True, width=55),
+            "level_number": st.column_config.NumberColumn("Level", disabled=True, width=60),
+            "requirement_label": st.column_config.TextColumn("Requirement ✏️", width=240),
+            "input_label": st.column_config.TextColumn("Input label ✏️", width=200),
+            "input_unit": st.column_config.TextColumn("Unit ✏️", width=90),
+            "threshold_value": st.column_config.NumberColumn("Threshold ✏️", width=100),
+            "higher_is_better": st.column_config.CheckboxColumn("Higher=better ✏️", width=110),
+            "ratio_denominator": st.column_config.SelectboxColumn(
+                "Ratio of ✏️", options=[None, "bodyweight", "height"], width=110),
+            "ratio_offset": st.column_config.NumberColumn("Ratio offset ✏️", width=100),
+            "continuous_from_previous": st.column_config.CheckboxColumn("Continuous ✏️", width=100),
+        }
+        show = [
+            "id", "level_number", "requirement_label", "input_label", "input_unit",
+            "threshold_value", "higher_is_better", "ratio_denominator", "ratio_offset",
+            "continuous_from_previous",
+        ]
+        edited = st.data_editor(
+            subtest_levels_df[show].copy(), column_config=cfg,
+            use_container_width=True, hide_index=True,
+            num_rows="fixed", key="ft_level_ed",
+        )
+        if st.button("💾 Save levels", key="sv_ft_level"):
+            patches = _changed_rows(
+                subtest_levels_df, edited,
+                ["requirement_label", "input_label", "input_unit", "threshold_value",
+                 "higher_is_better", "ratio_denominator", "ratio_offset", "continuous_from_previous"],
+            )
+            if patches:
+                save_rows("fitness_test_level", patches)
+                st.success(f"Updated {len(patches)} level(s).")
+                bust_cache()
+            else:
+                st.info("No changes.")
+    else:
+        st.caption("No levels yet for this subtest.")
+
+    existing_levels = set(subtest_levels_df["level_number"]) if not subtest_levels_df.empty else set()
+    missing_levels = [n for n in range(1, 8) if n not in existing_levels]
+    if missing_levels:
+        with st.form("add_ft_level_form", clear_on_submit=True):
+            st.markdown("**Add a level**")
+            new_level = st.selectbox("Level number", missing_levels)
+            new_req = st.text_input("Requirement label (shown to the test-taker)")
+            new_input_label = st.text_input("Input field label")
+            new_unit = st.text_input("Unit (reps / seconds / meters / kg / minutes)")
+            new_threshold = st.number_input("Threshold value", value=0.0)
+            new_higher = st.checkbox("Higher is better", value=True)
+            new_ratio = st.selectbox("Ratio of", [None, "bodyweight", "height"])
+            new_ratio_offset = st.number_input("Ratio offset (added after the ratio, 0 for a plain percentage)", value=0.0)
+            new_continuous = st.checkbox("Continuous from previous level", value=True)
+            if st.form_submit_button("＋ Add level") and new_req.strip():
+                get_client().table("fitness_test_level").insert({
+                    "subtest_id": subtest_id, "level_number": new_level,
+                    "requirement_label": new_req.strip(),
+                    "input_label": new_input_label.strip() or new_req.strip(),
+                    "input_unit": new_unit.strip() or "reps", "threshold_value": new_threshold,
+                    "higher_is_better": new_higher, "ratio_denominator": new_ratio,
+                    "ratio_offset": new_ratio_offset, "continuous_from_previous": new_continuous,
+                }).execute()
+                bust_cache()
+                st.rerun()
+    else:
+        st.caption("All 7 levels defined for this subtest.")
+# Tab: Onboarding
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MIME_BY_EXT = {".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg", ".webp": "image/webp"}
+
+
+def _onboarding_fields(prefix: str, card: OnboardingCard | None) -> dict:
+    """Shared inputs for the add and edit forms. Returns the raw values;
+    the caller validates them by building an OnboardingCard."""
+    c1, c2 = st.columns(2)
+    with c1:
+        title_en = st.text_input("Title (English) *", value=card.title_en if card else "",
+                                 key=f"{prefix}_title_en")
+        body_en = st.text_area("Body (English)", value=card.body_en if card else "",
+                               height=90, key=f"{prefix}_body_en")
+    with c2:
+        title_fa = st.text_input("Title (Farsi)", value=(card.title_fa or "") if card else "",
+                                 key=f"{prefix}_title_fa")
+        body_fa = st.text_area("Body (Farsi)", value=(card.body_fa or "") if card else "",
+                               height=90, key=f"{prefix}_body_fa")
+    st.caption("Farsi is stored now and shown once the app's Farsi mode exists.")
+    builtin = st.selectbox(
+        "Built-in picture (used when no image is uploaded, and offline)",
+        BUILTIN_IMAGES,
+        index=BUILTIN_IMAGES.index(card.builtin_image) if card else 0,
+        format_func=lambda v: BUILTIN_IMAGE_LABELS[v],
+        key=f"{prefix}_builtin",
+    )
+    upload = st.file_uploader("Upload an image (optional — PNG, JPG or WebP)",
+                              type=["png", "jpg", "jpeg", "webp"],
+                              key=f"{prefix}_upload")
+    remove_image = False
+    if card and card.image_url:
+        remove_image = st.checkbox("Remove the uploaded image (use the built-in picture)",
+                                   key=f"{prefix}_remove_image")
+    links = st.text_area(
+        "Buttons (optional, up to 3) — one per line: `label | https://link`",
+        value=links_text(card.links) if card else "",
+        height=80, key=f"{prefix}_links",
+        help="e.g. `Order | https://rahaavi.com/meel/order` — shown under the text.")
+    active = st.toggle("Active (shown in the app)", value=card.is_active if card else True,
+                       key=f"{prefix}_active")
+    return {"title_en": title_en, "body_en": body_en, "title_fa": title_fa,
+            "body_fa": body_fa, "builtin_image": builtin, "is_active": active,
+            "upload": upload, "remove_image": remove_image, "links": links}
+
+
+def _resolve_image_url(fields: dict, current: str | None) -> str | None:
+    """Uploads a new image to R2 if one was chosen; otherwise keeps or clears
+    the current URL."""
+    upload = fields["upload"]
+    if upload is not None:
+        data = upload.getvalue()
+        key = r2_key_for(fields["title_en"] or "card", upload.name, data)
+        mime = _MIME_BY_EXT[Path(upload.name).suffix.lower()]
+        return upload_bytes_to_r2(data, key, mime)
+    return None if fields["remove_image"] else current
+
+
+def _onboarding_preview(card: OnboardingCard) -> None:
+    if card.image_url:
+        st.image(card.image_url, width=160)
+    else:
+        st.caption(f"🖼️ Built-in: {BUILTIN_IMAGE_LABELS[card.builtin_image]}")
+
+
+def tab_onboarding():
+    st.header("Onboarding")
+    st.caption(
+        "The cards a new user sees on first open, after the splash. The app "
+        "fetches the **active** cards (in this order) while the splash shows "
+        "and caches them — changes need no app update. Offline, it shows the "
+        "last cards it fetched, or its built-in ones. People who already "
+        "passed onboarding don't see it again."
+    )
+
+    if st.button("↺ Reload", key="rel_onb"):
+        load_onboarding_cards.clear()
+
+    try:
+        rows = load_onboarding_cards()
+    except Exception as exc:  # postgrest raises when the table is missing
+        st.error(
+            "⚠️ Couldn't read `onboarding_cards`. If the table doesn't exist yet, run "
+            "`supabase/migrations/0040_onboarding_cards.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    cards = [OnboardingCard.from_row(r) for r in rows]
+    active = [c for c in cards if c.is_active]
+    m1, m2 = st.columns(2)
+    m1.metric("Active cards", len(active))
+    m2.metric("Inactive", len(cards) - len(active))
+    if not active:
+        st.warning("No active cards — the app will show its built-in cards.")
+
+    client = get_client()
+
+    for i, card in enumerate(cards):
+        status = "🟢" if card.is_active else "⚪"
+        with st.expander(f"{status} {i + 1}. {card.title_en}", expanded=False):
+            col_preview, col_actions = st.columns([3, 1])
+            with col_preview:
+                _onboarding_preview(card)
+            with col_actions:
+                up, down = st.columns(2)
+                for col, label, direction in ((up, "⬆️", -1), (down, "⬇️", +1)):
+                    patches = move_patches(cards, i, direction)
+                    if col.button(label, key=f"onb_move_{card.id}_{direction}",
+                                  disabled=not patches):
+                        for card_id, position in patches:
+                            client.table("onboarding_cards").update(
+                                {"position": position, "updated_at": "now()"}
+                            ).eq("id", card_id).execute()
+                        load_onboarding_cards.clear()
+                        st.rerun()
+
+            with st.form(f"onb_edit_{card.id}"):
+                fields = _onboarding_fields(f"onb_{card.id}", card)
+                if st.form_submit_button("💾 Save card", type="primary"):
+                    try:
+                        updated = card.with_changes(
+                            title_en=fields["title_en"], body_en=fields["body_en"],
+                            title_fa=fields["title_fa"], body_fa=fields["body_fa"],
+                            builtin_image=fields["builtin_image"],
+                            is_active=fields["is_active"],
+                            image_url=_resolve_image_url(fields, card.image_url),
+                            links=parse_links(fields["links"]),
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        client.table("onboarding_cards").update(
+                            {**updated.to_row(), "updated_at": "now()"}
+                        ).eq("id", card.id).execute()
+                        st.success("✅ Saved.")
+                        load_onboarding_cards.clear()
+                        st.rerun()
+
+            confirm = st.checkbox("I want to delete this card",
+                                  key=f"onb_del_confirm_{card.id}")
+            if st.button("🗑️ Delete card", key=f"onb_del_{card.id}",
+                         disabled=not confirm):
+                client.table("onboarding_cards").delete().eq("id", card.id).execute()
+                st.success("Deleted.")
+                load_onboarding_cards.clear()
+                st.rerun()
+
+    st.divider()
+    st.subheader("Add a card")
+    with st.form("onb_add", clear_on_submit=True):
+        fields = _onboarding_fields("onb_new", None)
+        if st.form_submit_button("➕ Add card", type="primary"):
+            try:
+                new_card = OnboardingCard(
+                    title_en=fields["title_en"], body_en=fields["body_en"],
+                    title_fa=fields["title_fa"], body_fa=fields["body_fa"],
+                    builtin_image=fields["builtin_image"],
+                    is_active=fields["is_active"],
+                    position=next_position(cards),
+                    image_url=_resolve_image_url(fields, None),
+                    links=parse_links(fields["links"]),
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                client.table("onboarding_cards").insert(new_card.to_row()).execute()
+                st.success(f"✅ Added “{new_card.title_en}” at the end.")
+                load_onboarding_cards.clear()
+                st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
+
+def tab_activation():
+    st.header("Activation")
+    st.caption(
+        "Release 1 is for Patreon members: after signing in, an account needs an "
+        "activation code (issue them in **Invite Codes**, one use each). Until then "
+        "the app shows the locked screen below, and the database returns no content "
+        "(supabase/migrations/0045_activation_gate.sql). Trainers never need a code."
+    )
+    if st.button("↺ Reload", key="rel_activation"):
+        load_locked_screen.clear()
+        load_activations.clear()
+    try:
+        row = load_locked_screen()
+        activations = [Activation.from_row(r) for r in load_activations()]
+    except Exception as exc:  # postgrest raises when the tables are missing
+        st.error(
+            "⚠️ Couldn't read the activation tables. If they don't exist yet, run "
+            "`supabase/migrations/0045_activation_gate.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    st.subheader("Locked screen")
+    screen = LockedScreen.from_row(row or {})
+    message = st.text_area("Message", value=screen.message, key="locked_message")
+    link_label = st.text_input("Button label", value=screen.link_label,
+                               key="locked_link_label")
+    link_url = st.text_input("Button link (https://…)", value=screen.link_url,
+                             key="locked_link_url")
+    edited = LockedScreen(message, link_label, link_url)
+    problems = edited.problems()
+    for problem in problems:
+        st.warning(problem)
+    if st.button("💾 Save", type="primary", disabled=bool(problems), key="locked_save"):
+        get_client().table("activation_gate").upsert(edited.to_row()).execute()
+        load_locked_screen.clear()
+        st.success("Saved. The locked screen shows it on its next open.")
+
+    st.divider()
+    st.subheader(f"Activations ({len(activations)})")
+    st.caption("Who activated with which code — compare the emails with Patreon's "
+               "members each month.")
+    if activations:
+        st.dataframe(
+            [{"email": a.email, "code": a.code, "activated": a.activated_at}
+             for a in activations],
+            hide_index=True, use_container_width=True)
+        st.download_button("⬇️ Download CSV", activations_csv(activations),
+                           file_name="activations.csv", mime="text/csv",
+                           key="activations_csv")
+
+
+def tab_home_card():
+    st.header("Home card")
+    st.caption(
+        "The info card on the app's Home: a title, one line of text and a link to a "
+        "page on our website (first use: the meel guide). The app re-reads it on every "
+        "start and every 3 hours. When you change the title, text or link, it shows "
+        "as **NEW** (raised) until each user opens it — no app update needed."
+    )
+    if st.button("↺ Reload", key="rel_home_card"):
+        load_home_announcement.clear()
+    try:
+        row = load_home_announcement()
+    except Exception as exc:  # postgrest raises when the table is missing
+        st.error(
+            "⚠️ Couldn't read `home_announcement`. If the table doesn't exist yet, run "
+            "`supabase/migrations/0044_home_announcement.sql` in the Supabase SQL Editor."
+        )
+        st.caption(f"{type(exc).__name__}: {exc}")
+        return
+
+    card = HomeAnnouncement.from_row(row or {})
+    title = st.text_input("Title", value=card.title, key="home_card_title")
+    description = st.text_input("Line of text", value=card.description,
+                                key="home_card_description")
+    url = st.text_input("Link (https://…)", value=card.url, key="home_card_url")
+    is_active = st.checkbox("Show on Home", value=card.is_active, key="home_card_active")
+
+    edited = HomeAnnouncement(title, description, url, is_active)
+    problems = edited.problems()
+    for problem in problems:
+        st.warning(problem)
+    if st.button("💾 Save", type="primary", disabled=bool(problems), key="home_card_save"):
+        get_client().table("home_announcement").upsert(edited.to_row()).execute()
+        load_home_announcement.clear()
+        st.success("Saved. Apps pick it up on their next start or within 3 hours.")
+
 
 def main():
     st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
@@ -2240,9 +3636,10 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
+        "🗺️  Path",
         "🔍  Inspector",
         "🎙️  Movement Types",
         "🎵  Recordings",
@@ -2251,17 +3648,26 @@ def main():
         "🎟️  Invite Codes",
         "👤  Users",
         "🧰  Utility",
+        "🏋️  Fitness Test",
+        "👋  Onboarding",
+        "📣  Home card",
+        "🔓  Activation",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
-    with t3: tab_inspector()
-    with t4: tab_movement_types()
-    with t5: tab_audio_tracks()
-    with t6: tab_release_gate()
-    with t7: tab_grant_trainer()
-    with t8: tab_invite_codes()
-    with t9: tab_users()
-    with t10: tab_utility()
+    with t3: tab_path()
+    with t4: tab_inspector()
+    with t5: tab_movement_types()
+    with t6: tab_audio_tracks()
+    with t7: tab_release_gate()
+    with t8: tab_grant_trainer()
+    with t9: tab_invite_codes()
+    with t10: tab_users()
+    with t11: tab_utility()
+    with t12: tab_fitness_test_criteria()
+    with t13: tab_onboarding()
+    with t14: tab_home_card()
+    with t15: tab_activation()
 
 
 if __name__ == "__main__":

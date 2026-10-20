@@ -25,6 +25,9 @@ Exercise mapExercise(
       repetitionsDefault: r.repetitions,
       description: movementInfo?.description,
       videoUrl: movementInfo?.videoUrl,
+      cues: movementInfo?.cues ?? const [],
+      steps: movementInfo?.steps ?? const [],
+      variations: movementInfo?.variations ?? const [],
       movementTypeId: movement?.typeId,
       media: ExerciseMedia(
         type: movement?.mediaType ?? r.mediaType ?? 'none',
@@ -43,6 +46,8 @@ TrainingSession mapSession(TrainingSessionRow r) => TrainingSession(
       createdAt: r.createdAt,
       isPublic: r.isPublic ?? true,
       ownerTrainerId: r.ownerTrainerId,
+      homePosition: r.homePosition,
+      needsMeel: r.needsMeel ?? false,
     );
 
 /// Your schema only exposes `reps_to_do`. If you later add time-based items,

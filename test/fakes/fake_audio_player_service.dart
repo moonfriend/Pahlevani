@@ -15,6 +15,7 @@ class FakeAudioPlayerService implements AudioPlayerService {
   bool paused = false;
   bool resumed = false;
   bool looping = false;
+  double volume = 1;
   bool disposed = false;
   Duration? seekedTo;
   int playCallCount = 0;
@@ -57,12 +58,17 @@ class FakeAudioPlayerService implements AudioPlayerService {
   /// the cubit ignores engine-originated state changes.
   void emitPlaying(bool playing) => _playingCtrl.add(playing);
 
+  /// Per-path gates: [play] of that path doesn't return until its completer
+  /// completes — an engine that is slow to start one particular clip.
+  final Map<String, Completer<void>> playGates = {};
+
   @override
   Future<void> play(String path) async {
     lastPlayedPath = path;
     stopped = false;
     paused = false;
     playCallCount++;
+    await playGates[path]?.future;
     if (completePlayOnPause) {
       final c = Completer<void>();
       _pendingPlayCompleters.add(c);
@@ -109,6 +115,11 @@ class FakeAudioPlayerService implements AudioPlayerService {
   @override
   Future<void> setLooping(bool loop) async {
     looping = loop;
+  }
+
+  @override
+  Future<void> setVolume(double v) async {
+    volume = v;
   }
 
   @override

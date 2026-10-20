@@ -8,6 +8,8 @@ class TrainingSessionRow {
   final bool? isUserCreated;
   final bool? isPublic;
   final String? ownerTrainerId;
+  final int? homePosition;
+  final bool? needsMeel;
 
   TrainingSessionRow({
     required this.id,
@@ -19,6 +21,8 @@ class TrainingSessionRow {
     this.isUserCreated,
     this.isPublic,
     this.ownerTrainerId,
+    this.homePosition,
+    this.needsMeel,
   });
 
   factory TrainingSessionRow.fromJson(Map<String, dynamic> json) {
@@ -38,6 +42,9 @@ class TrainingSessionRow {
       // cached response) is treated as the public catalog it always was.
       isPublic: json['is_public'] as bool? ?? true,
       ownerTrainerId: json['owner_trainer_id'] as String?,
+      // Migration 0043; absent before it → not on Home, no meel tag.
+      homePosition: (json['home_position'] as num?)?.toInt(),
+      needsMeel: json['needs_meel'] as bool? ?? false,
     );
   }
 }

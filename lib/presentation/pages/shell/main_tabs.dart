@@ -1,0 +1,68 @@
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../core/di/dependency_injection.dart';
+import '../../../core/release_features.dart';
+import '../../bloc/announcement/announcement_cubit.dart';
+import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
+import '../../bloc/tracking/training_history_cubit.dart';
+import '../../bloc/training_session/training_session_cubit.dart';
+import '../home/home_tab.dart';
+import '../home/home_page.dart';
+import '../library/library_page.dart';
+import '../session_flow/session_preview_page.dart';
+import '../session_flow/session_start.dart';
+import '../profile/profile_page.dart';
+import '../progress/progress_page.dart';
+import 'app_shell.dart';
+
+/// The app's four tabs. Services are looked up lazily, when a tab is first
+/// shown. The full session list opens from Home's "All sessions".
+List<ShellTab> mainTabs() => [
+      ShellTab(
+        label: 'Home',
+        builder: (_) => MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: _history()..load()),
+            // Fetched on every start, then re-checked every few hours.
+            BlocProvider.value(value: getIt<AnnouncementCubit>()..load()),
+          ],
+          child: const HomeTab(),
+        ),
+        onSelected: () => _history().load(),
+      ),
+      ShellTab(
+        label: 'Library',
+        // Rebuilds when sessions (re)load, so the catalogue follows the
+        // background sync.
+        builder: (_) => BlocBuilder<TrainingSessionCubit, TrainingSessionState>(
+          builder: (context, state) => LibraryPage(
+            moves: context.read<TrainingSessionCubit>().libraryMoves,
+            sessions: homeSessionsFrom(state),
+            onOpenSession: (s) => openSessionPreview(context, s),
+            onSessionMenu: (s) => showSessionPlayMenu(context, s),
+          ),
+        ),
+      ),
+      if (ReleaseFeatures.progressTab)
+        ShellTab(
+          label: 'Progress',
+          builder: (_) => BlocProvider.value(
+            value: _history()..load(),
+            child: const ProgressPage(),
+          ),
+          onSelected: () => _history().load(),
+        ),
+      ShellTab(
+        label: 'Profile',
+        builder: (_) => MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: _history()..load()),
+            BlocProvider.value(value: getIt<AudioCatalogCubit>()..load()),
+          ],
+          child: const ProfilePage(),
+        ),
+        onSelected: () => _history().load(),
+      ),
+    ];
+
+TrainingHistoryCubit _history() => getIt<TrainingHistoryCubit>();

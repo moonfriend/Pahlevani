@@ -72,10 +72,16 @@ abstract class AuthRepository {
 
   Future<void> signOut();
 
-  /// Throws on any failure (network, RLS reject, 0 rows) — never silently
-  /// succeeds. Callers must not treat consent as accepted unless this
-  /// resolves.
-  Future<AppUser> acceptPrivacyConsent();
+  /// Records acceptance of the safety terms and privacy summary at
+  /// [termsVersion], and the optional [marketingOptIn]. Throws on any
+  /// failure (network, RLS reject, 0 rows) — never silently succeeds.
+  /// Callers must not treat consent as accepted unless this resolves.
+  Future<AppUser> acceptPrivacyConsent(
+      {required int termsVersion, required bool marketingOptIn});
+
+  /// Permanently deletes the signed-in account (and with it the profile and
+  /// activation), then signs out. Throws when the server refuses.
+  Future<void> deleteAccount();
 
   /// Trainer-only — the profiles RLS policy restricts this to callers where
   /// is_trainer is true.

@@ -9,10 +9,15 @@
 #   smoke_test.dart — hits real Supabase; run manually:
 #     flutter test integration_test/smoke_test.dart -d linux --update-goldens
 #
-# GitHub Actions secrets required (Settings → Secrets → Actions):
-#   FIREBASE_ANDROID_API_KEY  — Android Firebase API key (for APK build)
-#   FIREBASE_IOS_API_KEY      — iOS Firebase API key (for APK build dart-define)
-#   FIREBASE_WEB_API_KEY      — Web Firebase API key (for APK build dart-define)
+# The APK builds are a compile check, NOT a release artifact: nothing built
+# here is distributed. Release builds are made locally (see CLAUDE.md).
+#
+# GitHub Actions secrets — all OPTIONAL (Settings → Secrets → Actions).
+# Without them the APKs build with empty Firebase keys and the committed
+# placeholder google-services.json, which is enough to prove compilation.
+#   FIREBASE_ANDROID_API_KEY  — Android Firebase API key (dart-define)
+#   FIREBASE_IOS_API_KEY      — iOS Firebase API key (dart-define)
+#   FIREBASE_WEB_API_KEY      — Web Firebase API key (dart-define)
 #   GOOGLE_SERVICES_JSON      — base64-encoded android/app/google-services.json
 
 name: CI
@@ -24,6 +29,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   # ── Unit + widget tests ────────────────────────────────────────────────────
@@ -105,9 +111,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # google-services.json is gitignored; decode from secret.
-      - name: Write google-services.json
-        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode > android/app/google-services.json
+      # A placeholder google-services.json is committed. Replace it only when
+      # the real one is provided as a secret — decoding an empty secret would
+      # leave an empty file and fail processDebugGoogleServices.
+      - name: Write google-services.json (if secret set)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
+          else
+            echo "GOOGLE_SERVICES_JSON not set — using the committed placeholder."
+          fi
 
       - name: Build Android APK (debug)
         run: |
@@ -156,6 +171,7 @@ jobs:
           sudo apt-get install -y \
             clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpulse0 \
             xvfb
 
       - name: Enable Flutter Linux desktop

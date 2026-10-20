@@ -43,6 +43,13 @@ class SettingsCubit extends Cubit<SettingsState> {
     await prefs.setInt(_keyTheme, next.index);
   }
 
+  /// Appearance from Profile: System, Light or Dark.
+  Future<void> setThemeMode(ThemeMode mode) async {
+    emit(state.copyWith(themeMode: mode));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyTheme, mode.index);
+  }
+
   Future<void> setListDensity(ListDensity density) async {
     emit(state.copyWith(listDensity: density));
     final prefs = await SharedPreferences.getInstance();

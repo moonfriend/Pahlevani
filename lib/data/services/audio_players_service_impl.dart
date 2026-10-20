@@ -54,5 +54,8 @@ class AudioPlayersServiceImpl implements AudioPlayerService {
       _player.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
 
   @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
+
+  @override
   Future<void> dispose() => _player.dispose();
 }

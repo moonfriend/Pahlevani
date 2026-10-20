@@ -3,13 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
-
-/// Exercise-demonstration videos are timed (their "sarzarb"/beat anchors)
-/// against this specific performer's recordings — hardcoded on purpose
-/// rather than a DB flag, since a proper per-Morshed video sync is planned
-/// to replace this whole check later. Update here if that performer ever
-/// changes before then.
-const _kVideoReferenceMorshedName = 'Sirvan Norouzi';
+import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_flow.dart';
 
 /// Lets the athlete pick one Morshed whose recordings play for every
 /// movement, everywhere — a total override, not a per-movement choice.
@@ -94,32 +88,7 @@ class _MorshedTile extends StatelessWidget {
       title: Text(morshed.name),
       trailing:
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
-      onTap: () {
-        context.read<AudioCatalogCubit>().selectMorshed(morshed.id);
-        if (morshed.name != _kVideoReferenceMorshedName) {
-          _showVideoSyncWarning(context, morshed);
-        }
-      },
-    );
-  }
-
-  void _showVideoSyncWarning(BuildContext context, Morshed morshed) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Video sync heads-up'),
-        content: Text(
-          'Exercise videos are timed to Sirvan Norouzi\'s rhythm. With '
-          '${morshed.name} selected, video and audio may drift out of '
-          'sync during playback.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
+      onTap: () => chooseMorshed(context, morshed),
     );
   }
 }

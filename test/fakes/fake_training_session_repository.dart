@@ -35,9 +35,14 @@ class FakeTrainingSessionRepository implements TrainingSessionRepository {
   Future<TrainingSession> saveTrainingSession(TrainingSession session,
       {List<ItemDetail>? items}) async {
     final saved = session.copyWith(isUserCreated: true);
+    // Mirrors the real repository: the saved session's items are stored
+    // under its (possibly new) id.
     _snapshot = DomainSnapshot(
       sessionsById: {..._snapshot.sessionsById, saved.id: saved},
-      itemsBySessionId: {..._snapshot.itemsBySessionId},
+      itemsBySessionId: {
+        ..._snapshot.itemsBySessionId,
+        if (items != null) saved.id: items.map((d) => d.item).toList(),
+      },
       exercisesById: {..._snapshot.exercisesById},
     );
     return saved;

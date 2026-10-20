@@ -7,8 +7,16 @@ class Morshed extends Equatable {
   final String name;
   final String? photoUrl;
 
-  const Morshed({required this.id, required this.name, this.photoUrl});
+  /// The Morshed a first-time user gets before choosing one (set by the
+  /// admin; at most one is true — migration 0041).
+  final bool isDefault;
+
+  const Morshed(
+      {required this.id,
+      required this.name,
+      this.photoUrl,
+      this.isDefault = false});
 
   @override
-  List<Object?> get props => [id, name, photoUrl];
+  List<Object?> get props => [id, name, photoUrl, isDefault];
 }

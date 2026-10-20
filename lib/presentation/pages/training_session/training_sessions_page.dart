@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
+import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
@@ -13,11 +15,14 @@ import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/training_session/training_session_cubit.dart';
 import 'package:pahlevani/presentation/pages/auth/auth_page.dart';
 import 'package:pahlevani/presentation/pages/auth/privacy_consent_page.dart';
-import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
-import 'package:pahlevani/presentation/widgets/player/player_mode_dialog.dart';
+import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_preview_page.dart';
+import 'package:pahlevani/presentation/pages/session_flow/session_start.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
+import 'package:pahlevani/presentation/bloc/path/path_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_page.dart';
+import 'package:pahlevani/presentation/pages/path/path_page.dart';
 import 'package:pahlevani/presentation/pages/trainer/assign_session_page.dart';
 import 'package:pahlevani/presentation/pages/tracking/training_history_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
@@ -27,6 +32,8 @@ import 'package:pahlevani/presentation/widgets/common/download_ring.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/domain/services/connectivity_service.dart';
 import 'package:pahlevani/presentation/widgets/common/persian_pattern.dart';
+import 'package:pahlevani/features/fitness_test/presentation/pages/fitness_test_landing_page.dart';
+import 'package:pahlevani/presentation/layout/kashi_readable_width.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -88,6 +95,25 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     );
   }
 
+  void _openPath(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: getIt<PathCubit>(),
+          child: const PathPage(),
+        ),
+      ),
+    );
+  }
+
+  void _openFitnessTest(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FitnessTestLandingPage()),
+    );
+  }
+
   Future<void> _openMorshedPicker(BuildContext context) async {
     final cubit = context.read<TrainingSessionCubit>();
     await Navigator.push(
@@ -104,19 +130,20 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
     unawaited(cubit.refreshAudioSelection());
   }
 
-  Future<void> _openPlayer(TrainingSession session) async {
-    final mode = await showPlayerModeDialog(context);
-    if (mode == null || !mounted) return;
-    await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AudioPlayerPage(trainingSession: session, mode: mode),
-        ));
-    // Player may have cached tracks via lookahead — reload statuses so the
-    // "downloaded" badge appears if all tracks are now on disk.
-    if (mounted) {
-      unawaited(context.read<TrainingSessionCubit>().loadInitialStatuses());
+  /// Downloads [session]'s media via the download dialog (tier, size,
+  /// progress). True once it's all on the device.
+  Future<bool> _downloadSession(TrainingSession session,
+      {String? message}) async {
+    final done = await showMediaDownloadDialog(
+      context,
+      target: SessionDownloadTarget(session.id),
+      title: session.title,
+      message: message,
+    );
+    if (done && mounted) {
+      await context.read<TrainingSessionCubit>().loadInitialStatuses();
     }
+    return done;
   }
 
   Future<void> _openEdit(TrainingSession session) async {
@@ -172,7 +199,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
   void _showOverflowSheet(
       BuildContext context, TrainingSession session, DownloadStatus dlStatus) {
     final colors = Theme.of(context).extension<PahlevaniColors>()!;
-    final cubit = context.read<TrainingSessionCubit>();
     final authState = context.read<AuthCubit>().state;
     final isTrainer =
         authState is AuthAuthenticated && authState.user.isTrainer;
@@ -188,6 +214,17 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
               decoration: BoxDecoration(
                   color: colors.border,
                   borderRadius: BorderRadius.circular(9))),
+          ListTile(
+            leading: const Icon(Icons.repeat_rounded),
+            title: const Text('Play in Zoorkhaneh mode',
+                style: TextStyle(
+                    fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Each move loops until you go on'),
+            onTap: () {
+              Navigator.pop(context);
+              startSession(this.context, session, PlayerMode.zoorkhaneh);
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.edit_outlined),
             title: Text(session.isUserCreated ? 'Edit session' : 'Edit a copy',
@@ -220,7 +257,7 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
                       fontFamily: PFonts.ui, fontWeight: FontWeight.w600)),
               onTap: () {
                 Navigator.pop(context);
-                cubit.downloadTrainingSession(session.id);
+                _downloadSession(session);
               },
             ),
           if (session.isUserCreated)
@@ -276,7 +313,6 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
         final uiModel = switch (state) {
           TrainingSessionLoaded() => state.uiModel,
           TrainingSessionLoading() => state.uiModel,
-          TrainingSessionDownloading() => state.uiModel,
           TrainingSessionError() => state.uiModel,
           _ => null,
         };
@@ -284,47 +320,45 @@ class _TrainingSessionPageState extends State<TrainingSessionPage> {
             state is TrainingSessionLoading || state is TrainingSessionInitial;
         final sessions = uiModel?.trainingSessions ?? [];
         final dlStatuses = uiModel?.downloadStatuses ?? {};
-        final dlProgress = state is TrainingSessionDownloading
-            ? state.downloadProgress
-            : <int, double>{};
         final itemCounts = uiModel?.sessionItemCounts ?? {};
         final durations = uiModel?.sessionDurations ?? {};
 
         return Scaffold(
           backgroundColor: colors.bg,
           body: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Header(
-                  refreshing: isLoading,
-                  onRefresh: _refresh,
-                  onHistoryTap: () => _openHistory(context),
-                  onMorshedTap: () => _openMorshedPicker(context),
-                ),
-                if (isLoading && sessions.isEmpty)
-                  const Expanded(
-                      child: Center(child: CircularProgressIndicator()))
-                else
-                  Expanded(
-                    child: RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: _SessionList(
-                        sessions: sessions,
-                        dlStatuses: dlStatuses,
-                        dlProgress: dlProgress,
-                        itemCounts: itemCounts,
-                        durations: durations,
-                        onOpen: _openPlayer,
-                        onMenu: (s) => _showOverflowSheet(context, s,
-                            dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
-                        onDownload: (s) => context
-                            .read<TrainingSessionCubit>()
-                            .downloadTrainingSession(s.id),
+            child: KashiReadableWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Header(
+                    refreshing: isLoading,
+                    onRefresh: _refresh,
+                    onHistoryTap: () => _openHistory(context),
+                    onMorshedTap: () => _openMorshedPicker(context),
+                    onPathTap: () => _openPath(context),
+                    onFitnessTestTap: () => _openFitnessTest(context),
+                  ),
+                  if (isLoading && sessions.isEmpty)
+                    const Expanded(
+                        child: Center(child: CircularProgressIndicator()))
+                  else
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _refresh,
+                        child: _SessionList(
+                          sessions: sessions,
+                          dlStatuses: dlStatuses,
+                          itemCounts: itemCounts,
+                          durations: durations,
+                          onOpen: (s) => openSessionPreview(context, s),
+                          onMenu: (s) => _showOverflowSheet(context, s,
+                              dlStatuses[s.id] ?? DownloadStatus.notDownloaded),
+                          onDownload: (s) => _downloadSession(s),
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -342,12 +376,16 @@ class _Header extends StatelessWidget {
     required this.onRefresh,
     required this.onHistoryTap,
     required this.onMorshedTap,
+    required this.onPathTap,
+    required this.onFitnessTestTap,
   });
 
   final bool refreshing;
   final VoidCallback onRefresh;
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
+  final VoidCallback onPathTap;
+  final VoidCallback onFitnessTestTap;
 
   @override
   Widget build(BuildContext context) {
@@ -402,6 +440,8 @@ class _Header extends StatelessWidget {
                   onAccountTap: () => _handleAccountTap(authContext, authState),
                   onHistoryTap: onHistoryTap,
                   onMorshedTap: onMorshedTap,
+                  onPathTap: onPathTap,
+                  onFitnessTestTap: onFitnessTestTap,
                 ),
               ),
             ),
@@ -476,7 +516,15 @@ void _showAccountSheet(BuildContext context, AppUser user) {
   );
 }
 
-enum _MenuAction { refresh, toggleTheme, account, history, morshed }
+enum _MenuAction {
+  refresh,
+  toggleTheme,
+  account,
+  history,
+  morshed,
+  path,
+  fitnessTest,
+}
 
 /// Consolidated "..." menu — refresh, theme toggle, and account/login all
 /// live here instead of as separate always-visible icon buttons, so the
@@ -490,6 +538,8 @@ class _OverflowMenu extends StatelessWidget {
     required this.onAccountTap,
     required this.onHistoryTap,
     required this.onMorshedTap,
+    required this.onPathTap,
+    required this.onFitnessTestTap,
   });
 
   final ThemeMode themeMode;
@@ -499,6 +549,8 @@ class _OverflowMenu extends StatelessWidget {
   final VoidCallback onAccountTap;
   final VoidCallback onHistoryTap;
   final VoidCallback onMorshedTap;
+  final VoidCallback onPathTap;
+  final VoidCallback onFitnessTestTap;
 
   @override
   Widget build(BuildContext context) {
@@ -528,9 +580,21 @@ class _OverflowMenu extends StatelessWidget {
             onHistoryTap();
           case _MenuAction.morshed:
             onMorshedTap();
+          case _MenuAction.path:
+            onPathTap();
+          case _MenuAction.fitnessTest:
+            onFitnessTestTap();
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _MenuAction.path,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.route_outlined),
+            title: Text('Path'),
+          ),
+        ),
         const PopupMenuItem(
           value: _MenuAction.history,
           child: ListTile(
@@ -545,6 +609,14 @@ class _OverflowMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.mic_rounded),
             title: Text('Choose your Morshed'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: _MenuAction.fitnessTest,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.monitor_heart_outlined),
+            title: Text('Fitness Test'),
           ),
         ),
         const PopupMenuItem(
@@ -586,7 +658,6 @@ class _SessionList extends StatelessWidget {
   const _SessionList({
     required this.sessions,
     required this.dlStatuses,
-    required this.dlProgress,
     required this.itemCounts,
     required this.durations,
     required this.onOpen,
@@ -596,7 +667,6 @@ class _SessionList extends StatelessWidget {
 
   final List<TrainingSession> sessions;
   final Map<int, DownloadStatus> dlStatuses;
-  final Map<int, double> dlProgress;
   final Map<int, int> itemCounts;
   final Map<int, int> durations;
   final ValueChanged<TrainingSession> onOpen;
@@ -627,7 +697,6 @@ class _SessionList extends StatelessWidget {
         }
         final session = sessions[index - 1];
         final status = dlStatuses[session.id] ?? DownloadStatus.notDownloaded;
-        final progress = dlProgress[session.id] ?? 0.0;
         final count = itemCounts[session.id] ?? 0;
         final dur = durations[session.id];
         final accent = colors.accentFor(session.id);
@@ -637,7 +706,6 @@ class _SessionList extends StatelessWidget {
             session: session,
             accent: accent,
             dlStatus: status,
-            dlProgress: progress,
             itemCount: count,
             duration: dur,
             onTap: () => onOpen(session),
@@ -649,7 +717,6 @@ class _SessionList extends StatelessWidget {
           session: session,
           accent: accent,
           dlStatus: status,
-          dlProgress: progress,
           itemCount: count,
           duration: dur,
           onTap: () => onOpen(session),
@@ -669,7 +736,6 @@ class _BannerCard extends StatelessWidget {
     required this.session,
     required this.accent,
     required this.dlStatus,
-    required this.dlProgress,
     required this.itemCount,
     required this.duration,
     required this.onTap,
@@ -680,7 +746,6 @@ class _BannerCard extends StatelessWidget {
   final TrainingSession session;
   final SessionAccent accent;
   final DownloadStatus dlStatus;
-  final double dlProgress;
   final int itemCount;
   final int? duration;
   final VoidCallback onTap;
@@ -694,6 +759,7 @@ class _BannerCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onMenu,
       child: Container(
         decoration: BoxDecoration(
           color: cs.surface,
@@ -787,7 +853,6 @@ class _BannerCard extends StatelessWidget {
                         if (!kIsWeb)
                           DownloadRing(
                             status: dlStatus,
-                            progress: dlProgress,
                             accentFg: accent.fg,
                             accentBg: accent.bg,
                             onTap: onDownload,
@@ -820,7 +885,6 @@ class _CompactCard extends StatelessWidget {
     required this.session,
     required this.accent,
     required this.dlStatus,
-    required this.dlProgress,
     required this.itemCount,
     required this.duration,
     required this.onTap,
@@ -831,7 +895,6 @@ class _CompactCard extends StatelessWidget {
   final TrainingSession session;
   final SessionAccent accent;
   final DownloadStatus dlStatus;
-  final double dlProgress;
   final int itemCount;
   final int? duration;
   final VoidCallback onTap;
@@ -847,6 +910,7 @@ class _CompactCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onMenu,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -924,7 +988,6 @@ class _CompactCard extends StatelessWidget {
                 if (!kIsWeb)
                   DownloadRing(
                     status: dlStatus,
-                    progress: dlProgress,
                     accentFg: accent.fg,
                     accentBg: accent.bg,
                     onTap: onDownload,

@@ -12,13 +12,18 @@ import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/main.dart' show PahlevaniApp;
+import 'package:pahlevani/presentation/bloc/first_run/first_run_cubit.dart';
 import 'package:pahlevani/presentation/pages/player/training_session_player_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    // In-memory preferences: never touch the real store (on Linux that is the
+    // developer's own app data). Splash already seen — start from Home.
+    SharedPreferences.setMockInitialValues({FirstRunCubit.splashSeenKey: true});
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     await DependencyInjection().ensureInitialized();
   });

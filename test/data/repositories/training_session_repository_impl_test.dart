@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart' show CancelToken;
 // Unit tests for TrainingSessionRepositoryImpl.
 //
 // Strategy: the repository coordinates three collaborators (remote data source,
@@ -155,8 +156,9 @@ class _FakeLocalDataSource implements TrainingSessionLocalDataSource {
   Future<void> deleteTrainingSessionDirectory(int trainingSessionid) async {}
 
   @override
-  Future<void> downloadFile(String url, String savePath,
-      Function(int, int) onReceiveProgress) async {}
+  Future<void> downloadFile(
+      String url, String savePath, Function(int, int) onReceiveProgress,
+      {CancelToken? cancelToken}) async {}
 
   @override
   Future<List<Map<String, dynamic>>> getTrainingSessionsTable() async => [];
