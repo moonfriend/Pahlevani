@@ -81,3 +81,19 @@ def test_recording_reps_falls_back_to_the_first_recording_of_the_type():
 def test_recording_reps_is_none_without_a_type_or_a_recording():
     assert recording_reps(None, _TRACKS, default_morshed_id=2) is None
     assert recording_reps(99, _TRACKS, default_morshed_id=2) is None
+
+
+# ── default_recording ─────────────────────────────────────────────────────────
+
+from morshed_admin import default_recording  # noqa: E402
+
+
+def test_default_recording_returns_the_whole_chosen_track():
+    # The session-length estimate needs the recording's duration too.
+    assert default_recording(10, _TRACKS, default_morshed_id=2)["id"] == 2
+    assert default_recording(11, _TRACKS, default_morshed_id=1)["id"] == 3
+
+
+def test_default_recording_is_none_without_a_type_or_a_recording():
+    assert default_recording(None, _TRACKS, default_morshed_id=2) is None
+    assert default_recording(99, _TRACKS, default_morshed_id=2) is None

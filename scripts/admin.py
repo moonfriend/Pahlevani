@@ -45,7 +45,7 @@ from movement_learning_content import (
     text_from_lines,
     variations_from_rows,
 )
-from morshed_admin import recording_reps, set_default_morshed
+from morshed_admin import default_recording, set_default_morshed
 from activation_gate import Activation, LockedScreen, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
@@ -568,9 +568,9 @@ def exercise_label(row: pd.Series, reps: int | None) -> str:
     not exercise.repetitions, which no longer matches the recordings."""
     return f"{row['name']}  ·  {reps if reps is not None else '?'} reps"
 
-def default_recording_reps_lookup():
-    """Returns movement_type_id -> reps of the recording a first-time user
-    hears (the default Morshed's, else the first recorded)."""
+def default_recording_lookup():
+    """Returns movement_type_id -> the recording a first-time user hears
+    (the default Morshed's, else the first recorded), or None."""
     tracks_df = load_movement_audio_tracks()
     tracks = ([] if tracks_df.empty else
               tracks_df.astype(object).where(tracks_df.notna(), None).to_dict("records"))
@@ -579,8 +579,12 @@ def default_recording_reps_lookup():
     if not morsheds.empty and "is_default" in morsheds.columns:
         default_id = next((int(r["id"]) for _, r in morsheds.iterrows()
                            if bool(r["is_default"])), None)
-    return lambda type_id: recording_reps(
+    return lambda type_id: default_recording(
         int(type_id) if pd.notna(type_id) else None, tracks, default_id)
+
+def recording_reps_of(recording: dict | None) -> int | None:
+    reps = recording.get("repetitions_default") if recording else None
+    return int(reps) if reps is not None else None
 
 def recording_label(row: pd.Series) -> str:
     """Label for one of possibly several exercise rows under the same movement
@@ -1431,10 +1435,14 @@ def tab_sessions():
         it.setdefault("is_tracked", False)
 
     # Show current list
-    reps_for_type = default_recording_reps_lookup()
+    recording_for_type = default_recording_lookup()
+
+    def recording_of(ex: pd.Series | None) -> dict | None:
+        return recording_for_type(ex.get("type_id")) if ex is not None else None
+
     for i, item in enumerate(items):
         ex = ex_by_id.get(item["exercise_id"])
-        label = (exercise_label(ex, reps_for_type(ex.get("type_id"))) if ex is not None
+        label = (exercise_label(ex, recording_reps_of(recording_of(ex))) if ex is not None
                  else f"exercise {item['exercise_id']}")
 
         c_name, c_pos, c_reps, c_track, c_rm = st.columns([3.5, 1, 1.5, 1.6, 0.5])
@@ -1510,7 +1518,7 @@ def tab_sessions():
             )
             chosen_id = rec_opts[chosen_rec_label]
             chosen_ex = ex_by_id.get(chosen_id)
-            chosen_def = int(chosen_ex["repetitions"]) if chosen_ex is not None and pd.notna(chosen_ex.get("repetitions")) else 1
+            chosen_def = recording_reps_of(recording_of(chosen_ex)) or 1
 
             add_reps = c_rep.number_input(
                 "Reps", min_value=1, max_value=999,
@@ -1534,9 +1542,9 @@ def tab_sessions():
         total = 0
         all_known = True
         for item in items:
-            ex = ex_by_id.get(item["exercise_id"])
-            dur     = ex.get("duration_seconds") if ex is not None else None
-            def_rep = int(ex["repetitions"]) if ex is not None and pd.notna(ex.get("repetitions")) else 1
+            recording = recording_of(ex_by_id.get(item["exercise_id"]))
+            dur     = recording.get("duration_seconds") if recording else None
+            def_rep = recording_reps_of(recording)
             if pd.notna(dur) and dur and def_rep:
                 total += round(float(dur) / def_rep * item["reps_to_do"])
             else:
