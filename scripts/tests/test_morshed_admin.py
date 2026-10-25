@@ -54,3 +54,30 @@ def test_none_just_clears_the_default():
 def test_fails_loudly_with_a_migration_hint():
     with pytest.raises(DefaultMorshedError, match="0041"):
         set_default_morshed(FakeDb(fail=True), 7)
+
+
+# ── recording_reps ────────────────────────────────────────────────────────────
+
+from morshed_admin import recording_reps  # noqa: E402
+
+_TRACKS = [
+    {"id": 1, "movement_type_id": 10, "morshed_id": 1, "repetitions_default": 20},
+    {"id": 2, "movement_type_id": 10, "morshed_id": 2, "repetitions_default": 35},
+    {"id": 3, "movement_type_id": 11, "morshed_id": 2, "repetitions_default": 12},
+]
+
+
+def test_recording_reps_uses_the_default_morsheds_recording():
+    assert recording_reps(10, _TRACKS, default_morshed_id=2) == 35
+
+
+def test_recording_reps_falls_back_to_the_first_recording_of_the_type():
+    # Same rule as the app's resolveAudioTrack: no recording by the chosen
+    # Morshed -> the first one recorded for that type.
+    assert recording_reps(11, _TRACKS, default_morshed_id=1) == 12
+    assert recording_reps(10, _TRACKS, default_morshed_id=None) == 20
+
+
+def test_recording_reps_is_none_without_a_type_or_a_recording():
+    assert recording_reps(None, _TRACKS, default_morshed_id=2) is None
+    assert recording_reps(99, _TRACKS, default_morshed_id=2) is None

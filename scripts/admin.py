@@ -45,7 +45,7 @@ from movement_learning_content import (
     text_from_lines,
     variations_from_rows,
 )
-from morshed_admin import set_default_morshed
+from morshed_admin import recording_reps, set_default_morshed
 from activation_gate import Activation, LockedScreen, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
@@ -147,13 +147,14 @@ def get_r2_client():
 
 @st.cache_data(ttl=60)
 def load_exercises() -> pd.DataFrame:
-    rows = get_client().table("exercise").select("*, movement(name, title_fa)").order("id").execute().data
+    rows = get_client().table("exercise").select("*, movement(name, title_fa, type_id)").order("id").execute().data
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
     if "movement" in df.columns:
         df["name"]     = df["movement"].apply(lambda m: m.get("name")     if isinstance(m, dict) else None)
         df["title_fa"] = df["movement"].apply(lambda m: m.get("title_fa") if isinstance(m, dict) else None)
+        df["type_id"]  = df["movement"].apply(lambda m: m.get("type_id")  if isinstance(m, dict) else None)
         df = df.drop(columns=["movement"])
     return df
 
@@ -562,9 +563,24 @@ def guess_movement_type_id(filename: str, types_df: pd.DataFrame) -> int | None:
     match = types_df[types_df["key"].str.startswith(prefix)]
     return int(match.iloc[0]["id"]) if not match.empty else None
 
-def exercise_label(row: pd.Series) -> str:
-    reps = int(row["repetitions"]) if pd.notna(row.get("repetitions")) else "?"
-    return f"{row['name']}  ·  {reps} reps"
+def exercise_label(row: pd.Series, reps: int | None) -> str:
+    """[reps] comes from the default Morshed's recording (recording_reps) —
+    not exercise.repetitions, which no longer matches the recordings."""
+    return f"{row['name']}  ·  {reps if reps is not None else '?'} reps"
+
+def default_recording_reps_lookup():
+    """Returns movement_type_id -> reps of the recording a first-time user
+    hears (the default Morshed's, else the first recorded)."""
+    tracks_df = load_movement_audio_tracks()
+    tracks = ([] if tracks_df.empty else
+              tracks_df.astype(object).where(tracks_df.notna(), None).to_dict("records"))
+    morsheds = load_morsheds()
+    default_id = None
+    if not morsheds.empty and "is_default" in morsheds.columns:
+        default_id = next((int(r["id"]) for _, r in morsheds.iterrows()
+                           if bool(r["is_default"])), None)
+    return lambda type_id: recording_reps(
+        int(type_id) if pd.notna(type_id) else None, tracks, default_id)
 
 def recording_label(row: pd.Series) -> str:
     """Label for one of possibly several exercise rows under the same movement
@@ -1415,9 +1431,11 @@ def tab_sessions():
         it.setdefault("is_tracked", False)
 
     # Show current list
+    reps_for_type = default_recording_reps_lookup()
     for i, item in enumerate(items):
         ex = ex_by_id.get(item["exercise_id"])
-        label = exercise_label(ex) if ex is not None else f"exercise {item['exercise_id']}"
+        label = (exercise_label(ex, reps_for_type(ex.get("type_id"))) if ex is not None
+                 else f"exercise {item['exercise_id']}")
 
         c_name, c_pos, c_reps, c_track, c_rm = st.columns([3.5, 1, 1.5, 1.6, 0.5])
         c_name.markdown(f"**{i+1}.** {label}")
