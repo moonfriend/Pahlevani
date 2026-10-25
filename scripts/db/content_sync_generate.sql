@@ -1,4 +1,8 @@
 -- ════════════════════════════════════════════════════════════════════════════
+-- ⚠  NOT A ROUTINE TOOL — read the warning at the top of
+-- scripts/db/build_content_sync.sh first. The scope below was chosen for the
+-- Release 1 catch-up only; re-decide and edit it before any later run.
+--
 -- Generates the SQL that copies curated content from staging to production.
 -- Run by scripts/db/build_content_sync.sh against a local database holding
 -- staging in schema `stg` and production in `public`; prints one statement
