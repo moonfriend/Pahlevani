@@ -102,9 +102,9 @@ R2_BUCKET = os.environ.get("R2_BUCKET", "") or "morshed-sounds"
 R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
 R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-R2_PUBLIC_BASE = os.environ.get(
-    "R2_PUBLIC_BASE", "https://pub-d26e099daad243af8e9221f16223fb95.r2.dev"
-)
+# Our own domain on the bucket (Cloudflare-cached), not R2's rate-limited
+# pub-….r2.dev development link.
+R2_PUBLIC_BASE = os.environ.get("R2_PUBLIC_BASE", "https://gowd-media.rahaavi.com")
 R2_VIDEO_PREFIX = "video/movements/"
 R2_VIDEO_POSTER_PREFIX = "images/posters/"
 R2_IMAGE_MOVEMENT_PREFIX = "images/movements/"
