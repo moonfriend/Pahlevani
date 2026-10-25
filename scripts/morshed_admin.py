@@ -31,3 +31,38 @@ def set_default_morshed(db, morshed_id: int | None) -> None:
             "is missing, apply migration 0041_media_asset_and_default_morshed.sql "
             "first."
         ) from e
+
+
+def default_recording(
+    movement_type_id: int | None,
+    tracks: list[dict],
+    default_morshed_id: int | None,
+) -> dict | None:
+    """The recording a first-time user hears for a movement type.
+
+    Mirrors the app's resolveAudioTrack: the default Morshed's recording,
+    else the first one recorded for the type (tracks in id order). None when
+    the movement has no type or nothing is recorded for it.
+    """
+    if movement_type_id is None:
+        return None
+    for_type = [t for t in tracks if t.get("movement_type_id") == movement_type_id]
+    if not for_type:
+        return None
+    return next(
+        (t for t in for_type if default_morshed_id is not None
+         and t.get("morshed_id") == default_morshed_id),
+        for_type[0],
+    )
+
+
+def recording_reps(
+    movement_type_id: int | None,
+    tracks: list[dict],
+    default_morshed_id: int | None,
+) -> int | None:
+    """Reps in [default_recording]. The old exercise.repetitions is
+    deliberately not used — it no longer matches the recordings."""
+    chosen = default_recording(movement_type_id, tracks, default_morshed_id)
+    reps = chosen.get("repetitions_default") if chosen else None
+    return int(reps) if reps is not None else None
