@@ -16,6 +16,26 @@
 #
 # Usage:  bash scripts/db/build_content_sync.sh <staging.dump> <prod.dump> <out.sql>
 # ════════════════════════════════════════════════════════════════════════════
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ ⚠  NOT A ROUTINE TOOL. Do not run it as-is.                              │
+# │                                                                          │
+# │ It was written for ONE event: the Release 1 catch-up (2026-10-20), when  │
+# │ prod had fallen ~150 commits / a month of content curation behind        │
+# │ staging. Its choices of WHAT to copy (and what to leave alone, e.g.      │
+# │ prod's own reps, Farsi titles and audio tracks) were that day's user     │
+# │ decisions — see the list in content_sync_generate.sql.                   │
+# │                                                                          │
+# │ Normal content edits go straight to prod in the admin tool; no copy is   │
+# │ needed. Only reach for this when a batch of curated content was built on │
+# │ staging and must move to prod (e.g. video sync points set on staging).   │
+# │ Before running it then:                                                  │
+# │   1. Re-decide, with the user, which tables/columns this batch covers,   │
+# │      and edit content_sync_generate.sql to copy exactly that.            │
+# │   2. Take fresh dumps of both DBs, run this, and read the generated SQL  │
+# │      before anyone applies it to prod.                                   │
+# │ Copying more than intended overwrites prod content with staging test     │
+# │ values — that is why the scope must be chosen every time.                │
+# └──────────────────────────────────────────────────────────────────────────┘
 set -euo pipefail
 
 STAGING_DUMP="$(realpath "${1:?usage: build_content_sync.sh <staging.dump> <prod.dump> <out.sql>}")"

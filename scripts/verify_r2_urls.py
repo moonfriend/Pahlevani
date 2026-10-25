@@ -25,6 +25,8 @@ from supabase import create_client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+# Our media domain, plus the hosts older rows may still use.
+CLOUDFLARE_HOSTS = ("gowd-media.rahaavi.com", "r2.dev", "cloudflarestorage.com")
 
 
 def check(label: str, rows: list[tuple[int, str]]) -> tuple[int, int, int]:
@@ -32,7 +34,7 @@ def check(label: str, rows: list[tuple[int, str]]) -> tuple[int, int, int]:
     ok = not_cloudflare = failed = 0
     print(f"\n{'─' * 60}\n  {label} — {len(rows)} rows\n{'─' * 60}")
     for row_id, url in rows:
-        if "r2.dev" not in url and "cloudflarestorage.com" not in url:
+        if not any(host in url for host in CLOUDFLARE_HOSTS):
             print(f"  ⚠  id={row_id}  NOT ON CLOUDFLARE: {url}")
             not_cloudflare += 1
             continue
