@@ -93,6 +93,8 @@ void main() {
 
     expect(find.textContaining(ConsentTexts.safetyPoints.first), findsOneWidget,
         reason: 'the safety points are on the sign-in screen');
+    expect(find.textContaining('emails'), findsNothing,
+        reason: 'no marketing box: fans already opted in on Steady');
     await _fillNewAccount(tester);
     expect(_button(tester, 'Create account').onPressed, isNull,
         reason: 'both required boxes are still unticked');

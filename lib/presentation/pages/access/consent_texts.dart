@@ -27,9 +27,6 @@ abstract final class ConsentTexts {
   ];
   static const privacyCheckbox = 'I accept the privacy policy.';
 
-  static const marketingCheckbox =
-      'Send me occasional emails about new sessions and offers (optional).';
-
   /// The full texts on our website.
   static const termsUrl = 'https://rahaavi.com/terms';
   static const privacyUrl = 'https://rahaavi.com/privacy';

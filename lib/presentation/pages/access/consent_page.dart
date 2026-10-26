@@ -20,12 +20,11 @@ class ConsentPage extends StatefulWidget {
 class _ConsentPageState extends State<ConsentPage> {
   bool _safety = false;
   bool _privacy = false;
-  bool _marketing = false;
   bool _saving = false;
 
   Future<void> _continue() async {
     setState(() => _saving = true);
-    await context.read<AuthCubit>().acceptConsent(marketingOptIn: _marketing);
+    await context.read<AuthCubit>().acceptConsent();
     if (mounted) setState(() => _saving = false);
   }
 
@@ -58,10 +57,8 @@ class _ConsentPageState extends State<ConsentPage> {
         ConsentChecks(
           safety: _safety,
           privacy: _privacy,
-          marketing: _marketing,
           onSafetyChanged: (v) => setState(() => _safety = v),
           onPrivacyChanged: (v) => setState(() => _privacy = v),
-          onMarketingChanged: (v) => setState(() => _marketing = v),
         ),
         if (error != null) ...[
           const SizedBox(height: 12),

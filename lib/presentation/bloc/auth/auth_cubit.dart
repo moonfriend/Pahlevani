@@ -138,7 +138,6 @@ class AuthCubit extends Cubit<AuthState> {
     required String email,
     required String password,
     required String code,
-    bool marketingOptIn = false,
   }) async {
     final activation = _activation;
     if (activation == null) {
@@ -190,7 +189,7 @@ class AuthCubit extends Cubit<AuthState> {
       }
       try {
         user = await _repo.acceptPrivacyConsent(
-            termsVersion: _terms.version, marketingOptIn: marketingOptIn);
+            termsVersion: _terms.version, marketingOptIn: false);
       } catch (e, st) {
         AppLogger.w('registerWithCode: consent not saved',
             error: e, stackTrace: st);
@@ -306,13 +305,15 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// Only acts while gated behind consent — a no-op from any other state.
-  /// Records the terms version asked for; [marketingOptIn] is optional.
-  Future<void> acceptConsent({bool marketingOptIn = false}) async {
+  /// Records the terms version asked for. Keeps the user's earlier marketing
+  /// choice: the app no longer asks (fans opted in on Steady).
+  Future<void> acceptConsent() async {
     final current = state;
     if (current is! AuthNeedsConsent) return;
     try {
       final user = await _repo.acceptPrivacyConsent(
-          termsVersion: current.terms.version, marketingOptIn: marketingOptIn);
+          termsVersion: current.terms.version,
+          marketingOptIn: current.user.marketingOptIn);
       if (!isClosed) emit(AuthAuthenticated(user));
     } catch (e, st) {
       AppLogger.w('acceptPrivacyConsent failed', error: e, stackTrace: st);

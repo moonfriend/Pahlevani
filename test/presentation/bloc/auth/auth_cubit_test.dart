@@ -260,19 +260,25 @@ void main() {
       expect(cubit.state, isA<AuthNeedsConsent>());
     });
 
-    test('accepting records the current version and the marketing choice',
-        () async {
+    test(
+        'accepting records the current version and keeps an earlier '
+        'marketing choice', () async {
       final repo = FakeAuthRepository(
-          initialUser: const AppUser(id: 'u1', email: 'a@b.com'));
+          initialUser: const AppUser(
+              id: 'u1',
+              email: 'a@b.com',
+              consentAccepted: true,
+              marketingOptIn: true));
       final cubit = AuthCubit(repository: repo);
       addTearDown(cubit.close);
       await cubit.initialize();
 
-      await cubit.acceptConsent(marketingOptIn: true);
+      await cubit.acceptConsent();
 
       final user = (cubit.state as AuthAuthenticated).user;
       expect(user.termsVersion, currentTermsVersion);
-      expect(user.marketingOptIn, isTrue);
+      expect(user.marketingOptIn, isTrue,
+          reason: 'agreeing again must not wipe an old opt-in');
     });
   });
 
@@ -332,14 +338,12 @@ void main() {
       final (cubit, repo, activation) = await build();
 
       await cubit.registerWithCode(
-          email: 'a@b.com',
-          password: 'secret1',
-          code: 'ABC-123',
-          marketingOptIn: true);
+          email: 'a@b.com', password: 'secret1', code: 'ABC-123');
 
       final user = (cubit.state as AuthAuthenticated).user;
       expect(user.termsVersion, currentTermsVersion);
-      expect(user.marketingOptIn, isTrue);
+      expect(user.marketingOptIn, isFalse,
+          reason: 'no marketing box in the app any more');
       expect(repo.signUpCallCount, 1);
       expect(activation.calls, ['isCodeValid', 'redeem']);
       expect(activation.activated, contains(user.id));

@@ -30,7 +30,6 @@ class _AccountPageState extends State<AccountPage> {
   bool _newAccount = true;
   bool _safety = false;
   bool _privacy = false;
-  bool _marketing = false;
   late final Future<LockedScreenText> _codeSource =
       context.read<ActivationCubit>().lockedScreenText();
 
@@ -64,7 +63,6 @@ class _AccountPageState extends State<AccountPage> {
         email: email,
         password: _password.text,
         code: _code.text,
-        marketingOptIn: _marketing,
       );
     } else {
       auth.signInWithEmail(email: email, password: _password.text);
@@ -138,10 +136,8 @@ class _AccountPageState extends State<AccountPage> {
           ConsentChecks(
             safety: _safety,
             privacy: _privacy,
-            marketing: _marketing,
             onSafetyChanged: (v) => setState(() => _safety = v),
             onPrivacyChanged: (v) => setState(() => _privacy = v),
-            onMarketingChanged: (v) => setState(() => _marketing = v),
           ),
         ],
         if (generalError != null) ...[

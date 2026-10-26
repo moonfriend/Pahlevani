@@ -6,25 +6,21 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../pages/access/consent_texts.dart';
 
 /// Safety and privacy, each a short summary with a link to the full text and
-/// a required box, plus an optional box for marketing emails. Shown when
-/// creating an account, and again when the terms changed.
+/// a required box. Shown when creating an account, and again when the terms
+/// changed. No marketing box: our fans already opted in on Steady.
 class ConsentChecks extends StatelessWidget {
   const ConsentChecks({
     super.key,
     required this.safety,
     required this.privacy,
-    required this.marketing,
     required this.onSafetyChanged,
     required this.onPrivacyChanged,
-    required this.onMarketingChanged,
   });
 
   final bool safety;
   final bool privacy;
-  final bool marketing;
   final ValueChanged<bool> onSafetyChanged;
   final ValueChanged<bool> onPrivacyChanged;
-  final ValueChanged<bool> onMarketingChanged;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -54,13 +50,6 @@ class ConsentChecks extends StatelessWidget {
             label: ConsentTexts.privacyCheckbox,
             value: privacy,
             onChanged: onPrivacyChanged,
-          ),
-          const SizedBox(height: 16),
-          _Box(
-            key: const ValueKey('consent-marketing'),
-            label: ConsentTexts.marketingCheckbox,
-            value: marketing,
-            onChanged: onMarketingChanged,
           ),
         ],
       );
