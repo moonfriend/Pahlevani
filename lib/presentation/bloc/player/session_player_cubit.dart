@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,6 +17,7 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import 'package:pahlevani/domain/usecases/player/build_playback_queue.dart';
+import 'package:pahlevani/domain/usecases/player/pick_recording_sequence.dart';
 import 'package:pahlevani/presentation/bloc/player/move_transitions.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/presentation/bloc/player/session_player_state.dart';
@@ -36,6 +38,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   final PlayerNotificationService _notification;
   final PlayerMode _mode;
   final BuildPlaybackQueue _buildQueue;
+
+  /// Picks the order of a move's recordings, anew on every load of a move.
+  final Random _random;
 
   /// Whether [loadTracks] starts playing the first move by itself. False
   /// when the player is restarted after an edit, so it waits for the user.
@@ -72,7 +77,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     required PlayerNotificationService notificationService,
     bool autoStart = true,
     bool repLogging = ReleaseFeatures.repLogging,
+    Random? random,
   })  : _trainingSession = trainingSession,
+        _random = random ?? Random(),
         _repLogging = repLogging,
         _mode = mode,
         _timeline = MoveTimeline(audioPlayerService),
@@ -157,7 +164,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
       for (final item in queue.items) {
         AppLogger.d('queue: "${item.track.title}" '
             'audio=${item.source.exercise.audioFileUrl} '
-            'file=${item.track.audioFilePath}');
+            'files=${[for (final r in item.track.recordings) r.path]}');
       }
 
       if (tracks.isEmpty) {
@@ -241,12 +248,17 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   Future<void> _load(int index, {required bool play}) async {
     final track = state.tracks[index];
     try {
+      final loopForever = _mode == PlayerMode.zoorkhaneh;
       final outcome = await _timeline.load(
         MoveSpec(
-          audioPath: track.audioFilePath,
-          clipReps: track.defaultRepetitions ?? 1,
+          clips: pickRecordingSequence(
+            track.recordings,
+            targetReps: track.effectiveRepetitions,
+            loopForever: loopForever,
+            random: _random,
+          ),
           targetReps: track.effectiveRepetitions,
-          loopForever: _mode == PlayerMode.zoorkhaneh,
+          loopForever: loopForever,
         ),
         play: play,
       );

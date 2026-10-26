@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/player/move_timeline.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 
@@ -105,10 +106,13 @@ void main() {
       await timeline.close();
     });
 
-    const move = MoveSpec(audioPath: '/a', clipReps: 10, targetReps: 30);
+    /// [offsetMs]: the recording's video offset (video − audio anchor).
+    MoveSpec moveWith(int? offsetMs) => MoveSpec(
+        clips: [AudioClip(path: '/a', reps: 10, videoOffsetMs: offsetMs)],
+        targetReps: 30);
 
-    Future<void> startMove({int clipMs = 10000}) async {
-      await timeline.load(move, play: true);
+    Future<void> startMove({int clipMs = 10000, int? offsetMs}) async {
+      await timeline.load(moveWith(offsetMs), play: true);
       engine.emitDuration(ms(clipMs));
       await settle();
     }
@@ -122,10 +126,9 @@ void main() {
 
     test('joining mid-move: aligns to where the audio already is, then plays',
         () async {
-      await startMove();
+      await startMove(offsetMs: 500);
       await audioAt([3000]);
-      follower = VideoFollower(timeline: timeline, startOffsetMs: 500)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
 
       follower.attach(video);
       await settle();
@@ -135,8 +138,7 @@ void main() {
 
     test('paused: aligns but does not play', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(false);
+      follower = VideoFollower(timeline: timeline)..setPlaying(false);
 
       follower.attach(video);
       await settle();
@@ -146,9 +148,8 @@ void main() {
 
     test('negative offset: holds at frame 0 until the audio gets there',
         () async {
-      await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: -1297)
-        ..setPlaying(true);
+      await startMove(offsetMs: -1297);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
 
@@ -165,9 +166,8 @@ void main() {
 
     test('a hold does not count wall-clock time while the audio is paused',
         () async {
-      await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: -1297)
-        ..setPlaying(true);
+      await startMove(offsetMs: -1297);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
       await audioAt([600]);
@@ -179,8 +179,7 @@ void main() {
 
     test('a seek realigns the video', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
 
@@ -193,8 +192,7 @@ void main() {
     test('a burst of seeks keeps one video seek in flight; the latest wins',
         () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
       final before = video.seeks.length;
@@ -214,8 +212,7 @@ void main() {
 
     test('an audio loop realigns a video that has drifted', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
       await audioAt([9800]);
@@ -230,8 +227,7 @@ void main() {
     test('an audio loop leaves a video that is already in step alone',
         () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
       await audioAt([9800]);
@@ -246,22 +242,44 @@ void main() {
 
     test('a new start of the move (e.g. Learning "Go") realigns to 0',
         () async {
-      await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: 700)
-        ..setPlaying(true);
+      await startMove(offsetMs: 700);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await audioAt([4000]);
 
-      await timeline.load(move, play: true);
+      await timeline.load(moveWith(700), play: true);
       await settle();
 
       expect(video.seeks.last, 'seek:700');
     });
 
+    test('the next recording realigns the video to its own anchor', () async {
+      await timeline.load(
+          const MoveSpec(clips: [
+            AudioClip(path: '/a', reps: 10, videoOffsetMs: 100),
+            AudioClip(path: '/b', reps: 4, videoOffsetMs: 900),
+          ], targetReps: 14),
+          play: true);
+      engine.emitDuration(ms(10000), index: 0);
+      await settle();
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
+      follower.attach(video);
+      await settle();
+      engine.emitPosition(ms(9950), index: 0);
+      await settle();
+      video.currentPosition = ms(100); // in step with recording A's anchor
+
+      engine.emitDuration(ms(6000), index: 1);
+      engine.emitPosition(ms(50), index: 1);
+      await settle();
+      await settle();
+
+      expect(video.seeks.last, 'seek:950', reason: "B's anchor: 50 + 900");
+    });
+
     test('follows play and pause', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
 
@@ -276,8 +294,7 @@ void main() {
 
     test('before the video is ready, nothing is commanded', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       await timeline.seek(ms(2000));
       await settle();
 
@@ -286,8 +303,7 @@ void main() {
 
     test('after dispose, it no longer follows', () async {
       await startMove();
-      follower = VideoFollower(timeline: timeline, startOffsetMs: null)
-        ..setPlaying(true);
+      follower = VideoFollower(timeline: timeline)..setPlaying(true);
       follower.attach(video);
       await settle();
       follower.dispose();

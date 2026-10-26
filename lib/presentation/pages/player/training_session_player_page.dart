@@ -595,7 +595,6 @@ class _StageState extends State<_Stage> {
                     path: track.media.src!,
                     posterSrc: track.media.poster,
                     isPlaying: state.isPlaying,
-                    startOffsetMs: track.videoStartOffsetMs,
                   )
                 else if (hasPhoto || hasVideoPoster)
                   buildMediaImage(
@@ -725,7 +724,6 @@ class _ExerciseVideo extends StatefulWidget {
     required this.path,
     required this.isPlaying,
     this.posterSrc,
-    this.startOffsetMs,
   });
   final MoveTimeline timeline;
   final String path;
@@ -736,9 +734,6 @@ class _ExerciseVideo extends StatefulWidget {
   /// would otherwise be showing one layer up, so mounting hands off from
   /// poster to live video with no blank/static frame in between.
   final String? posterSrc;
-
-  /// Video anchor − audio anchor, see [videoAlignment].
-  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -752,8 +747,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void initState() {
     super.initState();
-    _follower = VideoFollower(
-        timeline: widget.timeline, startOffsetMs: widget.startOffsetMs)
+    _follower = VideoFollower(timeline: widget.timeline)
       ..setPlaying(widget.isPlaying);
     // dart:io's File doesn't exist on web — video_player_web only supports
     // networkUrl()/asset(). widget.path is the remote R2 URL there (the

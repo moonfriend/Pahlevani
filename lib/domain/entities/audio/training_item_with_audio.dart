@@ -1,23 +1,27 @@
 import 'package:equatable/equatable.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 
 /// Represents an audio track with its basic properties
 class TrainingItemWithAudio extends Equatable {
   final String id;
   final String title;
-  final String audioFilePath;
+
+  /// Every recording the effective Morshed has for this move (variants), the
+  /// main one first; the player plays a random sequence of them. Each carries
+  /// its playable file, reps and video offset. Empty when the move has no
+  /// audio at all.
+  final List<AudioClip> recordings;
+
   final String?
       imagePath; // legacy local asset path — kept for widgets that still use it
   final ExerciseMedia media; // photo / video from the movement table
   final Duration? duration;
+
+  /// Reps in the main recording — the move's default when the session item
+  /// doesn't prescribe any.
   final int? defaultRepetitions;
   final int? userRepetitions;
-
-  /// Constant offset (ms) to seek/delay the video by so its "sarzarb"/main
-  /// beat lines up with the audio's, computed once from
-  /// `media.videoAnchorMs - exercise.audioAnchorMs`. Null when either anchor
-  /// is unset — video then just plays decoupled from the audio, as before.
-  final int? videoStartOffsetMs;
 
   /// True once `media.src` (when `media.type == 'video'`) is actually
   /// playable — a resolved local file path, or any remote URL on web (which
@@ -29,13 +33,12 @@ class TrainingItemWithAudio extends Equatable {
   const TrainingItemWithAudio({
     required this.id,
     required this.title,
-    required this.audioFilePath,
+    this.recordings = const [],
     this.imagePath,
     this.media = ExerciseMedia.none,
     this.duration,
     this.defaultRepetitions,
     this.userRepetitions,
-    this.videoStartOffsetMs,
     this.videoReady = false,
   });
 
@@ -43,13 +46,12 @@ class TrainingItemWithAudio extends Equatable {
       TrainingItemWithAudio(
         id: id,
         title: title,
-        audioFilePath: audioFilePath,
+        recordings: recordings,
         imagePath: imagePath,
         media: media ?? this.media,
         duration: duration,
         defaultRepetitions: defaultRepetitions,
         userRepetitions: userRepetitions,
-        videoStartOffsetMs: videoStartOffsetMs,
         videoReady: videoReady ?? this.videoReady,
       );
 
@@ -86,13 +88,12 @@ class TrainingItemWithAudio extends Equatable {
   List<Object?> get props => [
         id,
         title,
-        audioFilePath,
+        recordings,
         imagePath,
         media,
         duration,
         defaultRepetitions,
         userRepetitions,
-        videoStartOffsetMs,
         videoReady,
       ];
 }

@@ -1,3 +1,4 @@
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
@@ -20,6 +21,7 @@ import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_download_repository.dart' show cachedAudioPath;
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
@@ -86,12 +88,11 @@ class _FakeDownloadRepo implements DownloadRepository {
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
   // Sessions are downloaded before they play, so by default every track's
   // audio is on the device; tests about missing media override this.
-  String? Function(ItemDetail item) localAudioPathBuilder =
-      (item) => '/cached/${item.item.id}.mp3';
+  String? Function(String audioUrl) localAudioPathBuilder = cachedAudioPath;
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async =>
-      localAudioPathBuilder(item);
+  Future<String?> getLocalAudioPath(String audioUrl) async =>
+      localAudioPathBuilder(audioUrl);
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
 
@@ -112,14 +113,14 @@ TrainingSession _session(int id) =>
 // Every test move has a learning video, so Learning mode prompts for it
 // unless it is learnt.
 Exercise _exercise(int id,
-        {String url = 'https://audio.mp3',
+        {String? url,
         int reps = 3,
         String? description = 'How',
         String? videoUrl = 'https://x/learn.mp4'}) =>
     Exercise(
         id: id,
         name: 'Ex $id',
-        audioFileUrl: url,
+        audioFileUrl: url ?? 'https://audio/$id.mp3',
         repetitionsDefault: reps,
         description: description,
         videoUrl: videoUrl);
@@ -190,9 +191,12 @@ void main() {
 
   group('SessionPlayerState getters', () {
     final tracks = [
-      const TrainingItemWithAudio(id: '1', title: 'A', audioFilePath: '/a.mp3'),
-      const TrainingItemWithAudio(id: '2', title: 'B', audioFilePath: '/b.mp3'),
-      const TrainingItemWithAudio(id: '3', title: 'C', audioFilePath: '/c.mp3'),
+      const TrainingItemWithAudio(
+          id: '1', title: 'A', recordings: [AudioClip(path: '/a.mp3')]),
+      const TrainingItemWithAudio(
+          id: '2', title: 'B', recordings: [AudioClip(path: '/b.mp3')]),
+      const TrainingItemWithAudio(
+          id: '3', title: 'C', recordings: [AudioClip(path: '/c.mp3')]),
     ];
 
     test('currentTrack returns track at playingIndex', () {
@@ -278,7 +282,7 @@ void main() {
       expect(cubit.state.playingIndex, 0);
       expect(cubit.state, isNot(isA<PlayerLoading>()));
       // Resolved (cached) path, not the raw remote URL — see "egress" group below.
-      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(audioService.lastPlayedPath, '/cached/10.mp3');
     });
 
     test('uses exercise name as track title', () async {
@@ -345,10 +349,8 @@ void main() {
       // Only the default Morshed's recording is on the device: playing it
       // proves that's the one resolved.
       final downloads = _FakeDownloadRepo()
-        ..localAudioPathBuilder = (item) =>
-            item.exercise.audioFileUrl == 'https://cdn/default.mp3'
-                ? '/local/default.mp3'
-                : null;
+        ..localAudioPathBuilder = (url) =>
+            url == 'https://cdn/default.mp3' ? '/local/default.mp3' : null;
       final cubit =
           _makeCubit(snap, audioCatalogRepo: catalog, downloadRepo: downloads);
       addTearDown(cubit.close);
@@ -356,7 +358,8 @@ void main() {
       await cubit.loadTracks();
 
       expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
-      expect(cubit.state.tracks.single.audioFilePath, '/local/default.mp3');
+      expect(cubit.state.tracks.single.recordings.single.path,
+          '/local/default.mp3');
     });
 
     group('media resolution', () {
@@ -464,7 +467,7 @@ void main() {
         final cubit = _makeCubit(snap);
         addTearDown(cubit.close);
         await cubit.loadTracks();
-        return cubit.state.tracks[0].videoStartOffsetMs;
+        return cubit.state.tracks[0].recordings.single.videoOffsetMs;
       }
 
       test('both anchors present: offset is video - audio (positive)',
@@ -1129,7 +1132,7 @@ void main() {
 
       await cubit.loadTracks();
 
-      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(audioService.lastPlayedPath, '/cached/10.mp3');
       expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
     });
 
@@ -1142,7 +1145,7 @@ void main() {
       cubit.setIndexAndPlay(1);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(audioService.lastPlayedPath, '/cached/10001.mp3');
+      expect(audioService.lastPlayedPath, '/cached/11.mp3');
     });
 
     test('audio not on the device → needs download; nothing plays or streams',
@@ -1150,7 +1153,7 @@ void main() {
       final audioService = FakeAudioPlayerService();
       final downloadRepo = _FakeDownloadRepo()
         ..localAudioPathBuilder =
-            (item) => item.item.id == 10001 ? null : '/cached/10000.mp3';
+            (url) => url.endsWith('/11.mp3') ? null : cachedAudioPath(url);
       final cubit = _makeCubit(twoTracks(),
           audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
@@ -1858,7 +1861,7 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      audio.playGates['/cached/10001.mp3'] = slowMove2; // move 2 starts slowly
+      audio.playGates['/cached/11.mp3'] = slowMove2; // move 2 starts slowly
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);
@@ -1868,13 +1871,13 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       cubit.next(); // move 3: loads and plays
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(audio.lastPlayedPath, '/cached/10002.mp3');
+      expect(audio.lastPlayedPath, '/cached/12.mp3');
 
       slowMove2.complete(); // move 2's start finally returns
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(cubit.state.playingIndex, 2);
-      expect(audio.lastPlayedPath, '/cached/10002.mp3',
+      expect(audio.lastPlayedPath, '/cached/12.mp3',
           reason: 'the overtaken load for move 2 must not start playing');
     });
 
@@ -1891,7 +1894,7 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      audio.playGates['/cached/10001.mp3'] = slowMove2;
+      audio.playGates['/cached/11.mp3'] = slowMove2;
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);

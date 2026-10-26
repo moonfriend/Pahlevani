@@ -1,16 +1,15 @@
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/download/download_progress.dart';
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
 abstract class DownloadRepository {
   /// Initial download statuses for all known sessions (from SharedPreferences).
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses();
 
-  /// Local audio path for [item] if the file exists in the shared media
-  /// cache (works for partial caches too). Shared across every session that
-  /// references the same exercise.
-  Future<String?> getLocalAudioPath(ItemDetail item);
+  /// Local audio path for the recording at [audioUrl] if the file exists in
+  /// the shared media cache (works for partial caches too). Keyed by URL, so
+  /// every move and session using the same recording shares the file.
+  Future<String?> getLocalAudioPath(String audioUrl);
 
   /// Local image path for [imageUrl] if the file exists in the shared media
   /// cache.

@@ -1475,7 +1475,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Download'));
       await tester.pumpAndSettle();
       // The download completes; the files are now on the device.
-      downloads.localAudioPathBuilder = (item) => '/cached/${item.item.id}.mp3';
+      downloads.localAudioPathBuilder = cachedAudioPath;
       await tester.tap(find.descendant(
           of: find.byType(AlertDialog),
           matching: find.textContaining('Download ')));

@@ -18,7 +18,7 @@ abstract interface class FollowedVideo {
 /// [moveMs] into the move.
 ///
 /// [offsetMs] shifts the video so its main beat ("sarzarb") lines up with
-/// the recording's (video anchor − audio anchor). A negative offset means
+/// the playing recording's (video anchor − that recording's audio anchor). A negative offset means
 /// the video's beat comes earlier than the audio's: at the very start of a
 /// move the video waits at frame 0 until the audio has played that far
 /// ([holdUntilMoveMs], in audio time — so a pause doesn't break it). Once
@@ -45,7 +45,9 @@ abstract interface class FollowedVideo {
 ///
 /// Follows the [MoveTimeline] directly — its events (start, seek, loop) and,
 /// during a hold, its progress — instead of page rebuilds, so it reacts
-/// exactly once per thing that happened. The session's play/pause intent
+/// exactly once per thing that happened. A move may play several recordings,
+/// each with its own beat anchor, so the offset is always the one of the
+/// recording playing now. The session's play/pause intent
 /// comes in through [setPlaying]. Owned by the video widget: one follower
 /// per move's video.
 class VideoFollower {
@@ -54,7 +56,6 @@ class VideoFollower {
   static const loopTolerance = Duration(milliseconds: 120);
 
   final MoveTimeline _timeline;
-  final int? _offsetMs;
   late final StreamSubscription<MoveEvent> _eventsSub;
   late final StreamSubscription<MoveProgress> _progressSub;
 
@@ -68,9 +69,7 @@ class VideoFollower {
   bool _seekInFlight = false;
   int? _pendingSeekMs;
 
-  VideoFollower({required MoveTimeline timeline, required int? startOffsetMs})
-      : _timeline = timeline,
-        _offsetMs = startOffsetMs {
+  VideoFollower({required MoveTimeline timeline}) : _timeline = timeline {
     _eventsSub = timeline.events.listen(_onEvent);
     _progressSub = timeline.progress.listen(_onProgress);
   }
@@ -121,7 +120,7 @@ class VideoFollower {
     return videoAlignment(
       clipMs: at.clipPosition.inMilliseconds,
       moveMs: at.position.inMilliseconds,
-      offsetMs: _offsetMs,
+      offsetMs: _timeline.clipAt(at.clipIndex)?.videoOffsetMs,
       videoMs: video.duration.inMilliseconds,
     );
   }

@@ -1,19 +1,21 @@
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
+import 'package:pahlevani/domain/player/clip_sequence.dart';
 import 'package:pahlevani/domain/player/playback_clock.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 
 /// One move as the timeline needs it.
 class MoveSpec extends Equatable {
-  /// Local file (or, on the web, remote URL) of the move's recording.
-  final String audioPath;
+  /// The recordings to play, in order (see pickRecordingSequence). One clip
+  /// loops by itself; several play one after another, and the whole
+  /// sequence starts over after the last.
+  final List<AudioClip> clips;
 
-  /// Reps the recording itself contains.
-  final int clipReps;
-
-  /// Reps prescribed for this move — the move lasts
-  /// `clip length ÷ clipReps × targetReps`, looping the clip as needed.
+  /// Reps prescribed for this move. The move ends exactly when the clips
+  /// have played this many reps, usually inside a clip (for one clip:
+  /// `clip length ÷ clip reps × targetReps`).
   final int targetReps;
 
   /// Zoorkhaneh: the move never ends on its own; it loops until the user
@@ -21,14 +23,13 @@ class MoveSpec extends Equatable {
   final bool loopForever;
 
   const MoveSpec({
-    required this.audioPath,
-    required this.clipReps,
+    required this.clips,
     required this.targetReps,
     this.loopForever = false,
   });
 
   @override
-  List<Object?> get props => [audioPath, clipReps, targetReps, loopForever];
+  List<Object?> get props => [clips, targetReps, loopForever];
 }
 
 /// Where the current move is. Changes many times a second while playing.
@@ -42,8 +43,12 @@ class MoveProgress extends Equatable {
   /// The whole move's length; zero until the clip's length is known.
   final Duration length;
 
-  /// The audio engine's position inside the clip (restarts on every loop).
+  /// The audio engine's position inside the clip (restarts on every loop
+  /// and every new clip).
   final Duration clipPosition;
+
+  /// Which of the move's clips is playing (index into [MoveSpec.clips]).
+  final int clipIndex;
 
   /// Current rep, from 1. Capped at [repsTotal] unless the move loops
   /// forever.
@@ -54,6 +59,7 @@ class MoveProgress extends Equatable {
     this.position = Duration.zero,
     this.length = Duration.zero,
     this.clipPosition = Duration.zero,
+    this.clipIndex = 0,
     this.rep = 1,
     this.repsTotal = 1,
   });
@@ -61,7 +67,8 @@ class MoveProgress extends Equatable {
   bool get isKnown => length > Duration.zero;
 
   @override
-  List<Object?> get props => [position, length, clipPosition, rep, repsTotal];
+  List<Object?> get props =>
+      [position, length, clipPosition, clipIndex, rep, repsTotal];
 }
 
 /// Something that happened to the current move — rare, unlike progress.
@@ -87,8 +94,9 @@ final class MoveSeeked extends MoveEvent {
   List<Object?> get props => [clipPosition];
 }
 
-/// The clip went back to its start (the engine looped it, or we restarted
-/// it early for a Zoorkhaneh move with fewer reps than the clip).
+/// A clip started over or the next clip started: the engine looped the clip,
+/// moved on to the move's next recording, or we restarted the clip early
+/// for a Zoorkhaneh move with fewer reps than the clip.
 final class MoveLooped extends MoveEvent {
   const MoveLooped();
 }
@@ -132,7 +140,7 @@ class MoveTimeline {
   late final StreamSubscription<Duration> _durationSub;
 
   MoveSpec? _spec;
-  Duration? _clip;
+  ClipSequence? _sequence;
   Duration? _length;
   MoveProgress _current = MoveProgress.none;
 
@@ -183,7 +191,8 @@ class MoveTimeline {
     _playing = play;
     unawaited(_engine.setVolume(_volume));
     try {
-      if (spec.audioPath.isEmpty) {
+      final paths = [for (final clip in spec.clips) clip.path];
+      if (paths.isEmpty || paths.any((p) => p.isEmpty)) {
         throw StateError('Audio source path is empty');
       }
       // Set before handing the source over: the engine reports the new
@@ -193,11 +202,11 @@ class MoveTimeline {
       if (play) {
         // Not followed by any state change: just_audio completes play() only
         // when playback later stops, so nothing may depend on it returning.
-        await _engine.playQueue([spec.audioPath]);
+        await _engine.playQueue(paths);
       } else {
         await _engine.stop();
         if (superseded()) return LoadOutcome.superseded;
-        await _engine.setQueue([spec.audioPath]);
+        await _engine.setQueue(paths);
       }
       return superseded() ? LoadOutcome.superseded : LoadOutcome.current;
     } catch (_) {
@@ -234,17 +243,30 @@ class MoveTimeline {
   /// isn't known yet.
   Future<Duration?> seek(Duration position) async {
     final length = _length;
-    if (!_clock.isStarted || length == null) return null;
+    final sequence = _sequence;
+    if (!_clock.isStarted || length == null || sequence == null) return null;
     final clamped = Duration(
         milliseconds: position.inMilliseconds.clamp(0, length.inMilliseconds));
+    final at = sequence.locate(clamped);
     // The clock re-bases first, so the engine's jump is never taken for a
-    // loop.
-    final clipPosition = _clock.seekTo(clamped);
+    // loop or a new clip.
+    _clock.jumpTo(
+        index: at.index,
+        clipPosition: at.clipPosition,
+        completed: at.completed);
     _awaitingLoopRestart = false;
-    await _engine.seek(clipPosition);
-    _publish(clamped, clipPosition);
-    _addEvent(MoveSeeked(clipPosition));
-    return clipPosition;
+    await _engine.seek(at.clipPosition,
+        index: sequence.clips.length > 1 ? at.index : null);
+    _publish(clamped, at.clipPosition);
+    _addEvent(MoveSeeked(at.clipPosition));
+    return at.clipPosition;
+  }
+
+  /// The clip at [index] of the current move (see [MoveProgress.clipIndex]),
+  /// or null when out of range.
+  AudioClip? clipAt(int index) {
+    final clips = _spec?.clips ?? const <AudioClip>[];
+    return index >= 0 && index < clips.length ? clips[index] : null;
   }
 
   Future<void> close() async {
@@ -258,10 +280,10 @@ class MoveTimeline {
 
   void _startNewMove(MoveSpec spec) {
     _spec = spec;
+    _sequence = ClipSequence(spec.clips, _clock.clipLength);
     _sourceDispatched = false;
     _targetAnnounced = false;
     _awaitingLoopRestart = false;
-    _clip = null;
     _length = null;
     _clock.reset();
     _current = MoveProgress.none;
@@ -270,12 +292,23 @@ class MoveTimeline {
 
   void _onEngineDuration(Duration clip) {
     final spec = _spec;
-    if (!_sourceDispatched || spec == null || clip <= Duration.zero) return;
-    _clip = clip;
-    _length = _moveLength(clip, spec);
+    final sequence = _sequence;
+    final index = _engine.currentIndex;
+    if (!_sourceDispatched ||
+        spec == null ||
+        sequence == null ||
+        clip <= Duration.zero ||
+        index >= spec.clips.length) {
+      return;
+    }
     // Engines may re-report the same clip's length mid-move; only the first
     // report starts the timeline, so progress isn't wiped.
-    if (!_clock.isStarted) _clock.start(clip);
+    if (_clock.isStarted) {
+      _clock.setClipLength(index, clip);
+    } else {
+      _clock.start(clip, index: index, clipCount: spec.clips.length);
+    }
+    _length = sequence.timeAtReps(spec.targetReps);
     _publish(_clock.logicalPosition, _current.clipPosition);
   }
 
@@ -283,26 +316,30 @@ class MoveTimeline {
   void _onEnginePosition(Duration clipPosition) {
     final spec = _spec;
     final length = _length;
-    final clip = _clip;
+    final index = _engine.currentIndex;
     if (!_sourceDispatched ||
         spec == null ||
         !_clock.isStarted ||
         length == null ||
-        clip == null) {
+        index >= spec.clips.length) {
       return;
     }
 
-    // Loop forever, prescribed reps fewer than the clip's: we loop the first
-    // `length` of the clip ourselves. Ignore readings until our seek(0)
-    // lands.
-    final loopsShortClip = spec.loopForever && length < clip;
+    // Loop forever on a single clip, prescribed reps fewer than the clip's:
+    // we loop the first `length` of the clip ourselves. Ignore readings
+    // until our seek(0) lands.
+    final clip = _clock.clipLength(0);
+    final loopsShortClip = spec.loopForever &&
+        spec.clips.length == 1 &&
+        clip != null &&
+        length < clip;
     if (loopsShortClip && _awaitingLoopRestart) {
       if (clipPosition >= length) return;
       _awaitingLoopRestart = false;
     }
 
     final wrapsBefore = _clock.wrapCount;
-    var logical = _clock.onEnginePosition(clipPosition);
+    var logical = _clock.onEnginePosition(clipPosition, index: index);
     final engineLooped = _clock.wrapCount > wrapsBefore;
     final restartShortClip =
         loopsShortClip && _playing && clipPosition >= length;
@@ -330,7 +367,8 @@ class MoveTimeline {
       position: position,
       length: length,
       clipPosition: clipPosition,
-      rep: _repAt(position, length, spec),
+      clipIndex: _clock.index,
+      rep: _repAt(position, spec),
       repsTotal: spec.targetReps,
     );
     _progress.add(_current);
@@ -340,20 +378,13 @@ class MoveTimeline {
     if (!_events.isClosed) _events.add(event);
   }
 
-  /// Clip length scaled from the clip's own reps to the prescribed reps
-  /// (e.g. a 10 s, 1-rep clip prescribed ×3 → 30 s).
-  static Duration _moveLength(Duration clip, MoveSpec spec) {
-    if (spec.clipReps <= 0) return clip;
-    return Duration(
-        milliseconds:
-            (clip.inMilliseconds / spec.clipReps * spec.targetReps).round());
-  }
-
-  static int _repAt(Duration position, Duration length, MoveSpec spec) {
+  /// Current rep, from 1: reps already played (clip by clip, each at its own
+  /// tempo) + 1. Capped at the prescribed reps unless the move loops forever.
+  int _repAt(Duration position, MoveSpec spec) {
     final total = spec.targetReps < 1 ? 1 : spec.targetReps;
-    if (length <= Duration.zero) return 1;
-    final perRepMs = length.inMilliseconds / total;
-    final rep = (position.inMilliseconds / perRepMs).floor() + 1;
+    final sequence = _sequence;
+    if (sequence == null || !_clock.isStarted) return 1;
+    final rep = sequence.repsAt(position).floor() + 1;
     return spec.loopForever ? rep : rep.clamp(1, total);
   }
 }

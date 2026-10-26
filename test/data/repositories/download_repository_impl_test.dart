@@ -8,7 +8,6 @@ import 'package:pahlevani/data/repositories_impl/download_repository_impl.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart'
     show Exercise;
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
 import '../../fakes/test_seed_data.dart';
@@ -81,31 +80,20 @@ void main() {
 
   group('getLocalAudioPath', () {
     test('returns null when file does not exist on disk', () async {
-      const item = ItemDetail(item: testItem1, exercise: testExercise1);
-      expect(await repo.getLocalAudioPath(item), isNull);
+      expect(await repo.getLocalAudioPath(testExercise1.audioFileUrl!), isNull);
     });
 
     test('returns path when file exists on disk', () async {
-      const item = ItemDetail(item: testItem1, exercise: testExercise1);
       final expectedFile =
           File('${tmpDir.path}/${_audioFilename(testExercise1)}');
       await expectedFile.create();
 
-      expect(await repo.getLocalAudioPath(item), expectedFile.path);
+      expect(await repo.getLocalAudioPath(testExercise1.audioFileUrl!),
+          expectedFile.path);
     });
 
-    test('shared across two items in different sessions for the same exercise',
-        () async {
-      // testItem2 (session 1) and testItem3 (session 2) both reference
-      // exercise 102 — the cache must resolve to the same file for both.
-      const item2 = ItemDetail(item: testItem2, exercise: testExercise2);
-      const item3 = ItemDetail(item: testItem3, exercise: testExercise2);
-      final cachedFile =
-          File('${tmpDir.path}/${_audioFilename(testExercise2)}');
-      await cachedFile.create();
-
-      expect(await repo.getLocalAudioPath(item2), cachedFile.path);
-      expect(await repo.getLocalAudioPath(item3), cachedFile.path);
+    test('an empty URL has no file', () async {
+      expect(await repo.getLocalAudioPath(''), isNull);
     });
 
     test(
@@ -113,9 +101,7 @@ void main() {
         '(e.g. path_provider unavailable on web)', () async {
       when(() => mockDs.getMediaCacheDirectoryPath())
           .thenThrow(Exception('path_provider unavailable'));
-      const item = ItemDetail(item: testItem1, exercise: testExercise1);
-
-      expect(await repo.getLocalAudioPath(item), isNull);
+      expect(await repo.getLocalAudioPath(testExercise1.audioFileUrl!), isNull);
     });
   });
 
