@@ -5,7 +5,7 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import 'home_page.dart';
 
 /// A session as a compact card: title, length and moves, a play square,
-/// and a NEEDS MEEL tag when the admin set it. Home's small cards and the
+/// and NEEDS MEEL (set in admin) or NO EQUIPMENT. Home's small cards and the
 /// Library's session list. Long-press opens the session's hidden menu.
 class SessionCard extends StatelessWidget {
   const SessionCard(
@@ -43,10 +43,12 @@ class SessionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (session.session.needsMeel)
-                      Text('NEEDS MEEL',
-                          style: KashiTextStyles.label
-                              .copyWith(fontSize: 10, color: colors.textMuted)),
+                    Text(
+                        session.session.needsMeel
+                            ? 'NEEDS MEEL'
+                            : 'NO EQUIPMENT',
+                        style: KashiTextStyles.label
+                            .copyWith(fontSize: 10, color: colors.textMuted)),
                     Text(title,
                         maxLines: compact ? 2 : 1,
                         overflow: TextOverflow.ellipsis,

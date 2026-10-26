@@ -109,18 +109,20 @@ class _FakeDownloadRepo implements DownloadRepository {
 TrainingSession _session(int id) =>
     TrainingSession(id: id, title: 'S$id', description: '', difficulty: 1);
 
-// Every test move has something to learn from (a description), so Learning
-// mode prompts for it unless it is learnt.
+// Every test move has a learning video, so Learning mode prompts for it
+// unless it is learnt.
 Exercise _exercise(int id,
         {String url = 'https://audio.mp3',
         int reps = 3,
-        String? description = 'How'}) =>
+        String? description = 'How',
+        String? videoUrl = 'https://x/learn.mp4'}) =>
     Exercise(
         id: id,
         name: 'Ex $id',
         audioFileUrl: url,
         repetitionsDefault: reps,
-        description: description);
+        description: description,
+        videoUrl: videoUrl);
 
 TrainingItem _item(
         {required int sessionId,
@@ -1486,7 +1488,23 @@ void main() {
       final snap = _snapshotWithItems(
         _session(1),
         [_item(sessionId: 1, exerciseId: 10, position: 0)],
-        [_exercise(10, description: null)],
+        [_exercise(10, description: null, videoUrl: null)],
+      );
+      final cubit = _makeCubit(snap, mode: PlayerMode.learning);
+      addTearDown(cubit.close);
+
+      await cubit.loadTracks();
+
+      expect(cubit.state.isPlaying, isTrue);
+      expect(cubit.shouldPromptLearningMode, isFalse);
+    });
+
+    test('a move with text but no learning video plays without a break',
+        () async {
+      final snap = _snapshotWithItems(
+        _session(1),
+        [_item(sessionId: 1, exerciseId: 10, position: 0)],
+        [_exercise(10, videoUrl: null)],
       );
       final cubit = _makeCubit(snap, mode: PlayerMode.learning);
       addTearDown(cubit.close);

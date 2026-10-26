@@ -84,4 +84,8 @@ class Exercise {
       (videoUrl?.isNotEmpty ?? false) ||
       (description?.trim().isNotEmpty ?? false) ||
       steps.isNotEmpty;
+
+  /// Whether the move has an educational video. Only such moves get a
+  /// learning break in Learning mode, and they lead the Library.
+  bool get hasLearningVideo => videoUrl?.isNotEmpty ?? false;
 }

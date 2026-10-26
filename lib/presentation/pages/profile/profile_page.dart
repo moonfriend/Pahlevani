@@ -229,7 +229,7 @@ class _Account extends StatelessWidget {
         content: const Text(
             'Your account, your activation and your profile are deleted for '
             'good. Training history on this device stays on this device. '
-            'To use Pahlevani again you’ll need a new activation code.'),
+            'To use Gowd again you’ll need a new activation code.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),

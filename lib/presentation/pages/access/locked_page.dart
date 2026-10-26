@@ -8,8 +8,9 @@ import '../../bloc/activation/activation_cubit.dart';
 import '../../bloc/auth/auth_cubit.dart';
 import '../../widgets/access/retry_countdown.dart';
 import 'access_scaffold.dart';
+import 'account_page.dart' show activateTitle;
 
-/// Signed in, not activated: the admin's message and Patreon link, and a
+/// Signed in, not activated: the admin's message and Steady link, and a
 /// field for the activation code the member got from us.
 class LockedPage extends StatefulWidget {
   const LockedPage({super.key, this.email});
@@ -40,7 +41,7 @@ class _LockedPageState extends State<LockedPage> {
     final text = state.text;
 
     return AccessScaffold(
-      title: 'Activate Pahlevani',
+      title: activateTitle,
       children: [
         Text(text.message,
             textAlign: TextAlign.center,

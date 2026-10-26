@@ -132,7 +132,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     return moveStartsOnItsOwn(
       mode: _mode,
       isLearnt: exercise != null && _learntExerciseIds.contains(exercise.id),
-      hasLearningContent: exercise?.hasLearningContent ?? false,
+      hasLearningVideo: exercise?.hasLearningVideo ?? false,
     );
   }
 

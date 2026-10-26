@@ -224,8 +224,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       BuildContext context, int index, Exercise exercise) async {
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
-    final shouldStart =
-        await showLearningCard(context, move, actionLabel: 'Go');
+    final shouldStart = await showLearningCard(context, move,
+        actionLabel: 'Go', hint: learnFirstHint);
     if (shouldStart && mounted) {
       unawaited(_cubit.startCurrentTrack());
     }
@@ -240,7 +240,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     _cubit.pause();
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
-    await showLearningCard(context, move);
+    await showLearningCard(context, move, hint: learnFirstHint);
   }
 
   /// The learning card for track [index]: the track's already-resolved

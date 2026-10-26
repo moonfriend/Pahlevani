@@ -14,9 +14,10 @@ import 'learning_card_page.dart';
 /// Shared by the Library and the session preview so both show the same card.
 ///
 /// [target] and [minutes] are session details: the reps of a counted move
-/// and its estimated length; the Library has neither.
+/// and its estimated length; the Library has neither. [hint] is the line
+/// above the card (a session's [learnFirstHint]).
 Future<void> openMoveCard(BuildContext context, Exercise exercise,
-    {int? target, int? minutes}) async {
+    {int? target, int? minutes, String? hint}) async {
   final downloads = getIt<DownloadRepository>();
   final (media, _) =
       await ResolveMoveMedia(downloads)(exercise.media, useRemoteMedia: kIsWeb);
@@ -32,5 +33,6 @@ Future<void> openMoveCard(BuildContext context, Exercise exercise,
       target: target,
       minutes: minutes,
     ),
+    hint: hint,
   );
 }

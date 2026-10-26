@@ -15,7 +15,6 @@ switches. Flip one to `true` to bring its feature back.
 | Switch | Feature | Where it lives |
 |---|---|---|
 | `progressTab` | The Progress tab: shamseh, calendar, counted moves | `pages/progress/`, wired in `pages/shell/main_tabs.dart` |
-| `followAlongButton` | "Only follow along" (Athlete mode) under Start in the session preview | `pages/session_flow/session_preview_page.dart` |
 | `shamseh` | The shamseh on the Complete screen (one tile per session). Release 1 shows today as a starred calendar day instead | `pages/session_flow/complete_page.dart` (`showShamseh`), `widgets/kashi/shamseh.dart` |
 | `repLogging` | The Rep log after each counted move, then the reps on Complete and in history | `SessionPlayerCubit` (`repLogging` param), `AudioPlayerPage.repLogging`, `pages/session_flow/rep_log_page.dart`. The first update replaces it with Shena/Meel totals on Complete. |
 
@@ -64,11 +63,15 @@ in the same change. Get them back from git history when the list returns.
 
 - **Learning cards and the Library only cover moves with something to learn
   from:** a video (follow-along or educational) or explanation text
-  (`Exercise.hasLearningContent`). In Learning mode, a move without content
-  plays straight away instead of showing an empty card.
+  (`Exercise.hasLearningContent`). Moves with a learning video lead the
+  Library. In Learning mode only moves with a learning video
+  (`Exercise.hasLearningVideo`) get a break before them; the rest play straight
+  on, and "How to" still opens their card.
+- **Athlete mode** (no learning breaks) is a small link under "Start the
+  Training" in the session preview.
 - **Zoorkhaneh mode** is a long-press on a Home session card, which asks
   "Start in Zoorkhaneh mode?" (`showSessionPlayMenu` in `session_start.dart`).
-- **Every session is in the Library** (a Sessions list above the moves), so a
+- **Every session is in the Library** (a Sessions list below the moves), so a
   session that isn't on Home (e.g. Advanced Sang and Kabbade) is still reachable.
 - **Home's sessions come from admin slots** (`training_session.home_position`,
   migration 0043). A trainer-assigned session takes the main card (`home_lineup.dart`).

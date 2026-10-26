@@ -82,10 +82,7 @@ class _AccountPageState extends State<AccountPage> {
     final action = _newAccount ? 'Create account' : 'Sign in';
 
     return AccessScaffold(
-      title: 'Welcome to Pahlevani',
-      subtitle: _newAccount
-          ? 'Create your account with the activation code you got from us.'
-          : 'Sign in with your email and password.',
+      title: 'Welcome to Pahlevani Gowd',
       children: [
         KashiSegmented<bool>(
           options: const [
@@ -96,6 +93,10 @@ class _AccountPageState extends State<AccountPage> {
           onSelected: (value) => setState(() => _newAccount = value),
         ),
         const SizedBox(height: 20),
+        if (_newAccount) ...[
+          _ActivateIntro(source: _codeSource),
+          const SizedBox(height: 16),
+        ],
         TextField(
           controller: _email,
           keyboardType: TextInputType.emailAddress,
@@ -131,8 +132,7 @@ class _AccountPageState extends State<AccountPage> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-          _CodeSourceLink(source: _codeSource),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           ConsentChecks(
             safety: _safety,
             privacy: _privacy,
@@ -172,27 +172,45 @@ class _AccountPageState extends State<AccountPage> {
   }
 }
 
-/// Where to get a code: the locked screen's admin-set link.
-class _CodeSourceLink extends StatelessWidget {
-  const _CodeSourceLink({required this.source});
+/// "Activate and enter the Gowd": the admin-set text on how to get a code
+/// (Steady today) and its link. Only on the create tab.
+class _ActivateIntro extends StatelessWidget {
+  const _ActivateIntro({required this.source});
 
   final Future<LockedScreenText> source;
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<LockedScreenText>(
-        future: source,
-        builder: (context, snapshot) {
-          final text = snapshot.data;
-          if (text == null) return const SizedBox.shrink();
-          return Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return FutureBuilder<LockedScreenText>(
+      future: source,
+      builder: (context, snapshot) {
+        final text = snapshot.data ?? LockedScreenText.fallback;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(activateTitle,
+                style: KashiTextStyles.ui.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: colors.textPrimary)),
+            const SizedBox(height: 6),
+            Text(text.message,
+                style: KashiTextStyles.body.copyWith(
+                    fontSize: 14, height: 1.5, color: colors.textBody)),
+            TextButton(
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               onPressed: () => launchUrl(Uri.parse(text.linkUrl),
                   mode: LaunchMode.externalApplication),
               child: Text(text.linkLabel),
             ),
-          );
-        },
-      );
+          ],
+        );
+      },
+    );
+  }
 }
+
+/// The heading over how to get an activation code (here and on the locked
+/// screen).
+const activateTitle = 'Activate and enter the Gowd';

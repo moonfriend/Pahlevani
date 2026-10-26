@@ -154,15 +154,39 @@ void main() {
   });
 
   testWidgets(
-      'one Start button (release 1): it starts Learning mode, so cards show '
-      'for moves not yet learnt', (tester) async {
+      '"Start the Training" starts Learning mode, so cards show for moves '
+      'not yet learnt', (tester) async {
     final started = await _pump(tester);
-    expect(find.text('Only follow along'), findsNothing);
     expect(find.text('Educational'), findsNothing);
 
-    await tester.tap(find.text('Start'));
+    await tester.tap(find.text('Start the Training'));
     await tester.pump();
     expect(started, [PlayerMode.learning]);
+  });
+
+  testWidgets('a small link below starts athlete mode', (tester) async {
+    final started = await _pump(tester);
+    final link = find.text('Start in athlete mode (no learning breaks)');
+    expect(tester.getRect(link).top,
+        greaterThan(tester.getRect(find.text('Start the Training')).bottom));
+    await tester.tap(link);
+    await tester.pump();
+    expect(started, [PlayerMode.athlete]);
+  });
+
+  testWidgets('asks to review the moves first, above the list', (tester) async {
+    await _pump(tester);
+    final review = find.text('Review your moves before starting the session.');
+    expect(review, findsOneWidget);
+    expect(tester.getRect(review).top,
+        lessThan(tester.getRect(find.text('Shena')).top));
+  });
+
+  testWidgets('a move\'s card says to learn the move first', (tester) async {
+    await _pump(tester);
+    await tester.tap(find.text('Shena'));
+    await tester.pumpAndSettle();
+    expect(find.text(learnFirstHint), findsOneWidget);
   });
 
   testWidgets('a warm-up reminder sits above Start', (tester) async {
@@ -195,7 +219,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       final title = tester.getRect(find.text('Full Pahlevani'));
-      final start = tester.getRect(find.text('Start'));
+      final start = tester.getRect(find.text('Start the Training'));
       final shena = tester.getRect(find.text('Shena'));
       expect(shena.left, greaterThan(title.right));
       expect(shena.left, greaterThan(start.right));
@@ -203,7 +227,7 @@ void main() {
           reason: 'the list starts at the top, beside the header');
       expect(find.text('MOVES · TAP ONE TO WATCH HOW'), findsOneWidget);
 
-      await tester.tap(find.text('Start'));
+      await tester.tap(find.text('Start the Training'));
       expect(started, [PlayerMode.learning]);
     });
   }

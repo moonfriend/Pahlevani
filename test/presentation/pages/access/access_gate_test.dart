@@ -139,13 +139,35 @@ void main() {
     await tapVisible(
         tester, find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
-    expect(find.text('Join us on Patreon to get your code.'), findsOneWidget);
+    expect(find.text('Join us on Steady to get your code.'), findsOneWidget);
   });
 
-  testWidgets('the sign-in screen links to where codes come from',
-      (tester) async {
+  testWidgets(
+      'the sign-in screen welcomes to Gowd and, on the create tab, says how '
+      'to get a code', (tester) async {
     await _pump(tester);
-    expect(find.text('Get your code on Patreon'), findsOneWidget);
+    expect(find.text('Welcome to Pahlevani Gowd'), findsOneWidget);
+    expect(find.text('Activate and enter the Gowd'), findsOneWidget);
+    expect(find.text('Join us on Steady to get your code.'), findsOneWidget,
+        reason: 'the admin-set message');
+    expect(find.text('Join on Steady'), findsOneWidget);
+
+    await tester.tap(find.text('I have an account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome to Pahlevani Gowd'), findsOneWidget);
+    expect(find.text('Activate and enter the Gowd'), findsNothing);
+    expect(find.text('Join on Steady'), findsNothing);
+  });
+
+  testWidgets('the locked screen is titled for Gowd', (tester) async {
+    await _pump(tester,
+        setUp: (_, activation) => activation.throwOnRedeem = true);
+    await _fillNewAccount(tester);
+    await _tickBoth(tester);
+    await tapVisible(
+        tester, find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Activate and enter the Gowd'), findsOneWidget);
   });
 
   testWidgets('"I have an account": no code, no boxes, straight in',
@@ -210,7 +232,7 @@ void main() {
 
   testWidgets('the locked screen can sign out', (tester) async {
     final h = await _pump(tester, user: _accepted);
-    expect(find.text('Join us on Patreon to get your code.'), findsOneWidget);
+    expect(find.text('Join us on Steady to get your code.'), findsOneWidget);
     await tapVisible(tester, find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(h.auth.signOutCallCount, 1);

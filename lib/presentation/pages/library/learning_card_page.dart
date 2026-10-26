@@ -119,10 +119,13 @@ class LearningMove {
 /// was closed (system Back or a tap beside it) — so a caller acts only once
 /// the card has fully closed. The video starts straight away, as the design
 /// asks when the card is opened from a session.
+///
+/// [hint] is a line above the card; a session passes [learnFirstHint].
 Future<bool> showLearningCard(
   BuildContext context,
   LearningMove move, {
   String actionLabel = 'Got it',
+  String? hint,
 }) async {
   final result = await pushLearningCard(
     context,
@@ -130,6 +133,7 @@ Future<bool> showLearningCard(
       move: move,
       actionLabel: actionLabel,
       autoplayVideo: true,
+      hint: hint,
     ),
   );
   return result ?? false;
@@ -142,13 +146,17 @@ Future<bool?> pushLearningCard(BuildContext context, LearningCardPage page) {
     context: context,
     barrierDismissible: true,
     barrierLabel: page.move.name,
-    barrierColor: const Color(0x9E060C1E), // rgba(6,12,30,.62)
+    // Light enough that the page behind stays visible: a pop-up over it.
+    barrierColor: const Color(0x6B060C1E), // rgba(6,12,30,.42)
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (_, __, ___) => page,
     transitionBuilder: (context, animation, _, child) =>
         FadeTransition(opacity: animation, child: child),
   );
 }
+
+/// The line above a learning card opened from a session.
+const learnFirstHint = 'First learn the move, then do it.';
 
 /// Learn a single move: the photo (ending in the lower half of a khatam) or
 /// its video, the name with its reps, Lighter/Harder variations, the
@@ -162,6 +170,7 @@ class LearningCardPage extends StatefulWidget {
     this.actionLabel = 'Got it',
     this.onAction,
     this.autoplayVideo = false,
+    this.hint,
   });
 
   /// The Library's card: "Let’s go" (practising one move) isn't built yet.
@@ -186,6 +195,9 @@ class LearningCardPage extends StatefulWidget {
   /// Opens with the video playing instead of the photo.
   final bool autoplayVideo;
 
+  /// A short line above the card (e.g. [learnFirstHint]); none when null.
+  final String? hint;
+
   @override
   State<LearningCardPage> createState() => _LearningCardPageState();
 }
@@ -196,12 +208,13 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
   late bool _videoOpen = widget.autoplayVideo && widget.move.videoSrc != null;
 
-  static const _photoHeight = 262.0;
-  static const _maxWidth = 480.0;
+  static const _photoHeight = 210.0;
+  static const _maxWidth = 440.0;
 
-  /// Keeps the phone card clearly smaller than the page behind it.
+  /// Keeps the phone card clearly smaller than the page behind it, so it
+  /// reads as a pop-up over that page.
   static const _phoneCardMargin =
-      EdgeInsets.symmetric(horizontal: 16, vertical: 32);
+      EdgeInsets.symmetric(horizontal: 28, vertical: 56);
 
   LearningMove get _move => widget.move;
   bool get _hasVariations => _move.variations.isNotEmpty;
@@ -232,7 +245,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _maxWidth),
-          child: Material(
+          child: _withHint(Material(
             key: const ValueKey('learning-card'),
             color: colors.ground,
             clipBehavior: Clip.hardEdge,
@@ -265,9 +278,29 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 ),
               ],
             ),
-          ),
+          )),
         ),
       ),
+    );
+  }
+
+  /// [card] with the [LearningCardPage.hint] above it, on the dimmed page.
+  Widget _withHint(Widget card) {
+    final hint = widget.hint;
+    if (hint == null) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(hint,
+            textAlign: TextAlign.center,
+            style: KashiTextStyles.ui.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        const SizedBox(height: 10),
+        Flexible(child: card),
+      ],
     );
   }
 
@@ -287,7 +320,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
           constraints: BoxConstraints.loose(_wideCardSize),
-          child: Material(
+          child: _withHint(Material(
             key: const ValueKey('learning-card'),
             color: colors.raised,
             child: LayoutBuilder(
@@ -354,7 +387,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 ],
               ),
             ),
-          ),
+          )),
         ),
       ),
     );

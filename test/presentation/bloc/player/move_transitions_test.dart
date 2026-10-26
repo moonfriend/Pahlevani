@@ -34,7 +34,7 @@ void main() {
         moveStartsOnItsOwn(
             mode: PlayerMode.learning,
             isLearnt: false,
-            hasLearningContent: false),
+            hasLearningVideo: false),
         isTrue);
   });
 }

@@ -37,12 +37,12 @@ class TermsSettingTest(unittest.TestCase):
 
 class LockedScreenTest(unittest.TestCase):
     def test_valid_text_saves_as_the_single_row(self):
-        screen = LockedScreen(" Join us. ", "", " https://www.patreon.com/x ")
+        screen = LockedScreen(" Join us. ", "", " https://steady.page/x ")
         self.assertEqual(screen.problems(), [])
         self.assertEqual(screen.to_row(), {
             "id": 1, "message": "Join us.",
-            "link_label": "Get your code on Patreon",
-            "link_url": "https://www.patreon.com/x",
+            "link_label": "Join on Steady",
+            "link_url": "https://steady.page/x",
         })
 
     def test_needs_a_message_and_an_https_link(self):

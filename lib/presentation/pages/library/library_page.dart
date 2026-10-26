@@ -15,8 +15,9 @@ import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
 import 'open_move_card.dart';
 
-/// Every session (so ones not on Home, like Advanced Sang and Kabbade, are
-/// reachable), then every move in the catalogue: two to a row on phones, three on tablets,
+/// Every move in the catalogue (those with a learning video first), then
+/// every session at the bottom (so ones not on Home, like Advanced Sang and
+/// Kabbade, are reachable). Moves: two to a row on phones, three on tablets,
 /// four on the web layout, the thumbnails growing with the tiles. One colour
 /// until categories exist. Tap a move → its learning card (the same card as
 /// the session preview's).
@@ -102,33 +103,7 @@ class LibraryPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (sessions.isNotEmpty) ...[
-                    _sectionLabel('Sessions', side),
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(side, 0, side, side),
-                      sliver: SliverGrid.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: phone ? 1 : columns - 1,
-                          mainAxisSpacing: gap,
-                          crossAxisSpacing: gap,
-                          mainAxisExtent: 72,
-                        ),
-                        itemCount: _orderedSessions.length,
-                        itemBuilder: (context, i) {
-                          final s = _orderedSessions[i];
-                          return SessionCard(
-                            session: s,
-                            compact: true,
-                            onOpen: () => onOpenSession?.call(s.session),
-                            onMenu: onSessionMenu == null
-                                ? null
-                                : () => onSessionMenu!(s.session),
-                          );
-                        },
-                      ),
-                    ),
-                    _sectionLabel('Moves', side),
-                  ],
+                  if (sessions.isNotEmpty) _sectionLabel('Moves', side),
                   if (moves.isEmpty)
                     SliverPadding(
                       padding: EdgeInsets.symmetric(horizontal: side + 6),
@@ -159,6 +134,32 @@ class LibraryPage extends StatelessWidget {
                           starSize: phone ? 150 : tileWidth - 20),
                     ),
                   ),
+                  if (sessions.isNotEmpty) ...[
+                    _sectionLabel('Sessions', side),
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(side, 0, side, side),
+                      sliver: SliverGrid.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: phone ? 1 : columns - 1,
+                          mainAxisSpacing: gap,
+                          crossAxisSpacing: gap,
+                          mainAxisExtent: 72,
+                        ),
+                        itemCount: _orderedSessions.length,
+                        itemBuilder: (context, i) {
+                          final s = _orderedSessions[i];
+                          return SessionCard(
+                            session: s,
+                            compact: true,
+                            onOpen: () => onOpenSession?.call(s.session),
+                            onMenu: onSessionMenu == null
+                                ? null
+                                : () => onSessionMenu!(s.session),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

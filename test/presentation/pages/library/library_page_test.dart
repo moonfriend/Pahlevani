@@ -99,6 +99,19 @@ void main() {
     expect(tops[1], lessThan(tops[2]));
   });
 
+  testWidgets('moves first, sessions at the bottom', (tester) async {
+    await _pump(tester, size: const Size(360, 2000));
+    expect(tester.getRect(find.text('MOVES')).top,
+        lessThan(tester.getRect(find.text('SESSIONS')).top));
+    expect(tester.getRect(find.text('Charkh')).top,
+        lessThan(tester.getRect(find.text('Full Pahlevani')).top));
+  });
+
+  testWidgets('sessions without meel say NO EQUIPMENT', (tester) async {
+    await _pump(tester, size: const Size(360, 2000));
+    expect(find.text('NO EQUIPMENT'), findsNWidgets(_sessions.length));
+  });
+
   testWidgets('tapping a session opens it; long-press its hidden menu',
       (tester) async {
     await _pump(tester, size: const Size(360, 2000));
@@ -131,6 +144,8 @@ void main() {
     expect(find.byType(LearningCardPage), findsOneWidget);
     expect(find.text('A wave-like press on the board.'), findsOneWidget);
     expect(find.byType(LearntToggle), findsOneWidget);
+    expect(find.text(learnFirstHint), findsNothing,
+        reason: 'the hint is for cards opened from a session');
   });
 
   testWidgets('no moves yet: says so instead of an empty grid', (tester) async {
