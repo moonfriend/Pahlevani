@@ -5,12 +5,13 @@ import 'package:pahlevani/domain/usecases/audio_catalog/resolve_audio_track.dart
 
 /// Every file a session needs for [tier], given the effective Morshed
 /// ([morshedId], see effectiveMorshedId) — resolved with the same
-/// resolveAudioTrack the player uses, so what is downloaded is exactly what
+/// resolveAudioTracks the player uses, so what is downloaded is exactly what
 /// plays.
 ///
 /// Audio is the whole Morshed pack (all of [morshedId]'s recordings, so later
 /// sessions need no audio download) plus any fallback recordings this session
-/// needs where that Morshed hasn't recorded a movement type. Files already on
+/// needs where that Morshed hasn't recorded a movement type (every variant
+/// of them, since the player picks among those at random). Files already on
 /// the device are filtered out later by the downloader, not here.
 DownloadPlan buildSessionDownloadPlan({
   required List<ItemDetail> items,
@@ -21,15 +22,19 @@ DownloadPlan buildSessionDownloadPlan({
   final plan = _PlanBuilder();
   if (morshedId != null) plan.addPack(morshedId, tracks);
   for (final detail in items) {
-    final track = resolveAudioTrack(
+    final recordings = resolveAudioTracks(
       movementTypeId: detail.exercise.movementTypeId,
       chosenMorshedId: morshedId,
       availableTracks: tracks,
     );
     // Same fallback as the player: no curated recording for the movement →
     // the exercise's own audio (if any).
-    plan.add(track?.audioUrl ?? detail.exercise.audioFileUrl,
-        DownloadFileKind.audio);
+    if (recordings.isEmpty) {
+      plan.add(detail.exercise.audioFileUrl, DownloadFileKind.audio);
+    }
+    for (final recording in recordings) {
+      plan.add(recording.audioUrl, DownloadFileKind.audio);
+    }
 
     final media = detail.exercise.media;
     if (media.type == 'photo') plan.add(media.src, DownloadFileKind.image);
