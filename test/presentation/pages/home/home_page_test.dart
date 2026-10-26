@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/entities/info/info_link.dart';
 import 'package:pahlevani/domain/entities/tracking/movement_key.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
@@ -122,7 +123,7 @@ void main() {
               id: 'u',
               email: 'sara@example.com',
               consentAccepted: true,
-              termsVersion: 1));
+              termsVersion: currentTermsVersion));
       expect(find.text('Salam, sara'), findsOneWidget);
     });
   });
@@ -175,7 +176,7 @@ void main() {
               id: 'me',
               email: 'sara@example.com',
               consentAccepted: true,
-              termsVersion: 1),
+              termsVersion: currentTermsVersion),
           sessions: [
             (session: _session(1, 'Full', slot: 1), moves: 9, minutes: 60),
             (

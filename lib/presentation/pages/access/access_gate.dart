@@ -10,10 +10,12 @@ import 'consent_page.dart';
 import 'locked_page.dart';
 
 /// The release-1 gate in front of the app: an account, the safety and
-/// privacy consent, then an activation code (Patreon members only).
+/// privacy consent, and an activation code (members only).
 ///
-/// Signed out → [AccountPage]; signed in without consent → [ConsentPage];
-/// without activation → [LockedPage]; activated → [child]. The server
+/// Signed out → [AccountPage], where a new account gives all three at once.
+/// The other screens only catch what that didn't finish: signed in without
+/// consent to the current terms → [ConsentPage]; without activation →
+/// [LockedPage]; activated → [child]. The server
 /// enforces the same rule on every read (migration 0045), so this screen is
 /// the explanation, not the protection. [onActivated] runs when the account
 /// becomes active, to fetch the content the server now returns.

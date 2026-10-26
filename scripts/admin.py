@@ -46,7 +46,7 @@ from movement_learning_content import (
     variations_from_rows,
 )
 from morshed_admin import default_recording, set_default_morshed
-from activation_gate import Activation, LockedScreen, activations_csv
+from activation_gate import Activation, LockedScreen, TermsSetting, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
     links_text,
@@ -3591,6 +3591,41 @@ def tab_activation():
         get_client().table("activation_gate").upsert(edited.to_row()).execute()
         load_locked_screen.clear()
         st.success("Saved. The locked screen shows it on its next open.")
+
+    st.divider()
+    st.subheader("Terms version")
+    st.caption(
+        "After you update the terms or privacy policy on rahaavi.com, raise the "
+        "version and set the date: everyone who agreed to an older version is "
+        "asked to agree again on their next launch, with a notice naming the date. "
+        "Also update the app's short summaries (consent_texts.dart) when their "
+        "meaning changes (supabase/migrations/0049_terms_version_setting.sql)."
+    )
+    row = row or {}
+    if "terms_version" not in row:
+        st.warning("Run `supabase/migrations/0049_terms_version_setting.sql` in the "
+                   "Supabase SQL Editor first.")
+    else:
+        current = TermsSetting.from_row(row)
+        version = st.number_input("Version", min_value=1, step=1,
+                                  value=current.version, key="terms_version")
+        updated_on = st.date_input("Published on the website", value=current.updated_on,
+                                   key="terms_updated_on")
+        edited_terms = TermsSetting(int(version), updated_on)
+        terms_problems = edited_terms.problems(current)
+        for problem in terms_problems:
+            st.warning(problem)
+        confirmed = True
+        if edited_terms.asks_everyone_again(current):
+            confirmed = st.checkbox(
+                "Every user will be asked to agree again. Continue?",
+                key="terms_confirm")
+        if st.button("💾 Save terms version", type="primary",
+                     disabled=bool(terms_problems) or not confirmed, key="terms_save"):
+            (get_client().table("activation_gate")
+             .update(edited_terms.to_row()).eq("id", 1).execute())
+            load_locked_screen.clear()
+            st.success("Saved. Apps pick it up on their next launch.")
 
     st.divider()
     st.subheader(f"Activations ({len(activations)})")

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:pahlevani/domain/entities/activation/locked_screen_text.dart';
+import 'package:pahlevani/domain/entities/auth/terms_info.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/repositories/activation_repository.dart';
@@ -365,4 +366,8 @@ class _ActivatedMember implements ActivationRepository {
   @override
   Future<LockedScreenText> lockedScreenText() async =>
       LockedScreenText.fallback;
+  @override
+  Future<bool> isCodeValid(String code) async => true;
+  @override
+  Future<TermsInfo> termsInfo() async => TermsInfo.fallback;
 }

@@ -19,6 +19,12 @@ abstract class ActivationRemoteDataSource {
 
   /// The activation_gate row (locked screen text), or null.
   Future<Map<String, dynamic>?> fetchLockedScreen();
+
+  /// public.is_invite_code_valid() (migration 0016; callable signed out).
+  Future<bool> isCodeValid(String code);
+
+  /// The terms columns of the activation_gate row (migration 0049), or null.
+  Future<Map<String, dynamic>?> fetchTerms();
 }
 
 class ActivationRemoteDataSourceImpl implements ActivationRemoteDataSource {
@@ -61,6 +67,21 @@ class ActivationRemoteDataSourceImpl implements ActivationRemoteDataSource {
   Future<Map<String, dynamic>?> fetchLockedScreen() => _client
       .from('activation_gate')
       .select('message, link_label, link_url')
+      .eq('id', 1)
+      .maybeSingle()
+      .timeout(_timeout);
+
+  @override
+  Future<bool> isCodeValid(String code) =>
+      _client.rpc<bool>('is_invite_code_valid',
+          params: {'input_code': code}).timeout(_timeout);
+
+  // Fetched apart from the locked screen: before migration 0049 these
+  // columns don't exist, and that must not break the locked screen.
+  @override
+  Future<Map<String, dynamic>?> fetchTerms() => _client
+      .from('activation_gate')
+      .select('terms_version, terms_updated_on')
       .eq('id', 1)
       .maybeSingle()
       .timeout(_timeout);

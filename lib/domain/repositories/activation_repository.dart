@@ -1,4 +1,5 @@
 import '../entities/activation/locked_screen_text.dart';
+import '../entities/auth/terms_info.dart';
 
 /// The code doesn't exist, was revoked, or has no uses left.
 class InvalidActivationCodeException implements Exception {
@@ -21,4 +22,13 @@ abstract class ActivationRepository {
   /// The locked screen's text: the server's, else the last cached, else
   /// [LockedScreenText.fallback].
   Future<LockedScreenText> lockedScreenText();
+
+  /// Whether [code] could be redeemed right now — checked before an account
+  /// is created, so a wrong code creates nothing. Uses nothing up. Errors
+  /// (e.g. offline) propagate.
+  Future<bool> isCodeValid(String code);
+
+  /// The terms version everyone must have agreed to: the server's, else the
+  /// last cached, else [TermsInfo.fallback].
+  Future<TermsInfo> termsInfo();
 }

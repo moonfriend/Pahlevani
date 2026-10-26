@@ -6,6 +6,7 @@ import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../bloc/activation/activation_cubit.dart';
 import '../../bloc/auth/auth_cubit.dart';
+import '../../widgets/access/retry_countdown.dart';
 import 'access_scaffold.dart';
 
 /// Signed in, not activated: the admin's message and Patreon link, and a
@@ -68,18 +69,24 @@ class _LockedPageState extends State<LockedPage> {
           onSubmitted: (_) => _activate(),
         ),
         const SizedBox(height: 16),
-        FilledButton(
-          onPressed: state.submitting ? null : _activate,
-          style: FilledButton.styleFrom(
-            backgroundColor: colors.action,
-            minimumSize: const Size.fromHeight(48),
-            shape: const RoundedRectangleBorder(),
+        RetryCountdown(
+          until: state.retryAt,
+          builder: (context, secondsLeft) => FilledButton(
+            onPressed:
+                state.submitting || secondsLeft != null ? null : _activate,
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.action,
+              minimumSize: const Size.fromHeight(48),
+              shape: const RoundedRectangleBorder(),
+            ),
+            child: state.submitting
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(secondsLeft != null
+                    ? 'Try again in $secondsLeft s'
+                    : 'Activate'),
           ),
-          child: state.submitting
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Activate'),
         ),
         const SizedBox(height: 20),
         if (widget.email != null)
