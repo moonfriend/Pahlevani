@@ -16,7 +16,9 @@ final _shena = sampleMoves.firstWhere((m) => m.id == 'shena');
 final _vorod = sampleMoves.firstWhere((m) => m.id == 'vorod');
 
 Future<void> _pump(WidgetTester tester, SampleMove move,
-    {Size size = const Size(360, 740), ThemeData? theme}) async {
+    {Size size = const Size(360, 740),
+    ThemeData? theme,
+    bool showVariations = false}) async {
   // tester.view, so MediaQuery (and the layout) see this size.
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -26,8 +28,8 @@ Future<void> _pump(WidgetTester tester, SampleMove move,
     home: Builder(
       builder: (context) => Scaffold(
         body: TextButton(
-          onPressed: () =>
-              pushLearningCard(context, LearningCardPage.sample(move)),
+          onPressed: () => pushLearningCard(context,
+              LearningCardPage.sample(move, showVariations: showVariations)),
           child: const Text('open'),
         ),
       ),
@@ -60,9 +62,16 @@ void main() {
     expect(find.text('Let’s go'), findsOneWidget);
   });
 
-  testWidgets('starts on the standard variation; Lighter/Harder step through',
-      (tester) async {
+  testWidgets('release 1 hides Lighter/Harder', (tester) async {
     await _pump(tester, _shena);
+    expect(find.text('Lighter'), findsNothing);
+    expect(find.text('Harder'), findsNothing);
+  });
+
+  testWidgets(
+      'switched on: starts on the standard variation; Lighter/Harder step '
+      'through', (tester) async {
+    await _pump(tester, _shena, showVariations: true);
     final standard = _shena.variations[1];
     final lighter = _shena.variations[0];
     final harder = _shena.variations[2];
@@ -219,7 +228,7 @@ void main() {
       expect(find.text('Lighter'), findsNothing);
     });
 
-    testWidgets('Lighter / Harder from the move\'s variations; reps follow',
+    testWidgets('release 1 hides Lighter / Harder; the reps are the session\'s',
         (tester) async {
       await open(
           tester,
@@ -230,10 +239,8 @@ void main() {
           ]),
           target: 40);
 
-      expect(find.text('20 reps'), findsOneWidget);
-      await tester.tap(find.text('Harder'));
-      await tester.pump();
-      expect(find.text('30 reps'), findsOneWidget);
+      expect(find.text('Harder'), findsNothing);
+      expect(find.text('40 reps'), findsOneWidget);
     });
 
     testWidgets('the action returns true; a tap beside the card false',

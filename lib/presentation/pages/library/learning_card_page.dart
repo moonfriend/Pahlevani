@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/release_features.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/training_session/exercise.dart';
@@ -172,12 +173,15 @@ class LearningCardPage extends StatefulWidget {
     this.onAction,
     this.autoplayVideo = false,
     this.hint,
+    this.showVariations = ReleaseFeatures.moveVariations,
   });
 
   /// The Library's card: "Let’s go" (practising one move) isn't built yet.
-  factory LearningCardPage.sample(SampleMove move, {Key? key}) =>
+  factory LearningCardPage.sample(SampleMove move,
+          {Key? key, bool showVariations = ReleaseFeatures.moveVariations}) =>
       LearningCardPage(
         key: key,
+        showVariations: showVariations,
         move: LearningMove.fromSample(move),
         actionLabel: 'Let’s go',
         onAction: (context) => ScaffoldMessenger.of(context)
@@ -198,6 +202,9 @@ class LearningCardPage extends StatefulWidget {
 
   /// A short line above the card (e.g. [learnFirstHint]); none when null.
   final String? hint;
+
+  /// Lighter/Harder; off in release 1 ([ReleaseFeatures.moveVariations]).
+  final bool showVariations;
 
   @override
   State<LearningCardPage> createState() => _LearningCardPageState();
@@ -237,7 +244,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
       EdgeInsets.symmetric(horizontal: 28, vertical: 56);
 
   LearningMove get _move => widget.move;
-  bool get _hasVariations => _move.variations.isNotEmpty;
+  bool get _hasVariations =>
+      widget.showVariations && _move.variations.isNotEmpty;
   MoveVariation? get _selected =>
       _hasVariations ? _move.variations[_variation] : null;
 

@@ -16,6 +16,7 @@ switches. Flip one to `true` to bring its feature back.
 |---|---|---|
 | `progressTab` | The Progress tab: shamseh, calendar, counted moves | `pages/progress/`, wired in `pages/shell/main_tabs.dart` |
 | `shamseh` | The shamseh on the Complete screen (one tile per session). Release 1 shows today as a starred calendar day instead | `pages/session_flow/complete_page.dart` (`showShamseh`), `widgets/kashi/shamseh.dart` |
+| `moveVariations` | Lighter/Harder on the learning card; the card shows the session's reps instead | `pages/library/learning_card_page.dart` (`LearningCardPage.showVariations`) |
 | `repLogging` | The Rep log after each counted move, then the reps on Complete and in history | `SessionPlayerCubit` (`repLogging` param), `AudioPlayerPage.repLogging`, `pages/session_flow/rep_log_page.dart`. The first update replaces it with Shena/Meel totals on Complete. |
 
 ## Removed from Home (restore from git)
