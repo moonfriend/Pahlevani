@@ -187,17 +187,17 @@ class MoveTimeline {
         throw StateError('Audio source path is empty');
       }
       // Set before handing the source over: the engine reports the new
-      // clip's length while play()/setSource() is still in progress.
+      // clip's length while playQueue()/setQueue() is still in progress.
       _sourceDispatched = true;
       _addEvent(const MoveStarted());
       if (play) {
         // Not followed by any state change: just_audio completes play() only
         // when playback later stops, so nothing may depend on it returning.
-        await _engine.play(spec.audioPath);
+        await _engine.playQueue([spec.audioPath]);
       } else {
         await _engine.stop();
         if (superseded()) return LoadOutcome.superseded;
-        await _engine.setSource(spec.audioPath);
+        await _engine.setQueue([spec.audioPath]);
       }
       return superseded() ? LoadOutcome.superseded : LoadOutcome.current;
     } catch (_) {

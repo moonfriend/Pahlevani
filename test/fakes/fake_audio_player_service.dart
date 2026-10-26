@@ -9,8 +9,17 @@ class FakeAudioPlayerService implements AudioPlayerService {
   final _durationCtrl = StreamController<Duration>.broadcast();
   final _playingCtrl = StreamController<bool>.broadcast();
 
+  /// The first path of the last queue played / set — most moves have one.
   String? lastPlayedPath;
   String? lastSetSourcePath;
+  List<String>? lastPlayedQueue;
+  List<String>? lastSetQueue;
+
+  /// What [currentIndex] reports; [emitPosition] / [emitDuration] can move
+  /// it, the way a real engine moves on to the next path of a queue.
+  @override
+  int currentIndex = 0;
+  int? seekedIndex;
   bool stopped = false;
   bool paused = false;
   bool resumed = false;
@@ -24,7 +33,7 @@ class FakeAudioPlayerService implements AudioPlayerService {
   /// Use to test that callers declare intent before the engine catches up.
   Completer<void>? resumeCompleter;
 
-  /// When true, models `just_audio` semantics: [play] and [resume] return a
+  /// When true, models `just_audio` semantics: [playQueue] and [resume] return a
   /// future that completes only when playback later stops — i.e. when [pause]
   /// or [stop] is called — NOT when playback starts. (audioplayers, by
   /// contrast, completes these futures promptly once the command is dispatched.)
@@ -49,8 +58,16 @@ class FakeAudioPlayerService implements AudioPlayerService {
   @override
   Stream<bool> get onPlayingChanged => _playingCtrl.stream;
 
-  void emitPosition(Duration d) => _positionCtrl.add(d);
-  void emitDuration(Duration d) => _durationCtrl.add(d);
+  /// [index]: the queue path the reading belongs to (unchanged if omitted).
+  void emitPosition(Duration d, {int? index}) {
+    if (index != null) currentIndex = index;
+    _positionCtrl.add(d);
+  }
+
+  void emitDuration(Duration d, {int? index}) {
+    if (index != null) currentIndex = index;
+    _durationCtrl.add(d);
+  }
 
   /// Simulates an engine playing/paused state event (including the engine's own
   /// internal loop-cycle transitions). The cubit must NOT mirror these into its
@@ -58,13 +75,16 @@ class FakeAudioPlayerService implements AudioPlayerService {
   /// the cubit ignores engine-originated state changes.
   void emitPlaying(bool playing) => _playingCtrl.add(playing);
 
-  /// Per-path gates: [play] of that path doesn't return until its completer
-  /// completes — an engine that is slow to start one particular clip.
+  /// Per-path gates: [playQueue] starting with that path doesn't return until
+  /// its completer completes — an engine that is slow to start one clip.
   final Map<String, Completer<void>> playGates = {};
 
   @override
-  Future<void> play(String path) async {
+  Future<void> playQueue(List<String> paths) async {
+    final path = paths.first;
     lastPlayedPath = path;
+    lastPlayedQueue = paths;
+    currentIndex = 0;
     stopped = false;
     paused = false;
     playCallCount++;
@@ -77,8 +97,10 @@ class FakeAudioPlayerService implements AudioPlayerService {
   }
 
   @override
-  Future<void> setSource(String path) async {
-    lastSetSourcePath = path;
+  Future<void> setQueue(List<String> paths) async {
+    lastSetSourcePath = paths.first;
+    lastSetQueue = paths;
+    currentIndex = 0;
   }
 
   @override
@@ -108,8 +130,10 @@ class FakeAudioPlayerService implements AudioPlayerService {
   }
 
   @override
-  Future<void> seek(Duration position) async {
+  Future<void> seek(Duration position, {int? index}) async {
     seekedTo = position;
+    seekedIndex = index;
+    if (index != null) currentIndex = index;
   }
 
   @override

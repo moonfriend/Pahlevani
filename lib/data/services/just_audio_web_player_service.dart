@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
+import 'package:pahlevani/data/services/just_audio_queue.dart' as queue;
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 
 /// [AudioPlayerService] implementation backed by [just_audio], used only on
@@ -31,6 +32,9 @@ import 'package:pahlevani/domain/services/audio_player_service.dart';
 class JustAudioWebPlayerService implements AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
 
+  /// Applied on every queue load: the loop mode depends on the queue length.
+  bool _looping = false;
+
   @override
   Stream<Duration> get onPositionChanged => _player.positionStream;
 
@@ -42,13 +46,17 @@ class JustAudioWebPlayerService implements AudioPlayerService {
   Stream<bool> get onPlayingChanged => _player.playingStream;
 
   @override
-  Future<void> play(String path) async {
-    await _setSource(path);
+  int get currentIndex => _player.currentIndex ?? 0;
+
+  @override
+  Future<void> playQueue(List<String> paths) async {
+    await queue.loadQueue(_player, paths, looping: _looping);
     _firePlay();
   }
 
   @override
-  Future<void> setSource(String path) => _setSource(path);
+  Future<void> setQueue(List<String> paths) =>
+      queue.loadQueue(_player, paths, looping: _looping);
 
   @override
   Future<void> pause() => _player.pause();
@@ -68,11 +76,16 @@ class JustAudioWebPlayerService implements AudioPlayerService {
   Future<void> stop() => _player.stop();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position, {int? index}) =>
+      _player.seek(position, index: index);
 
   @override
-  Future<void> setLooping(bool loop) =>
-      _player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
+  Future<void> setLooping(bool loop) {
+    _looping = loop;
+    final queueLength = _player.sequence?.length ?? 1;
+    return _player.setLoopMode(
+        queue.queueLoopMode(pathCount: queueLength, looping: loop));
+  }
 
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume);
@@ -80,16 +93,6 @@ class JustAudioWebPlayerService implements AudioPlayerService {
   @override
   Future<void> dispose() => _player.dispose();
 
-  /// True when [path] is a remote URL (dispatched via `setUrl`) rather than
-  /// a local file path (dispatched via `setFilePath`).
-  static bool isRemoteUrl(String path) =>
-      path.startsWith('http://') || path.startsWith('https://');
-
-  Future<void> _setSource(String path) async {
-    if (isRemoteUrl(path)) {
-      await _player.setUrl(path);
-    } else {
-      await _player.setFilePath(path);
-    }
-  }
+  /// True when [path] is a remote URL rather than a local file path.
+  static bool isRemoteUrl(String path) => queue.isRemoteUrl(path);
 }

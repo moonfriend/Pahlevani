@@ -1,7 +1,6 @@
-/// Platform-agnostic audio playback abstraction.
-/// The production implementation wraps `audioplayers`; tests inject a fake.
-/// Swapping to `just_audio` (or a web-specific backend) only requires a new
-/// implementation of this interface — no changes to the cubit or tests.
+/// Platform-agnostic audio playback abstraction: just_audio on Android, iOS
+/// and the web, audioplayers on the Linux desktop dev build; tests inject a
+/// fake. Plays a queue of one or more paths (a move's recordings).
 abstract class AudioPlayerService {
   /// Fires whenever the playback position advances.
   Stream<Duration> get onPositionChanged;
@@ -20,13 +19,23 @@ abstract class AudioPlayerService {
   /// directly from it.
   Stream<bool> get onPlayingChanged;
 
-  /// Stop current source, load [path], and start playing immediately.
-  /// [path] may be a remote URL (`https://…`), an absolute local path (`/…`),
-  /// or an asset path (`assets/…` or bare asset name).
-  Future<void> play(String path);
+  /// Stop the current source, load [paths] as one queue, and start playing.
+  ///
+  /// The paths play one after another — gapless where the backend allows
+  /// (just_audio preloads the next one). With looping on, a single path loops
+  /// by itself and a longer queue starts over from its first path. Each path
+  /// may be a remote URL (`https://…`) or an absolute local path (`/…`).
+  Future<void> playQueue(List<String> paths);
 
-  /// Stop current source and load [path] without starting playback.
-  Future<void> setSource(String path);
+  /// Stop the current source and load [paths] as one queue without starting
+  /// playback.
+  Future<void> setQueue(List<String> paths);
+
+  /// Index in the current queue of the path playing now (0 for a single
+  /// path). Read it together with an [onPositionChanged] reading: that
+  /// position is inside this path, and [onDurationChanged] reports this
+  /// path's length.
+  int get currentIndex;
 
   /// Pause playback (preserves position).
   Future<void> pause();
@@ -37,10 +46,12 @@ abstract class AudioPlayerService {
   /// Stop playback and reset position to zero.
   Future<void> stop();
 
-  /// Seek to [position] within the current source.
-  Future<void> seek(Duration position);
+  /// Seek to [position] within the current path, or within the path at
+  /// [index] of the queue.
+  Future<void> seek(Duration position, {int? index});
 
-  /// Enable or disable seamless looping of the current source.
+  /// Enable or disable seamless looping (see [playQueue]). Applies to the
+  /// current queue and every later one.
   Future<void> setLooping(bool loop);
 
   /// Output volume, 0 (silent) to 1 (full). Playback keeps running at 0.

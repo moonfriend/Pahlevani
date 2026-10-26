@@ -33,7 +33,7 @@ void main() {
     final positions = <Duration>[];
     final sub = service.onPositionChanged.listen(positions.add);
 
-    await service.play(testFilePath);
+    await service.playQueue([testFilePath]);
     await Future<void>.delayed(const Duration(seconds: 2));
     await sub.cancel();
 
@@ -48,7 +48,7 @@ void main() {
     bool? lastPlaying;
     final sub = service.onPlayingChanged.listen((p) => lastPlaying = p);
 
-    await service.play(testFilePath);
+    await service.playQueue([testFilePath]);
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await sub.cancel();
 
@@ -61,7 +61,7 @@ void main() {
     Duration? lastWhilePlaying;
     final playingSub =
         service.onPositionChanged.listen((p) => lastWhilePlaying = p);
-    await service.play(testFilePath);
+    await service.playQueue([testFilePath]);
     await Future<void>.delayed(const Duration(milliseconds: 800));
     await playingSub.cancel();
     final positionAtPause = lastWhilePlaying;
@@ -88,7 +88,7 @@ void main() {
 
   testWidgets('real engine: onPlayingChanged reports false after pause',
       (tester) async {
-    await service.play(testFilePath);
+    await service.playQueue([testFilePath]);
     await Future<void>.delayed(const Duration(milliseconds: 500));
 
     bool? lastPlaying;
@@ -99,5 +99,25 @@ void main() {
 
     expect(lastPlaying, isFalse,
         reason: 'the real engine should report playing=false once paused');
+  });
+
+  testWidgets(
+      'real engine: a looping queue moves on to the next path, then wraps',
+      (tester) async {
+    // The tone is ~3 s long.
+    await service.setLooping(true);
+    final indexes = <int>{};
+    final sub = service.onPositionChanged
+        .listen((_) => indexes.add(service.currentIndex));
+
+    await service.playQueue([testFilePath, testFilePath]);
+    await Future<void>.delayed(const Duration(milliseconds: 4500));
+    expect(service.currentIndex, 1,
+        reason: 'the second path plays after the first');
+
+    await Future<void>.delayed(const Duration(milliseconds: 3000));
+    await sub.cancel();
+    expect(service.currentIndex, 0, reason: 'a looping queue starts over');
+    expect(indexes, {0, 1});
   });
 }

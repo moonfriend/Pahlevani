@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
 import 'package:pahlevani/core/utils/app_logger.dart';
+import 'package:pahlevani/data/services/just_audio_queue.dart';
 import 'package:pahlevani/data/services/pahlevani_audio_handler.dart';
 import 'package:pahlevani/domain/services/audio_player_service.dart';
 
@@ -24,6 +25,9 @@ class JustAudioPlayerService implements AudioPlayerService {
 
   JustAudioPlayerService(this._handler);
 
+  /// Applied on every queue load: the loop mode depends on the queue length.
+  bool _looping = false;
+
   AudioPlayer get _player => _handler.player;
 
   @override
@@ -37,8 +41,11 @@ class JustAudioPlayerService implements AudioPlayerService {
   Stream<bool> get onPlayingChanged => _player.playingStream;
 
   @override
-  Future<void> play(String path) async {
-    await _setSource(path);
+  int get currentIndex => _player.currentIndex ?? 0;
+
+  @override
+  Future<void> playQueue(List<String> paths) async {
+    await loadQueue(_player, paths, looping: _looping);
     // Fire the play command but do NOT await its future — see the class doc.
     // just_audio's play() future completes on STOP, not on START. We still
     // attach an error handler so a failed playback fails loud instead of
@@ -48,8 +55,8 @@ class JustAudioPlayerService implements AudioPlayerService {
   }
 
   @override
-  Future<void> setSource(String path) async {
-    await _setSource(path);
+  Future<void> setQueue(List<String> paths) async {
+    await loadQueue(_player, paths, looping: _looping);
     _handler.syncPlaybackState(playing: false);
   }
 
@@ -91,11 +98,16 @@ class JustAudioPlayerService implements AudioPlayerService {
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position, {int? index}) =>
+      _player.seek(position, index: index);
 
   @override
-  Future<void> setLooping(bool loop) =>
-      _player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
+  Future<void> setLooping(bool loop) {
+    _looping = loop;
+    final queueLength = _player.sequence?.length ?? 1;
+    return _player
+        .setLoopMode(queueLoopMode(pathCount: queueLength, looping: loop));
+  }
 
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume);
@@ -106,12 +118,4 @@ class JustAudioPlayerService implements AudioPlayerService {
   // lifetime.
   @override
   Future<void> dispose() => _player.stop();
-
-  Future<void> _setSource(String path) async {
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      await _player.setUrl(path);
-    } else {
-      await _player.setFilePath(path);
-    }
-  }
 }
