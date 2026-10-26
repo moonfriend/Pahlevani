@@ -45,7 +45,7 @@ from movement_learning_content import (
     text_from_lines,
     variations_from_rows,
 )
-from morshed_admin import default_recording, set_default_morshed
+from morshed_admin import audio_track_r2_key, default_recording, set_default_morshed
 from activation_gate import Activation, LockedScreen, TermsSetting, activations_csv
 from home_announcement import HomeAnnouncement
 from onboarding_cards import (
@@ -2423,12 +2423,19 @@ def tab_audio_tracks():
         st.caption(f"Movement types with at least one recording: **{covered} / {len(types_df)}**")
 
     if not tracks.empty:
+        # Variants (several recordings of one type by one Morshed) sit next
+        # to each other; the app plays them in random order.
+        tracks = tracks.sort_values(
+            [c for c in ["type_name", "morshed_name", "id"] if c in tracks.columns]
+        ).reset_index(drop=True)
         show = [c for c in ["id", "type_name", "morshed_name", "audio_url",
                              "repetitions_default", "duration_seconds", "audio_anchor_ms"]
                 if c in tracks.columns]
         st.caption(
             "Select exactly one row to preview and edit it below. Select "
-            "more than one to delete them together."
+            "more than one to delete them together. A Morshed may have "
+            "several recordings of one type: the app plays them in random "
+            "order, so they must hold the same movement."
         )
         event = st.dataframe(
             tracks[show],
@@ -2481,11 +2488,7 @@ def tab_audio_tracks():
                             "audio_anchor_ms": new_anchor,
                         }])
                     except Exception as e:
-                        st.error(
-                            "Save failed — if you changed the type, this "
-                            "Morshed may already have a recording for it "
-                            f"(type+Morshed must be unique): {e}"
-                        )
+                        st.error(f"Save failed: {e}")
                     else:
                         st.success("Saved.")
                         bust_cache()
@@ -2631,8 +2634,8 @@ def tab_audio_tracks():
             type_id = type_id_by_label[row["type_label"]]
             data = file_map.get(fname, b"")
             try:
-                slug = slugify(row["type_label"])
-                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{morshed_id}-{slug}.mp3"
+                r2_key = audio_track_r2_key(
+                    R2_AUDIO_TRACK_PREFIX, type_id, morshed_id, fname)
                 url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
                 get_client().table("movement_audio_track").insert({
                     "movement_type_id": type_id,

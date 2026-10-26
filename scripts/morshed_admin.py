@@ -7,6 +7,10 @@ can be unit-tested (scripts/tests/test_morshed_admin.py).
 
 from __future__ import annotations
 
+import re
+import uuid
+from pathlib import Path
+
 
 class DefaultMorshedError(RuntimeError):
     """Setting the default Morshed failed (e.g. migration 0041 not applied)."""
@@ -66,3 +70,19 @@ def recording_reps(
     chosen = default_recording(movement_type_id, tracks, default_morshed_id)
     reps = chosen.get("repetitions_default") if chosen else None
     return int(reps) if reps is not None else None
+
+
+def audio_track_r2_key(prefix: str, type_id: int, morshed_id: int,
+                       filename: str, unique: str | None = None) -> str:
+    """R2 key for an uploaded recording: type, Morshed, the file's own name and
+    a random suffix.
+
+    A Morshed may have several recordings of one movement type (variants,
+    migration 0050), and the app caches files by URL, so a new upload must
+    never overwrite a file already in use — hence the suffix ([unique], random
+    unless given).
+    """
+    stem = re.sub(r"[^a-z0-9_]", "",
+                  Path(filename).stem.lower().replace(" ", "_"))
+    suffix = unique or uuid.uuid4().hex[:8]
+    return f"{prefix}{type_id}-{morshed_id}-{stem}-{suffix}.mp3"
