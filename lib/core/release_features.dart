@@ -6,6 +6,11 @@ abstract final class ReleaseFeatures {
   /// The Progress tab (shamseh, calendar, counted moves).
   static const progressTab = false;
 
+  /// Lighter/Harder on the learning card (the move's variations). Hidden
+  /// until the variations' content is ready; the card shows the session's
+  /// reps instead.
+  static const moveVariations = false;
+
   /// The Rep log after each counted move. Release 1 logs no reps; the first
   /// update brings Shena/Meel totals on the Complete screen instead.
   static const repLogging = false;
