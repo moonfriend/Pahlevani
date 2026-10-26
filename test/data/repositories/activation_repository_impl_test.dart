@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/datasources/activation/activation_remote_datasource.dart';
 import 'package:pahlevani/data/repositories_impl/activation_repository_impl.dart';
 import 'package:pahlevani/domain/entities/activation/locked_screen_text.dart';
+import 'package:pahlevani/domain/entities/auth/terms_info.dart';
 import 'package:pahlevani/domain/repositories/activation_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +12,8 @@ class _FakeRemote implements ActivationRemoteDataSource {
   bool codeValid = true;
   bool gateNotInstalled = false;
   Map<String, dynamic>? gateRow;
+  Map<String, dynamic>? termsRow;
+  final checkedCodes = <String>[];
 
   @override
   Future<bool> isActivated() async {
@@ -30,6 +33,19 @@ class _FakeRemote implements ActivationRemoteDataSource {
   Future<Map<String, dynamic>?> fetchLockedScreen() async {
     if (offline) throw Exception('offline');
     return gateRow;
+  }
+
+  @override
+  Future<bool> isCodeValid(String code) async {
+    if (offline) throw Exception('offline');
+    checkedCodes.add(code);
+    return codeValid;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchTerms() async {
+    if (offline) throw Exception('offline');
+    return termsRow;
   }
 }
 
@@ -92,5 +108,38 @@ void main() {
 
     remote.offline = true;
     expect(await repo.lockedScreenText(), fromServer);
+  });
+
+  test('a code is checked trimmed, without using it up', () async {
+    expect(await repo.isCodeValid('  ABC-123 '), isTrue);
+    expect(remote.checkedCodes, ['ABC-123']);
+    expect(remote.activated, isFalse);
+    remote.codeValid = false;
+    expect(await repo.isCodeValid('X'), isFalse);
+  });
+
+  test('checking a code offline throws (the caller says "no connection")',
+      () async {
+    remote.offline = true;
+    await expectLater(repo.isCodeValid('ABC'), throwsException);
+  });
+
+  test('terms version: server, then cache, then the app\'s own', () async {
+    remote.offline = true;
+    expect(await repo.termsInfo(), TermsInfo.fallback);
+
+    remote.offline = false;
+    remote.termsRow = {'terms_version': 3, 'terms_updated_on': '2026-12-01'};
+    final fromServer = await repo.termsInfo();
+    expect(fromServer, TermsInfo(version: 3, updatedOn: DateTime(2026, 12, 1)));
+
+    remote.offline = true;
+    expect(await repo.termsInfo(), fromServer);
+  });
+
+  test('terms version: an unreadable row falls back to the app\'s own',
+      () async {
+    remote.termsRow = {'terms_version': null};
+    expect(await repo.termsInfo(), TermsInfo.fallback);
   });
 }

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/utils/app_logger.dart';
 import '../../domain/entities/activation/locked_screen_text.dart';
+import '../../domain/entities/auth/terms_info.dart';
 import '../../domain/repositories/activation_repository.dart';
 import '../datasources/activation/activation_remote_datasource.dart';
 
@@ -18,6 +19,7 @@ class ActivationRepositoryImpl implements ActivationRepository {
 
   static String activatedKey(String userId) => 'activation.ok.$userId';
   static const lockedScreenKey = 'activation.locked_screen.v1';
+  static const termsKey = 'activation.terms.v1';
 
   final ActivationRemoteDataSource _remote;
 
@@ -72,6 +74,42 @@ class ActivationRepositoryImpl implements ActivationRepository {
       } catch (_) {/* unreadable cache: fall through to the built-in text */}
     }
     return LockedScreenText.fallback;
+  }
+
+  @override
+  Future<bool> isCodeValid(String code) => _remote.isCodeValid(code.trim());
+
+  @override
+  Future<TermsInfo> termsInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final row = await _remote.fetchTerms();
+      final terms = row == null ? null : _termsFromRow(row);
+      if (terms != null) {
+        await prefs.setString(termsKey, jsonEncode(row));
+        return terms;
+      }
+    } catch (error) {
+      AppLogger.w('Terms version fetch failed', error: error);
+    }
+    final cached = prefs.getString(termsKey);
+    if (cached != null) {
+      try {
+        final terms = _termsFromRow(jsonDecode(cached) as Map<String, dynamic>);
+        if (terms != null) return terms;
+      } catch (_) {/* unreadable cache: fall through to the app's own */}
+    }
+    return TermsInfo.fallback;
+  }
+
+  TermsInfo? _termsFromRow(Map<String, dynamic> row) {
+    final version = (row['terms_version'] as num?)?.toInt();
+    if (version == null || version < 1) return null;
+    final updatedOn = row['terms_updated_on'] as String?;
+    return TermsInfo(
+      version: version,
+      updatedOn: updatedOn == null ? null : DateTime.tryParse(updatedOn),
+    );
   }
 
   LockedScreenText? _fromRow(Map<String, dynamic> row) {

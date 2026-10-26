@@ -16,6 +16,13 @@ class FakeAuthRepository implements AuthRepository {
   bool throwOnSignInWithUsername = false;
   List<AppUser> trainees = const [];
 
+  /// Runs after a successful sign-up, e.g. to push the new session through
+  /// [authStateChanges] the way Supabase does.
+  void Function(AppUser user)? onSignUp;
+
+  /// Who signing in with email returns (default: a new, unconsented user).
+  AppUser? signInResult;
+
   int signInCallCount = 0;
   int signUpCallCount = 0;
   int signOutCallCount = 0;
@@ -50,7 +57,7 @@ class FakeAuthRepository implements AuthRepository {
   }) async {
     signInCallCount++;
     if (throwOnSignIn) throw Exception('Invalid email or password');
-    final user = AppUser(id: 'user-1', email: email);
+    final user = signInResult ?? AppUser(id: 'user-1', email: email);
     _currentUser = user;
     return user;
   }
@@ -64,6 +71,7 @@ class FakeAuthRepository implements AuthRepository {
     if (throwOnSignUp) throw Exception('Could not create account');
     final user = AppUser(id: 'user-1', email: email);
     _currentUser = user;
+    onSignUp?.call(user);
     return user;
   }
 

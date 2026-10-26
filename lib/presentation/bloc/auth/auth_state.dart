@@ -38,20 +38,39 @@ class AuthAuthenticated extends AuthState {
   List<Object?> get props => [user];
 }
 
-/// Signed in, but the data-privacy consent step hasn't been completed yet.
+/// Signed in, but hasn't agreed to the current safety terms and privacy
+/// summary ([terms]) yet.
 class AuthNeedsConsent extends AuthState {
   final AppUser user;
-  const AuthNeedsConsent(this.user);
+  final TermsInfo terms;
+  AuthNeedsConsent(this.user, {TermsInfo? terms})
+      : terms = terms ?? TermsInfo.fallback;
+
+  /// Agreed to an older version: the texts changed since, say so.
+  bool get isUpdate => user.consentAccepted;
 
   @override
-  List<Object?> get props => [user];
+  List<Object?> get props => [user, terms];
 }
+
+/// Which field a failure belongs to, so the screen can show it there.
+enum AuthFailureField { general, code }
 
 class AuthFailure extends AuthState {
   final String message;
   final AuthState previous;
-  const AuthFailure({required this.message, required this.previous});
+  final AuthFailureField field;
+
+  /// A wrong password or code: no new try before this time.
+  final DateTime? retryAt;
+
+  const AuthFailure({
+    required this.message,
+    required this.previous,
+    this.field = AuthFailureField.general,
+    this.retryAt,
+  });
 
   @override
-  List<Object?> get props => [message, previous];
+  List<Object?> get props => [message, previous, field, retryAt];
 }

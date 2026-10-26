@@ -1,39 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pahlevani/domain/entities/activation/locked_screen_text.dart';
-import 'package:pahlevani/domain/repositories/activation_repository.dart';
 import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
 
-class _FakeRepo implements ActivationRepository {
-  final activated = <String>{};
-  final validCodes = <String>{'ABC-123'};
-  bool offline = false;
-
-  @override
-  Future<bool> isActivated(String userId) async => activated.contains(userId);
-
-  @override
-  Future<void> redeem(String userId, String code) async {
-    if (offline) throw Exception('offline');
-    if (!validCodes.remove(code.trim())) {
-      throw const InvalidActivationCodeException();
-    }
-    activated.add(userId);
-  }
-
-  @override
-  Future<LockedScreenText> lockedScreenText() async => const LockedScreenText(
-      message: 'Join us on Patreon.',
-      linkLabel: 'Patreon',
-      linkUrl: 'https://www.patreon.com/rahaavi');
-}
+import '../../../fakes/fake_activation_repository.dart';
 
 void main() {
-  late _FakeRepo repo;
+  late FakeActivationRepository repo;
   late ActivationCubit cubit;
+  late DateTime now;
 
   setUp(() {
-    repo = _FakeRepo();
-    cubit = ActivationCubit(repository: repo);
+    now = DateTime(2026, 10, 26, 12);
+    repo = FakeActivationRepository();
+    cubit = ActivationCubit(repository: repo, clock: () => now);
   });
   tearDown(() => cubit.close());
 
@@ -46,7 +24,7 @@ void main() {
   test('an account without a code is locked, with the admin text', () async {
     await cubit.check('u1');
     final s = cubit.state as ActivationLocked;
-    expect(s.text.message, 'Join us on Patreon.');
+    expect(s.text, FakeActivationRepository.lockedText);
     expect(s.error, isNull);
   });
 
@@ -77,5 +55,25 @@ void main() {
     await cubit.redeem('   ');
     expect(repo.validCodes, contains('ABC-123'));
     expect((cubit.state as ActivationLocked).error, isNotNull);
+  });
+
+  test('a wrong code pauses the next try, and the pause grows', () async {
+    await cubit.check('u1');
+    await cubit.redeem('NOPE');
+    expect((cubit.state as ActivationLocked).retryAt,
+        now.add(const Duration(seconds: 3)));
+
+    await cubit.redeem('ABC-123');
+    expect(cubit.state, isA<ActivationLocked>(),
+        reason: 'ignored during the pause');
+
+    now = now.add(const Duration(seconds: 3));
+    await cubit.redeem('NOPE-2');
+    expect((cubit.state as ActivationLocked).retryAt,
+        now.add(const Duration(seconds: 10)));
+
+    now = now.add(const Duration(seconds: 10));
+    await cubit.redeem('ABC-123');
+    expect(cubit.state, isA<ActivationActive>());
   });
 }

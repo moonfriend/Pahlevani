@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
@@ -31,7 +32,7 @@ void main() {
                 id: '1',
                 email: 'sara@x.org',
                 consentAccepted: true,
-                termsVersion: 1)));
+                termsVersion: currentTermsVersion)));
     addTearDown(history.close);
     addTearDown(auth.close);
     await tester.runAsync(() async {

@@ -157,8 +157,10 @@ class PahlevaniApp extends StatelessWidget {
           lazy: false,
         ),
         BlocProvider<AuthCubit>(
-          create: (_) =>
-              AuthCubit(repository: getIt<AuthRepository>())..initialize(),
+          create: (_) => AuthCubit(
+            repository: getIt<AuthRepository>(),
+            activation: getIt<ActivationRepository>(),
+          )..initialize(),
           lazy: false,
         ),
         // Release 1's activation gate (Patreon members, migration 0045).

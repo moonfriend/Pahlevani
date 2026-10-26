@@ -5,6 +5,7 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
@@ -104,7 +105,7 @@ void main() {
             id: 'u',
             email: 'sara@example.com',
             consentAccepted: true,
-            termsVersion: 1));
+            termsVersion: currentTermsVersion));
     expect(find.text('sara'), findsOneWidget);
     expect(find.text('No sessions yet'), findsOneWidget);
   });
@@ -221,7 +222,7 @@ void main() {
             id: 'u',
             email: 'sara@example.com',
             consentAccepted: true,
-            termsVersion: 1));
+            termsVersion: currentTermsVersion));
     expect(find.text('Trainer tools', skipOffstage: false), findsNothing);
   });
 
@@ -231,7 +232,7 @@ void main() {
             id: 't',
             email: 'coach@example.com',
             consentAccepted: true,
-            termsVersion: 1,
+            termsVersion: currentTermsVersion,
             isTrainer: true));
     expect(find.text('Sessions and assignments', skipOffstage: false),
         findsOneWidget);
@@ -243,7 +244,7 @@ void main() {
             id: 'u',
             email: 'sara@example.com',
             consentAccepted: true,
-            termsVersion: 1));
+            termsVersion: currentTermsVersion));
     final signOut = find.text('Sign out', skipOffstage: false);
     await tester.ensureVisible(signOut);
     await tester.pumpAndSettle();
@@ -259,7 +260,7 @@ void main() {
             id: 'u',
             email: 'sara@example.com',
             consentAccepted: true,
-            termsVersion: 1));
+            termsVersion: currentTermsVersion));
     final delete = find.text('Delete my account', skipOffstage: false);
     await tester.ensureVisible(delete);
     await tester.pumpAndSettle();

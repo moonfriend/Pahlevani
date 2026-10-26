@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 
@@ -45,6 +46,40 @@ class LockedScreen:
             "link_label": self.link_label.strip() or "Get your code on Patreon",
             "link_url": self.link_url.strip(),
         }
+
+
+@dataclass(frozen=True)
+class TermsSetting:
+    """The terms version users must have agreed to (migration 0049). Raising
+    it asks every account to agree again, with a notice naming the date."""
+
+    version: int
+    updated_on: date
+
+    # Before migration 0049 the row has no such columns: the app's own value.
+    DEFAULT_VERSION = 2
+    DEFAULT_UPDATED_ON = date(2026, 10, 25)
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> "TermsSetting":
+        updated = row.get("terms_updated_on")
+        return cls(
+            version=int(row.get("terms_version") or cls.DEFAULT_VERSION),
+            updated_on=date.fromisoformat(updated) if updated else cls.DEFAULT_UPDATED_ON,
+        )
+
+    def problems(self, current: "TermsSetting") -> list[str]:
+        """Why this can't be saved over [current] (empty when it can)."""
+        if self.version < current.version:
+            return [f"The version can only go up (it is {current.version} now)."]
+        return []
+
+    def asks_everyone_again(self, current: "TermsSetting") -> bool:
+        return self.version > current.version
+
+    def to_row(self) -> dict[str, Any]:
+        return {"terms_version": self.version,
+                "terms_updated_on": self.updated_on.isoformat()}
 
 
 @dataclass(frozen=True)

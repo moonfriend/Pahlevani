@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/utils/app_logger.dart';
 import '../../../domain/entities/activation/locked_screen_text.dart';
 import '../../../domain/repositories/activation_repository.dart';
+import '../../../domain/services/retry_cooldown.dart';
 
 sealed class ActivationState extends Equatable {
   const ActivationState();
@@ -24,7 +25,7 @@ class ActivationActive extends ActivationState {
 /// No activation: the locked screen, with the admin's [text].
 class ActivationLocked extends ActivationState {
   const ActivationLocked(
-      {required this.text, this.submitting = false, this.error});
+      {required this.text, this.submitting = false, this.error, this.retryAt});
 
   final LockedScreenText text;
   final bool submitting;
@@ -32,18 +33,24 @@ class ActivationLocked extends ActivationState {
   /// Why the last code didn't work.
   final String? error;
 
+  /// After a wrong code: no new try before this time.
+  final DateTime? retryAt;
+
   @override
-  List<Object?> get props => [text, submitting, error];
+  List<Object?> get props => [text, submitting, error, retryAt];
 }
 
 /// The activation gate for the signed-in account: checks it, and redeems a
 /// code on the locked screen.
 class ActivationCubit extends Cubit<ActivationState> {
-  ActivationCubit({required ActivationRepository repository})
+  ActivationCubit(
+      {required ActivationRepository repository, DateTime Function()? clock})
       : _repo = repository,
+        _cooldown = RetryCooldown(clock: clock),
         super(const ActivationChecking());
 
   final ActivationRepository _repo;
+  final RetryCooldown _cooldown;
   String? _userId;
 
   static const invalidCodeMessage =
@@ -70,6 +77,7 @@ class ActivationCubit extends Cubit<ActivationState> {
     final current = state;
     final userId = _userId;
     if (current is! ActivationLocked || userId == null) return;
+    if (_cooldown.blockedUntil != null) return;
     if (code.trim().isEmpty) {
       emit(ActivationLocked(text: current.text, error: invalidCodeMessage));
       return;
@@ -77,10 +85,15 @@ class ActivationCubit extends Cubit<ActivationState> {
     emit(ActivationLocked(text: current.text, submitting: true));
     try {
       await _repo.redeem(userId, code);
+      _cooldown.reset();
       if (!isClosed) emit(const ActivationActive());
     } on InvalidActivationCodeException {
       if (!isClosed) {
-        emit(ActivationLocked(text: current.text, error: invalidCodeMessage));
+        emit(ActivationLocked(
+          text: current.text,
+          error: invalidCodeMessage,
+          retryAt: _cooldown.registerFailure(),
+        ));
       }
     } catch (error) {
       AppLogger.w('Redeeming the activation code failed', error: error);
@@ -90,9 +103,13 @@ class ActivationCubit extends Cubit<ActivationState> {
     }
   }
 
+  /// The locked screen's text, for the sign-in screen's "no code yet?" link.
+  Future<LockedScreenText> lockedScreenText() => _repo.lockedScreenText();
+
   /// Signed out: forget the account.
   void reset() {
     _userId = null;
+    _cooldown.reset();
     emit(const ActivationChecking());
   }
 }
