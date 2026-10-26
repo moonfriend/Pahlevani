@@ -45,4 +45,16 @@ void main() {
     ]);
     expect(moves.map((e) => e.name), ['Edu', 'Text', 'Video']);
   });
+
+  test('moves with a learning video come first, then the rest, by name', () {
+    final moves = libraryMoves([
+      _ex(1, 'Charkh', movementId: 1),
+      const Exercise(
+          id: 2, movementId: 2, name: 'Vorod', videoUrl: 'https://x/v.mp4'),
+      _ex(3, 'Anjam', movementId: 3),
+      const Exercise(
+          id: 4, movementId: 4, name: 'Meel', videoUrl: 'https://x/m.mp4'),
+    ]);
+    expect(moves.map((e) => e.name), ['Meel', 'Vorod', 'Anjam', 'Charkh']);
+  });
 }

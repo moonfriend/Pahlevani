@@ -14,8 +14,8 @@ class FakeActivationRepository implements ActivationRepository {
   final calls = <String>[];
 
   static const lockedText = LockedScreenText(
-      message: 'Join us on Patreon to get your code.',
-      linkLabel: 'Get your code on Patreon',
+      message: 'Join us on Steady to get your code.',
+      linkLabel: 'Join on Steady',
       linkUrl: 'https://www.patreon.com/rahaavi');
 
   @override

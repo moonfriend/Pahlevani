@@ -55,7 +55,7 @@ class ActivationCubit extends Cubit<ActivationState> {
 
   static const invalidCodeMessage =
       'That code isn’t valid or has been used up. Check it, or ask us '
-      'on Patreon.';
+      'on Steady.';
   static const offlineMessage =
       'Couldn’t check the code. Try again with an internet connection.';
 

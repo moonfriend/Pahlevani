@@ -1,6 +1,6 @@
 """Activation gate: the model and validation behind admin.py's Activation
 tab — the locked screen's text (the single `activation_gate` row) and the
-activations export for the monthly Patreon check.
+activations export for the monthly Steady check.
 
 Kept apart from the Streamlit UI so it can be unit-tested
 (scripts/tests/test_activation_gate.py). Mirrors
@@ -26,7 +26,7 @@ class LockedScreen:
     def from_row(cls, row: dict[str, Any]) -> "LockedScreen":
         return cls(
             message=row.get("message") or "",
-            link_label=row.get("link_label") or "Get your code on Patreon",
+            link_label=row.get("link_label") or "Join on Steady",
             link_url=row.get("link_url") or "",
         )
 
@@ -43,7 +43,7 @@ class LockedScreen:
         return {
             "id": 1,
             "message": self.message.strip(),
-            "link_label": self.link_label.strip() or "Get your code on Patreon",
+            "link_label": self.link_label.strip() or "Join on Steady",
             "link_url": self.link_url.strip(),
         }
 
@@ -98,7 +98,7 @@ class Activation:
 
 
 def activations_csv(activations: list[Activation]) -> str:
-    """email,code,activated_at — for comparing against Patreon's members."""
+    """email,code,activated_at — for comparing against Steady's members."""
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["email", "code", "activated_at"])

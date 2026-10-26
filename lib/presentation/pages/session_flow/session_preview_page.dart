@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_links.dart';
 import '../../../core/di/dependency_injection.dart';
-import '../../../core/release_features.dart';
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_palette.dart';
@@ -22,6 +21,7 @@ import '../../widgets/exercise_image_provider.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
+import '../library/learning_card_page.dart';
 import '../library/open_move_card.dart';
 import 'session_start.dart';
 
@@ -43,9 +43,9 @@ Future<void> openSessionPreview(
 /// What you are about to do, and with which morshed: the session's header
 /// with a framed still, the morshed dropdown, the move list (a move a trainer
 /// flagged for counting shows its reps; tapping a move opens its learning
-/// card) and Start (Learning mode: pauses before each move not yet learnt,
-/// when it has something to learn from). "Only follow along" (Athlete mode)
-/// is switched off for release 1 ([ReleaseFeatures.followAlongButton]).
+/// card) and "Start the Training" (Learning mode: pauses before each move
+/// not yet learnt that has a learning video). A small link below starts
+/// Athlete mode (no learning breaks).
 ///
 /// Zoorkhaneh mode is not offered here; it is a long-press on a session card.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
@@ -79,8 +79,11 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       detail.exercise,
       target: _countedTarget(detail),
       minutes: seconds == null ? null : _wholeMinutes(seconds),
+      hint: learnFirstHint,
     );
   }
+
+  static const _reviewText = 'Review your moves before starting the session.';
 
   @override
   Widget build(BuildContext context) {
@@ -122,16 +125,16 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
         const SizedBox(height: 8),
         // Learning mode: cards show for moves not yet learnt.
         KashiActionButton(
-          label: 'Start',
+          label: 'Start the Training',
           onPressed: moves.isEmpty ? null : () => _start(PlayerMode.learning),
         ),
-        if (ReleaseFeatures.followAlongButton) ...[
-          const SizedBox(height: 8),
-          KashiActionButton(
-            label: 'Only follow along',
-            onPressed: moves.isEmpty ? null : () => _start(PlayerMode.athlete),
+        TextButton(
+          onPressed: moves.isEmpty ? null : () => _start(PlayerMode.athlete),
+          style: TextButton.styleFrom(
+            textStyle: KashiTextStyles.ui.copyWith(fontSize: 12.5),
           ),
-        ],
+          child: const Text('Start in athlete mode (no learning breaks)'),
+        ),
       ],
     );
 
@@ -152,7 +155,10 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
                     totalSeconds: totalSeconds),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Column(children: moveRows),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [_review(colors), ...moveRows],
+                  ),
                 ),
               ],
             ),
@@ -166,6 +172,15 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       ),
     );
   }
+
+  Widget _review(KashiColors colors) => Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 10),
+        child: Text(_reviewText,
+            style: KashiTextStyles.ui.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary)),
+      );
 
   /// Tablet and web: the lajvard session panel (header, still, morshed and
   /// the start buttons) on the left, the moves on the right.
@@ -222,6 +237,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(listSide, 40, listSide, 32),
                   children: [
+                    _review(colors),
                     Text('MOVES · TAP ONE TO WATCH HOW',
                         style: KashiTextStyles.label
                             .copyWith(color: colors.textMuted)),

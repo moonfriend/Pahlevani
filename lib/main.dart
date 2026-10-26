@@ -83,7 +83,7 @@ Future<void> main() async {
         builder: () => PahlevaniAudioHandler(),
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.pahlevani.app.audio',
-          androidNotificationChannelName: 'Pahlevani Audio',
+          androidNotificationChannelName: 'Gowd Audio',
           androidNotificationIcon: 'mipmap/ic_launcher',
           androidShowNotificationBadge: false,
           androidStopForegroundOnPause: false,
@@ -163,7 +163,7 @@ class PahlevaniApp extends StatelessWidget {
           )..initialize(),
           lazy: false,
         ),
-        // Release 1's activation gate (Patreon members, migration 0045).
+        // Release 1's activation gate (Steady supporters, migration 0045).
         BlocProvider<ActivationCubit>(
           create: (_) =>
               ActivationCubit(repository: getIt<ActivationRepository>()),
@@ -171,7 +171,7 @@ class PahlevaniApp extends StatelessWidget {
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) => MaterialApp(
-          title: 'Pahlevani',
+          title: 'Gowd',
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),

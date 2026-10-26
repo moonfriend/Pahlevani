@@ -2817,7 +2817,7 @@ def tab_grant_trainer():
 def tab_invite_codes():
     st.header("Invite Codes")
     st.caption(
-        "Activation codes for Patreon members (release 1): an account redeems one "
+        "Activation codes for Steady supporters (release 1): an account redeems one "
         "after signing in — give each member a code with **Max uses 1**. Who used "
         "which code is in the **Activation** tab (migration 0045). The same codes "
         "still gate the old username sign-up (0016). "
@@ -3557,7 +3557,7 @@ def tab_onboarding():
 def tab_activation():
     st.header("Activation")
     st.caption(
-        "Release 1 is for Patreon members: after signing in, an account needs an "
+        "Release 1 is for Steady supporters: after signing in, an account needs an "
         "activation code (issue them in **Invite Codes**, one use each). Until then "
         "the app shows the locked screen below, and the database returns no content "
         "(supabase/migrations/0045_activation_gate.sql). Trainers never need a code."
@@ -3629,7 +3629,7 @@ def tab_activation():
 
     st.divider()
     st.subheader(f"Activations ({len(activations)})")
-    st.caption("Who activated with which code — compare the emails with Patreon's "
+    st.caption("Who activated with which code — compare the emails with Steady's "
                "members each month.")
     if activations:
         st.dataframe(

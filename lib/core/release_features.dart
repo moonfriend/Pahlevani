@@ -6,9 +6,6 @@ abstract final class ReleaseFeatures {
   /// The Progress tab (shamseh, calendar, counted moves).
   static const progressTab = false;
 
-  /// "Only follow along" (Athlete mode) beside Start in the session preview.
-  static const followAlongButton = false;
-
   /// The Rep log after each counted move. Release 1 logs no reps; the first
   /// update brings Shena/Meel totals on the Complete screen instead.
   static const repLogging = false;

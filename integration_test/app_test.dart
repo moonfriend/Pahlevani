@@ -334,7 +334,7 @@ Future<void> openMainSession(WidgetTester tester) async {
   await tester.pumpAndSettle();
   expect(find.byType(SessionPreviewPage), findsOneWidget,
       reason: 'opening a session must show its preview first');
-  await tester.tap(find.text('Start'));
+  await tester.tap(find.text('Start the Training'));
   await pumpPlayer(tester);
   await goPastLearningCard(tester);
 }

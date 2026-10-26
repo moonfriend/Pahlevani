@@ -480,7 +480,7 @@ void main() {
 
     await tester.tap(find.text('Session A'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Start'));
+    await tester.tap(find.text('Start the Training'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -532,7 +532,7 @@ void main() {
     Future<void> startFromPreview(WidgetTester tester) async {
       await tester.tap(find.text('Session A'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Start'));
+      await tester.tap(find.text('Start the Training'));
       await tester.pumpAndSettle();
     }
 

@@ -1,7 +1,8 @@
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 
 /// The Library's moves: one per movement that has something to learn from
-/// (see [Exercise.hasLearningContent]), sorted by name.
+/// (see [Exercise.hasLearningContent]). Moves with a learning video come
+/// first, then the rest; each group sorted by name.
 ///
 /// Several exercise rows can share a movement (one per session use); they
 /// carry the same name, media and content, so the lowest id stands for the
@@ -15,5 +16,10 @@ List<Exercise> libraryMoves(Iterable<Exercise> exercises) {
     if (current == null || exercise.id < current.id) byMove[key] = exercise;
   }
   return byMove.values.toList()
-    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    ..sort((a, b) {
+      if (a.hasLearningVideo != b.hasLearningVideo) {
+        return a.hasLearningVideo ? -1 : 1;
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
 }

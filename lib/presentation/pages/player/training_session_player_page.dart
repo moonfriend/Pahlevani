@@ -46,6 +46,8 @@ import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
+import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
+import 'package:pahlevani/presentation/widgets/player/fullscreen_mode.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 
@@ -84,6 +86,25 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   /// widget and its controller) is rebuilt from scratch.
   int _playerGeneration = 0;
   final _precachedUrls = <String>{};
+
+  /// The move video fills the screen (⛶, or a phone held sideways). The key
+  /// moves the one stage — and its synced video — between the two layouts.
+  bool _fullscreen = false;
+  bool? _landscapePhone;
+  final _stageKey = GlobalKey();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Turning the phone follows the rotation; the button decides in between.
+    final landscape = isLandscapePhone(MediaQuery.sizeOf(context));
+    if (landscape != _landscapePhone) {
+      _landscapePhone = landscape;
+      _fullscreen = landscape;
+    }
+  }
+
+  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   /// The effective Morshed's name for the top bar; null until known (or
   /// when there is no roster), and then the label is simply left out.
@@ -224,8 +245,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       BuildContext context, int index, Exercise exercise) async {
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
-    final shouldStart =
-        await showLearningCard(context, move, actionLabel: 'Go');
+    final shouldStart = await showLearningCard(context, move,
+        actionLabel: 'Go', hint: learnFirstHint);
     if (shouldStart && mounted) {
       unawaited(_cubit.startCurrentTrack());
     }
@@ -240,7 +261,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     _cubit.pause();
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
-    await showLearningCard(context, move);
+    await showLearningCard(context, move, hint: learnFirstHint);
   }
 
   /// The learning card for track [index]: the track's already-resolved
@@ -415,6 +436,28 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             final index = state.playingIndex;
             final exercise = _cubit.exerciseAt(index);
             final layout = KashiLayout.of(context);
+            final hasVideo = _showsVideo(state.currentTrack);
+            final fullscreen = _fullscreen && hasVideo;
+            final stage = _Stage(
+              key: _stageKey,
+              state: state,
+              cubit: _cubit,
+              fullscreen: fullscreen,
+              onToggleFullscreen: hasVideo ? _toggleFullscreen : null,
+            );
+            if (fullscreen) {
+              // Back leaves full screen, not the session.
+              return PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) setState(() => _fullscreen = false);
+                },
+                child: FullscreenScope(
+                  key: const ValueKey('player-fullscreen'),
+                  child: Center(child: stage),
+                ),
+              );
+            }
             return _KashiPlayerView(
               topBar: _TopBar(
                 state: state,
@@ -422,7 +465,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 onSelectMove: _cubit.setIndexAndPlay,
                 onEdit: () => _openEdit(context),
               ),
-              stage: _Stage(state: state, cubit: _cubit),
+              stage: stage,
               title: _MoveTitle(
                 name: state.currentTrack?.title ?? '',
                 nameFa: exercise?.titleFa,
@@ -484,10 +527,31 @@ double maxStageHeight(double windowHeight, {bool wide = false}) => math.max(
               windowHeight - _fixedControlsHeight),
     );
 
+/// Whether [track]'s video can play now (the queue decides local-vs-remote
+/// readiness: BuildPlaybackQueue / ResolveMoveMedia).
+bool _showsVideo(TrainingItemWithAudio? track) =>
+    track != null &&
+    track.media.type == 'video' &&
+    track.media.src != null &&
+    track.media.src!.isNotEmpty &&
+    track.videoReady;
+
 class _Stage extends StatefulWidget {
-  const _Stage({required this.state, required this.cubit});
+  const _Stage({
+    super.key,
+    required this.state,
+    required this.cubit,
+    this.fullscreen = false,
+    this.onToggleFullscreen,
+  });
   final SessionPlayerState state;
   final SessionPlayerCubit cubit;
+
+  /// Fills the screen: no height cap and no frame.
+  final bool fullscreen;
+
+  /// Shows the ⛶ / ✕ button; null while the move has no video.
+  final VoidCallback? onToggleFullscreen;
 
   @override
   State<_Stage> createState() => _StageState();
@@ -547,13 +611,7 @@ class _StageState extends State<_Stage> {
         track.media.type == 'photo' &&
         track.media.src != null &&
         track.media.src!.isNotEmpty;
-    // The queue decides local-vs-remote readiness (BuildPlaybackQueue /
-    // ResolveMoveMedia) — the stage just reads the result.
-    final hasVideo = track != null &&
-        track.media.type == 'video' &&
-        track.media.src != null &&
-        track.media.src!.isNotEmpty &&
-        track.videoReady;
+    final hasVideo = _showsVideo(track);
     // Not-yet-cached video (or any video, as a first-frame placeholder)
     // falls back to its poster image, same rendering path as a photo.
     final hasVideoPoster = track != null &&
@@ -572,8 +630,10 @@ class _StageState extends State<_Stage> {
           // stage is taller than the screen can spare; cap its height (see
           // maxStageHeight) and AspectRatio narrows it instead.
           constraints: BoxConstraints(
-              maxHeight: maxStageHeight(MediaQuery.sizeOf(context).height,
-                  wide: KashiLayout.of(context).isWide)),
+              maxHeight: widget.fullscreen
+                  ? double.infinity
+                  : maxStageHeight(MediaQuery.sizeOf(context).height,
+                      wide: KashiLayout.of(context).isWide)),
           // The exercise videos' own 16:9, so a fitHeight-scaled 1280x720
           // track fills the box exactly with no side cropping.
           child: AspectRatio(
@@ -582,11 +642,17 @@ class _StageState extends State<_Stage> {
               decoration: const BoxDecoration(color: KashiPalette.lajvard700),
               // An inset 2px lajvard frame drawn over the media, so it never
               // shifts the video's layout.
+              // Kept in full screen too (transparent): dropping it would
+              // change the tree and rebuild the synced video.
               foregroundDecoration: BoxDecoration(
-                  border: Border.all(color: KashiPalette.lajvard500, width: 2)),
+                  border: Border.all(
+                      color: widget.fullscreen
+                          ? Colors.transparent
+                          : KashiPalette.lajvard500,
+                      width: 2)),
               clipBehavior: Clip.hardEdge,
               child: Stack(fit: StackFit.expand, children: [
-                if (hasVideo)
+                if (hasVideo && track != null)
                   _ExerciseVideo(
                     // One video widget (and follower) per move, even when
                     // two moves in a row share the same clip.
@@ -687,6 +753,13 @@ class _StageState extends State<_Stage> {
                       animate: state.isPlaying && !state.isMuted,
                       onTap: cubit.toggleMute,
                     ),
+                  ),
+                if (widget.onToggleFullscreen case final toggle?)
+                  PositionedDirectional(
+                    end: 10,
+                    top: 10,
+                    child: FullscreenToggleButton(
+                        fullscreen: widget.fullscreen, onPressed: toggle),
                   ),
               ]),
             ),

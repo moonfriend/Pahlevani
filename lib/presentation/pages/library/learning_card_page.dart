@@ -10,6 +10,7 @@ import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_variation_selector.dart';
 import '../../widgets/kashi/move_placeholder.dart';
 import '../../widgets/player/exercise_demo_video_player.dart';
+import '../../widgets/player/fullscreen_mode.dart';
 import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
 
@@ -119,10 +120,13 @@ class LearningMove {
 /// was closed (system Back or a tap beside it) — so a caller acts only once
 /// the card has fully closed. The video starts straight away, as the design
 /// asks when the card is opened from a session.
+///
+/// [hint] is a line above the card; a session passes [learnFirstHint].
 Future<bool> showLearningCard(
   BuildContext context,
   LearningMove move, {
   String actionLabel = 'Got it',
+  String? hint,
 }) async {
   final result = await pushLearningCard(
     context,
@@ -130,6 +134,7 @@ Future<bool> showLearningCard(
       move: move,
       actionLabel: actionLabel,
       autoplayVideo: true,
+      hint: hint,
     ),
   );
   return result ?? false;
@@ -142,13 +147,17 @@ Future<bool?> pushLearningCard(BuildContext context, LearningCardPage page) {
     context: context,
     barrierDismissible: true,
     barrierLabel: page.move.name,
-    barrierColor: const Color(0x9E060C1E), // rgba(6,12,30,.62)
+    // Light enough that the page behind stays visible: a pop-up over it.
+    barrierColor: const Color(0x6B060C1E), // rgba(6,12,30,.42)
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (_, __, ___) => page,
     transitionBuilder: (context, animation, _, child) =>
         FadeTransition(opacity: animation, child: child),
   );
 }
+
+/// The line above a learning card opened from a session.
+const learnFirstHint = 'First learn the move, then do it.';
 
 /// Learn a single move: the photo (ending in the lower half of a khatam) or
 /// its video, the name with its reps, Lighter/Harder variations, the
@@ -162,6 +171,7 @@ class LearningCardPage extends StatefulWidget {
     this.actionLabel = 'Got it',
     this.onAction,
     this.autoplayVideo = false,
+    this.hint,
   });
 
   /// The Library's card: "Let’s go" (practising one move) isn't built yet.
@@ -186,6 +196,9 @@ class LearningCardPage extends StatefulWidget {
   /// Opens with the video playing instead of the photo.
   final bool autoplayVideo;
 
+  /// A short line above the card (e.g. [learnFirstHint]); none when null.
+  final String? hint;
+
   @override
   State<LearningCardPage> createState() => _LearningCardPageState();
 }
@@ -196,12 +209,32 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
   late bool _videoOpen = widget.autoplayVideo && widget.move.videoSrc != null;
 
-  static const _photoHeight = 262.0;
-  static const _maxWidth = 480.0;
+  /// The video fills the screen (⛶, or a phone held sideways). The key
+  /// moves the one video player between the card and full screen.
+  bool _fullscreen = false;
+  bool? _landscapePhone;
+  final _videoKey = GlobalKey();
 
-  /// Keeps the phone card clearly smaller than the page behind it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Turning the phone follows the rotation; the button decides in between.
+    final landscape = isLandscapePhone(MediaQuery.sizeOf(context));
+    if (landscape != _landscapePhone) {
+      _landscapePhone = landscape;
+      _fullscreen = landscape;
+    }
+  }
+
+  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
+
+  static const _photoHeight = 210.0;
+  static const _maxWidth = 440.0;
+
+  /// Keeps the phone card clearly smaller than the page behind it, so it
+  /// reads as a pop-up over that page.
   static const _phoneCardMargin =
-      EdgeInsets.symmetric(horizontal: 16, vertical: 32);
+      EdgeInsets.symmetric(horizontal: 28, vertical: 56);
 
   LearningMove get _move => widget.move;
   bool get _hasVariations => _move.variations.isNotEmpty;
@@ -225,6 +258,10 @@ class _LearningCardPageState extends State<LearningCardPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
+    final videoSrc = _move.videoSrc;
+    if (_fullscreen && _videoOpen && videoSrc != null) {
+      return _fullscreenVideo(videoSrc);
+    }
     if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
     final footer = _learntToggle;
     return SafeArea(
@@ -232,7 +269,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _maxWidth),
-          child: Material(
+          child: _withHint(Material(
             key: const ValueKey('learning-card'),
             color: colors.ground,
             clipBehavior: Clip.hardEdge,
@@ -265,9 +302,54 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 ),
               ],
             ),
-          ),
+          )),
         ),
       ),
+    );
+  }
+
+  /// The video and its ⛶ / ✕ button; the same player in the card and in
+  /// full screen.
+  Widget _video(String src) => Stack(fit: StackFit.expand, children: [
+        ExerciseDemoVideoPlayer(key: _videoKey, src: src),
+        // Beside the speed button (top right, 48px wide).
+        Positioned(
+          top: 8,
+          right: 64,
+          child: FullscreenToggleButton(
+              fullscreen: _fullscreen, onPressed: _toggleFullscreen),
+        ),
+      ]);
+
+  /// The video alone on black. Back leaves full screen, not the card.
+  Widget _fullscreenVideo(String src) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => _fullscreen = false);
+        },
+        child: FullscreenScope(
+          key: const ValueKey('learning-card-fullscreen'),
+          child: _video(src),
+        ),
+      );
+
+  /// [card] with the [LearningCardPage.hint] above it, on the dimmed page.
+  Widget _withHint(Widget card) {
+    final hint = widget.hint;
+    if (hint == null) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(hint,
+            textAlign: TextAlign.center,
+            style: KashiTextStyles.ui.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+        const SizedBox(height: 10),
+        Flexible(child: card),
+      ],
     );
   }
 
@@ -287,7 +369,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
           constraints: BoxConstraints.loose(_wideCardSize),
-          child: Material(
+          child: _withHint(Material(
             key: const ValueKey('learning-card'),
             color: colors.raised,
             child: LayoutBuilder(
@@ -301,8 +383,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                       color: colors.scene900,
                       child: Stack(fit: StackFit.expand, children: [
                         if (_videoOpen && videoSrc != null)
-                          ExerciseDemoVideoPlayer(
-                              key: ValueKey(videoSrc), src: videoSrc)
+                          _video(videoSrc)
                         else
                           _photo(),
                         if (!_videoOpen && videoSrc != null)
@@ -354,7 +435,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 ],
               ),
             ),
-          ),
+          )),
         ),
       ),
     );
@@ -395,8 +476,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 // While it plays, the photo becomes the full video frame.
                 ? ColoredBox(
                     color: colors.scene900,
-                    child: ExerciseDemoVideoPlayer(
-                        key: ValueKey(videoSrc), src: videoSrc),
+                    child: _video(videoSrc),
                   )
                 : ClipPath(
                     clipper: const _KhatamEdgeClipper(),

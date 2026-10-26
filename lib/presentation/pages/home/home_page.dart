@@ -429,9 +429,11 @@ class _TodayPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
     final minutes = session.minutes;
-    final meta = minutes == null
-        ? '${session.moves} moves'
-        : '$minutes min · ${session.moves} moves';
+    final meta = [
+      if (minutes != null) '$minutes min',
+      '${session.moves} moves',
+      if (!session.session.needsMeel) 'No equipment',
+    ].join(' · ');
     return GestureDetector(
       onTap: onOpen,
       onLongPress: onMenu,

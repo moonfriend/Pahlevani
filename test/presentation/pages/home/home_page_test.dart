@@ -136,7 +136,7 @@ void main() {
       final main = find.byKey(const ValueKey('home-today'));
       expect(find.descendant(of: main, matching: find.text('Session 1')),
           findsOneWidget);
-      expect(find.text('61 min · 7 moves'), findsOneWidget);
+      expect(find.text('61 min · 7 moves · No equipment'), findsOneWidget);
     });
 
     testWidgets('admin slots: 1 is the main card, 2 and 3 the small ones',
@@ -191,7 +191,9 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('a session that needs meel is tagged', (tester) async {
+    testWidgets(
+        'a session that needs meel is tagged; the others say no equipment',
+        (tester) async {
       await _pump(tester, sessions: [
         (session: _session(1, 'Full', slot: 1), moves: 9, minutes: 60),
         (
@@ -202,6 +204,10 @@ void main() {
         (session: _session(3, 'Sheno', slot: 3), moves: 7, minutes: 15),
       ]);
       expect(find.text('NEEDS MEEL'), findsOneWidget);
+      expect(find.text('NO EQUIPMENT'), findsOneWidget,
+          reason: 'the small Sheno card');
+      expect(find.text('60 min · 9 moves · No equipment'), findsOneWidget,
+          reason: 'the big Today card');
     });
 
     testWidgets('Start and the cards open their session', (tester) async {
