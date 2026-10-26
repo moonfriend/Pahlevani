@@ -63,6 +63,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   wakelock_plus: ^1.3.3
   pointer_interceptor: ^0.10.1+2
+  # Browser full screen for the videos (web only; see browser_fullscreen_web).
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:
