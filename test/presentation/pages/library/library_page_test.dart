@@ -54,7 +54,9 @@ final _opened = <TrainingSession>[];
 final _menus = <TrainingSession>[];
 
 Future<void> _pump(WidgetTester tester,
-    {Size size = const Size(360, 740), ThemeData? theme}) async {
+    {Size size = const Size(360, 740),
+    ThemeData? theme,
+    List<Exercise> moves = _moves}) async {
   _opened.clear();
   _menus.clear();
   // tester.view, so MediaQuery (and the layout) see this size.
@@ -64,7 +66,7 @@ Future<void> _pump(WidgetTester tester,
   await tester.pumpWidget(MaterialApp(
     theme: theme ?? PahlevaniTheme.light(),
     home: LibraryPage(
-      moves: _moves,
+      moves: moves,
       sessions: _sessions,
       onOpenSession: _opened.add,
       onSessionMenu: _menus.add,
@@ -105,6 +107,21 @@ void main() {
         lessThan(tester.getRect(find.text('SESSIONS')).top));
     expect(tester.getRect(find.text('Charkh')).top,
         lessThan(tester.getRect(find.text('Full Pahlevani')).top));
+  });
+
+  testWidgets('a move without a learning video says so on its thumbnail',
+      (tester) async {
+    await _pump(tester, size: const Size(360, 2000), moves: const [
+      Exercise(
+          id: 1, movementId: 1, name: 'Vorod', videoUrl: 'https://x/v.mp4'),
+      Exercise(id: 2, movementId: 2, name: 'Charkh', description: 'Spin.'),
+    ]);
+    expect(find.text('VIDEO COMING SOON'), findsOneWidget);
+    final label = tester.getRect(find.text('VIDEO COMING SOON'));
+    final charkh = tester.getRect(find.text('Charkh'));
+    expect(label.bottom, lessThan(charkh.top),
+        reason: 'on Charkh\'s thumbnail');
+    expect(label.left, greaterThanOrEqualTo(charkh.left - 10));
   });
 
   testWidgets('sessions without meel say NO EQUIPMENT', (tester) async {

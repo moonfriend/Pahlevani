@@ -218,6 +218,8 @@ class _MoveTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (!move.hasLearningVideo)
+                          const Positioned.fill(child: _VideoComingSoon()),
                       ],
                     ),
                   ),
@@ -251,6 +253,30 @@ class _MoveTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The thumbnail of a move without a learning video: a see-through layer
+/// saying so, like the learning card's label but big enough to read here.
+class _VideoComingSoon extends StatelessWidget {
+  const _VideoComingSoon();
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: const Color(0x990B1638),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('VIDEO COMING SOON',
+                textAlign: TextAlign.center,
+                style: KashiTextStyles.ui.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    height: 1.2,
+                    color: Colors.white)),
+          ),
+        ),
+      );
 }
 
 /// The move's photo or video poster; the pahlevan illustration when it has

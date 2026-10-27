@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/release_features.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../../domain/entities/training_session/exercise.dart';
@@ -10,6 +11,7 @@ import '../../widgets/kashi/kashi_labels.dart';
 import '../../widgets/kashi/kashi_variation_selector.dart';
 import '../../widgets/kashi/move_placeholder.dart';
 import '../../widgets/player/exercise_demo_video_player.dart';
+import '../../widgets/player/fullscreen_mode.dart';
 import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
 
@@ -171,12 +173,15 @@ class LearningCardPage extends StatefulWidget {
     this.onAction,
     this.autoplayVideo = false,
     this.hint,
+    this.showVariations = ReleaseFeatures.moveVariations,
   });
 
   /// The Library's card: "Let’s go" (practising one move) isn't built yet.
-  factory LearningCardPage.sample(SampleMove move, {Key? key}) =>
+  factory LearningCardPage.sample(SampleMove move,
+          {Key? key, bool showVariations = ReleaseFeatures.moveVariations}) =>
       LearningCardPage(
         key: key,
+        showVariations: showVariations,
         move: LearningMove.fromSample(move),
         actionLabel: 'Let’s go',
         onAction: (context) => ScaffoldMessenger.of(context)
@@ -198,6 +203,9 @@ class LearningCardPage extends StatefulWidget {
   /// A short line above the card (e.g. [learnFirstHint]); none when null.
   final String? hint;
 
+  /// Lighter/Harder; off in release 1 ([ReleaseFeatures.moveVariations]).
+  final bool showVariations;
+
   @override
   State<LearningCardPage> createState() => _LearningCardPageState();
 }
@@ -208,6 +216,25 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
   late bool _videoOpen = widget.autoplayVideo && widget.move.videoSrc != null;
 
+  /// The video fills the screen (⛶, or a phone held sideways). The key
+  /// moves the one video player between the card and full screen.
+  bool _fullscreen = false;
+  bool? _landscapePhone;
+  final _videoKey = GlobalKey();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Turning the phone follows the rotation; the button decides in between.
+    final landscape = isLandscapePhone(MediaQuery.sizeOf(context));
+    if (landscape != _landscapePhone) {
+      _landscapePhone = landscape;
+      _fullscreen = landscape;
+    }
+  }
+
+  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
+
   static const _photoHeight = 210.0;
   static const _maxWidth = 440.0;
 
@@ -217,7 +244,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
       EdgeInsets.symmetric(horizontal: 28, vertical: 56);
 
   LearningMove get _move => widget.move;
-  bool get _hasVariations => _move.variations.isNotEmpty;
+  bool get _hasVariations =>
+      widget.showVariations && _move.variations.isNotEmpty;
   MoveVariation? get _selected =>
       _hasVariations ? _move.variations[_variation] : null;
 
@@ -238,6 +266,10 @@ class _LearningCardPageState extends State<LearningCardPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
+    final videoSrc = _move.videoSrc;
+    if (_fullscreen && _videoOpen && videoSrc != null) {
+      return _fullscreenVideo(videoSrc);
+    }
     if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
     final footer = _learntToggle;
     return SafeArea(
@@ -283,6 +315,31 @@ class _LearningCardPageState extends State<LearningCardPage> {
       ),
     );
   }
+
+  /// The video and its ⛶ / ✕ button; the same player in the card and in
+  /// full screen.
+  Widget _video(String src) => Stack(fit: StackFit.expand, children: [
+        ExerciseDemoVideoPlayer(key: _videoKey, src: src),
+        // Beside the speed button (top right, 48px wide).
+        Positioned(
+          top: 8,
+          right: 64,
+          child: FullscreenToggleButton(
+              fullscreen: _fullscreen, onPressed: _toggleFullscreen),
+        ),
+      ]);
+
+  /// The video alone on black. Back leaves full screen, not the card.
+  Widget _fullscreenVideo(String src) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => _fullscreen = false);
+        },
+        child: FullscreenScope(
+          key: const ValueKey('learning-card-fullscreen'),
+          child: _video(src),
+        ),
+      );
 
   /// [card] with the [LearningCardPage.hint] above it, on the dimmed page.
   Widget _withHint(Widget card) {
@@ -334,8 +391,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                       color: colors.scene900,
                       child: Stack(fit: StackFit.expand, children: [
                         if (_videoOpen && videoSrc != null)
-                          ExerciseDemoVideoPlayer(
-                              key: ValueKey(videoSrc), src: videoSrc)
+                          _video(videoSrc)
                         else
                           _photo(),
                         if (!_videoOpen && videoSrc != null)
@@ -428,8 +484,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 // While it plays, the photo becomes the full video frame.
                 ? ColoredBox(
                     color: colors.scene900,
-                    child: ExerciseDemoVideoPlayer(
-                        key: ValueKey(videoSrc), src: videoSrc),
+                    child: _video(videoSrc),
                   )
                 : ClipPath(
                     clipper: const _KhatamEdgeClipper(),
