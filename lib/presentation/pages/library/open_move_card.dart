@@ -8,9 +8,9 @@ import '../../../domain/usecases/player/resolve_learning_video.dart';
 import '../../../domain/usecases/player/resolve_move_media.dart';
 import 'learning_card_page.dart';
 
-/// Opens [exercise]'s learning card with its still and learning video
-/// resolved the way the player resolves media (local file when downloaded,
-/// streamed on the web).
+/// Opens [exercise]'s learning card with its still, learning video and
+/// follow-along video resolved the way the player resolves media (local file
+/// when downloaded, streamed on the web).
 /// Shared by the Library and the session preview so both show the same card.
 ///
 /// [target] and [minutes] are session details: the reps of a counted move
@@ -19,7 +19,7 @@ import 'learning_card_page.dart';
 Future<void> openMoveCard(BuildContext context, Exercise exercise,
     {int? target, int? minutes, String? hint}) async {
   final downloads = getIt<DownloadRepository>();
-  final (media, _) =
+  final (media, followAlongReady) =
       await ResolveMoveMedia(downloads)(exercise.media, useRemoteMedia: kIsWeb);
   final learningVideo = await ResolveLearningVideo(downloads)(exercise.videoUrl,
       useRemoteMedia: kIsWeb);
@@ -30,6 +30,7 @@ Future<void> openMoveCard(BuildContext context, Exercise exercise,
       exercise,
       media: media,
       learningVideoSrc: learningVideo,
+      followAlongReady: followAlongReady,
       target: target,
       minutes: minutes,
     ),

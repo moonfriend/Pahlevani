@@ -10,12 +10,20 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   final _controllers = <int, StreamController<VideoEvent>>{};
   int created = 0;
 
+  /// The file path or URL of each player made, in order.
+  final sources = <String?>[];
+
   @override
   Future<void> init() async {}
 
   @override
   Future<int?> createWithOptions(VideoCreationOptions options) async {
     final id = created++;
+    final uri = options.dataSource.uri;
+    // Local files arrive as file:// URIs; record them as plain paths.
+    sources.add(uri != null && uri.startsWith('file://')
+        ? Uri.parse(uri).toFilePath()
+        : uri ?? options.dataSource.asset);
     _controllers[id] = StreamController<VideoEvent>.broadcast();
     return id;
   }

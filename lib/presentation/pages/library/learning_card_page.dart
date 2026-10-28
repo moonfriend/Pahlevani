@@ -30,6 +30,7 @@ class LearningMove {
     this.variations = const [],
     this.photo,
     this.videoSrc,
+    this.followAlongVideoSrc,
     this.videoComingSoon = false,
   });
 
@@ -47,16 +48,20 @@ class LearningMove {
 
   /// A session's move. [media] is the already-resolved media (local file
   /// where downloaded); it gives the card its still — the photo, or the
-  /// follow-along video's poster. The card plays only the learning video,
-  /// [learningVideoSrc] (see `ResolveLearningVideo`), never the follow-along
-  /// one. [target] is set for a counted move.
+  /// follow-along video's poster. The card's main video is the learning
+  /// video, [learningVideoSrc] (see `ResolveLearningVideo`); the follow-along
+  /// video is offered beside it when [followAlongReady] (it can play: on the
+  /// device, or streamed on the web — see `ResolveMoveMedia`). [target] is
+  /// set for a counted move.
   factory LearningMove.fromExercise(
     Exercise exercise, {
     required ExerciseMedia media,
     required String? learningVideoSrc,
+    bool followAlongReady = false,
     int? target,
     int? minutes,
   }) {
+    final followAlong = media.type == 'video' ? media.src : null;
     final still = switch (media.type) {
       'photo' => media.src,
       'video' => media.poster,
@@ -78,6 +83,10 @@ class LearningMove {
       videoSrc: (learningVideoSrc == null || learningVideoSrc.isEmpty)
           ? null
           : learningVideoSrc,
+      followAlongVideoSrc:
+          (followAlongReady && followAlong != null && followAlong.isNotEmpty)
+              ? followAlong
+              : null,
       // Whether the move has a learning video at all — not whether it can
       // play right now (it may simply not be downloaded yet).
       videoComingSoon: exercise.videoUrl?.isEmpty ?? true,
@@ -108,6 +117,10 @@ class LearningMove {
   /// The playable learning video (local file, or URL on web); null hides the
   /// play button.
   final String? videoSrc;
+
+  /// The playable follow-along video (the one the player shows during a
+  /// session); when set, a Learning / Follow-along toggle switches to it.
+  final String? followAlongVideoSrc;
 
   /// No learning video has been made for this move yet: the still carries
   /// a "coming soon" label asking for support. Never set for the Library's
@@ -216,11 +229,15 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
   late bool _videoOpen = widget.autoplayVideo && widget.move.videoSrc != null;
 
-  /// The video fills the screen (⛶, or a phone held sideways). The key
-  /// moves the one video player between the card and full screen.
+  /// Which of the move's videos the media shows (see [_VideoToggle]).
+  _CardVideo _showing = _CardVideo.learning;
+
+  /// The video fills the screen (⛶, or a phone held sideways). A key per
+  /// video moves its one player between the card and full screen, and
+  /// switching videos starts the other one afresh.
   bool _fullscreen = false;
   bool? _landscapePhone;
-  final _videoKey = GlobalKey();
+  final _videoKeys = {for (final v in _CardVideo.values) v: GlobalKey()};
 
   @override
   void didChangeDependencies() {
@@ -244,6 +261,22 @@ class _LearningCardPageState extends State<LearningCardPage> {
       EdgeInsets.symmetric(horizontal: 28, vertical: 56);
 
   LearningMove get _move => widget.move;
+
+  /// The video playing in the media, if any: the follow-along one once
+  /// chosen, else the learning video once opened.
+  String? get _playingSrc => switch (_showing) {
+        _CardVideo.followAlong => _move.followAlongVideoSrc,
+        _CardVideo.learning => _videoOpen ? _move.videoSrc : null,
+      };
+
+  bool get _hasToggle => _move.followAlongVideoSrc != null;
+
+  /// Below the toggle when it is shown, so nothing sits under it.
+  double get _controlsTop => _hasToggle ? 56 : 8;
+
+  /// The play button over the still (learning video not started yet).
+  bool get _offersPlay =>
+      _showing == _CardVideo.learning && !_videoOpen && _move.videoSrc != null;
   bool get _hasVariations =>
       widget.showVariations && _move.variations.isNotEmpty;
   MoveVariation? get _selected =>
@@ -266,10 +299,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KashiColors>()!;
-    final videoSrc = _move.videoSrc;
-    if (_fullscreen && _videoOpen && videoSrc != null) {
-      return _fullscreenVideo(videoSrc);
-    }
+    final playing = _playingSrc;
+    if (_fullscreen && playing != null) return _fullscreenVideo(playing);
     if (!KashiLayout.of(context).isPhone) return _wideCard(colors);
     final footer = _learntToggle;
     return SafeArea(
@@ -289,7 +320,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                 // the video frame has no star edge to tuck into.
                 Flexible(
                   child: Transform.translate(
-                    offset: Offset(0, _videoOpen ? 0 : -30),
+                    offset: Offset(0, _playingSrc != null ? 0 : -30),
                     child: _details(colors, shrinkWrap: true),
                   ),
                 ),
@@ -319,10 +350,13 @@ class _LearningCardPageState extends State<LearningCardPage> {
   /// The video and its ⛶ / ✕ button; the same player in the card and in
   /// full screen.
   Widget _video(String src) => Stack(fit: StackFit.expand, children: [
-        ExerciseDemoVideoPlayer(key: _videoKey, src: src),
+        ExerciseDemoVideoPlayer(
+            key: _videoKeys[_showing],
+            src: src,
+            controlsTop: _fullscreen ? 8 : _controlsTop),
         // Beside the speed button (top right, 48px wide).
         Positioned(
-          top: 8,
+          top: _fullscreen ? 8 : _controlsTop,
           right: 64,
           child: FullscreenToggleButton(
               fullscreen: _fullscreen, onPressed: _toggleFullscreen),
@@ -371,7 +405,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
   Widget _wideCard(KashiColors colors) {
     final footer = _learntToggle;
-    final videoSrc = _move.videoSrc;
+    final playing = _playingSrc;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -390,11 +424,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
                     child: ColoredBox(
                       color: colors.scene900,
                       child: Stack(fit: StackFit.expand, children: [
-                        if (_videoOpen && videoSrc != null)
-                          _video(videoSrc)
-                        else
-                          _photo(),
-                        if (!_videoOpen && videoSrc != null)
+                        if (playing != null) _video(playing) else _photo(),
+                        if (_offersPlay)
                           Center(
                             child: Material(
                               color: colors.action,
@@ -410,6 +441,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                               ),
                             ),
                           ),
+                        if (_hasToggle) _toggleAt(),
                       ]),
                     ),
                   ),
@@ -464,13 +496,27 @@ class _LearningCardPageState extends State<LearningCardPage> {
     if (!_move.videoComingSoon) return still;
     return Stack(fit: StackFit.expand, children: [
       still,
-      const PositionedDirectional(
-          top: 14, start: 14, end: 14, child: _ComingSoonLabel()),
+      // Below the toggle when it is shown.
+      PositionedDirectional(
+          top: _hasToggle ? 56 : 14,
+          start: 14,
+          end: 14,
+          child: _ComingSoonLabel(offersFollowAlong: _hasToggle)),
     ]);
   }
 
+  /// The Learning / Follow-along toggle, at the top right of the media.
+  Widget _toggleAt() => PositionedDirectional(
+        top: 8,
+        end: 8,
+        child: _VideoToggle(
+          showing: _showing,
+          onChanged: (video) => setState(() => _showing = video),
+        ),
+      );
+
   Widget _header(KashiColors colors) {
-    final videoSrc = _move.videoSrc;
+    final playing = _playingSrc;
     return SizedBox(
       height: _photoHeight + 8,
       child: Stack(
@@ -480,11 +526,11 @@ class _LearningCardPageState extends State<LearningCardPage> {
             right: 0,
             top: 0,
             height: _photoHeight,
-            child: _videoOpen && videoSrc != null
+            child: playing != null
                 // While it plays, the photo becomes the full video frame.
                 ? ColoredBox(
                     color: colors.scene900,
-                    child: _video(videoSrc),
+                    child: _video(playing),
                   )
                 : ClipPath(
                     clipper: const _KhatamEdgeClipper(),
@@ -494,7 +540,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
                     ),
                   ),
           ),
-          if (!_videoOpen && videoSrc != null)
+          if (_hasToggle) _toggleAt(),
+          if (_offersPlay)
             // The azure play square over the photo's edge, ringed in ground.
             PositionedDirectional(
               end: 12,
@@ -623,7 +670,10 @@ class _LearningCardPageState extends State<LearningCardPage> {
 
 /// The label on a still whose move has no learning video yet.
 class _ComingSoonLabel extends StatelessWidget {
-  const _ComingSoonLabel();
+  const _ComingSoonLabel({required this.offersFollowAlong});
+
+  /// The card has the follow-along video to offer meanwhile.
+  final bool offersFollowAlong;
 
   @override
   Widget build(BuildContext context) {
@@ -637,18 +687,67 @@ class _ComingSoonLabel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Training video coming soon',
+              Text('Learning video coming soon',
                   style: KashiTextStyles.ui.copyWith(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: Colors.white)),
               const SizedBox(height: 2),
+              if (offersFollowAlong)
+                Text('For now, you can watch the follow-along video.',
+                    style: KashiTextStyles.ui
+                        .copyWith(fontSize: 12.5, color: Colors.white)),
               Text('Support us so we can make more, faster.',
                   style: KashiTextStyles.ui
                       .copyWith(fontSize: 12.5, color: Colors.white70)),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The two videos a learning card can show.
+enum _CardVideo { learning, followAlong }
+
+/// The small Learning / Follow-along switch over the card's media.
+class _VideoToggle extends StatelessWidget {
+  const _VideoToggle({required this.showing, required this.onChanged});
+
+  final _CardVideo showing;
+  final ValueChanged<_CardVideo> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return SegmentedButton<_CardVideo>(
+      key: const ValueKey('learning-card-video-toggle'),
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(value: _CardVideo.learning, label: Text('Learning')),
+        ButtonSegment(
+            value: _CardVideo.followAlong, label: Text('Follow-along')),
+      ],
+      selected: {showing},
+      onSelectionChanged: (selection) => onChanged(selection.single),
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding:
+            const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+        textStyle: WidgetStatePropertyAll(KashiTextStyles.ui
+            .copyWith(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        // Readable over any frame of the still or the video.
+        backgroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected)
+                ? colors.action
+                : const Color(0xCC0B1638)),
+        foregroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected)
+                ? colors.onAction
+                : Colors.white),
+        side: const WidgetStatePropertyAll(BorderSide(color: Colors.white38)),
       ),
     );
   }

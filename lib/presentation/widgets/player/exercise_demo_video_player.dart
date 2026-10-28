@@ -16,8 +16,13 @@ import 'kashi/video_scrub_bar.dart';
 /// seconds to skip through the video. A speed button (1× → 1.5× → 2×) lets
 /// people get through a long explanation faster.
 class ExerciseDemoVideoPlayer extends StatefulWidget {
-  const ExerciseDemoVideoPlayer({super.key, required this.src});
+  const ExerciseDemoVideoPlayer(
+      {super.key, required this.src, this.controlsTop = 8});
   final String src;
+
+  /// Distance of the speed button from the top — larger when something sits
+  /// above it (the learning card's video toggle).
+  final double controlsTop;
 
   @override
   State<ExerciseDemoVideoPlayer> createState() =>
@@ -144,7 +149,7 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                 ),
               if (_ready)
                 Positioned(
-                  top: 8,
+                  top: widget.controlsTop,
                   right: 8,
                   child: _SpeedButton(
                     speed: _speeds[_speedIndex],

@@ -265,7 +265,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   }
 
   /// The learning card for track [index]: the track's already-resolved
-  /// still, and the move's learning video where it can play.
+  /// still and follow-along video, and the move's learning video where it
+  /// can play.
   Future<LearningMove> _learningMove(int index, Exercise exercise) async {
     final track = _cubit.state.tracks[index];
     final learningVideo = await ResolveLearningVideo(
@@ -274,6 +275,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       exercise,
       media: track.media,
       learningVideoSrc: learningVideo,
+      followAlongReady: track.videoReady,
       target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
     );
   }
