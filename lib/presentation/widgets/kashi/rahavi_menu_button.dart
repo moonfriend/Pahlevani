@@ -26,7 +26,7 @@ class RahaviMenuButton extends StatelessWidget {
   final Future<void> Function(Uri uri) openLink;
 
   static const entries = [
-    ('Who is Rahavi', AppLinks.rahavi),
+    ('Who is Rahaavi', AppLinks.rahavi),
     ('Privacy notice', AppLinks.privacy),
     ('Impressum', AppLinks.impressum),
     ('Terms of use', AppLinks.terms),
@@ -39,7 +39,7 @@ class RahaviMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
-      tooltip: 'Rahavi: about us and legal',
+      tooltip: 'Rahaavi: about us and legal',
       padding: EdgeInsets.zero,
       onSelected: (url) => openLink(Uri.parse(url)),
       itemBuilder: (_) => [

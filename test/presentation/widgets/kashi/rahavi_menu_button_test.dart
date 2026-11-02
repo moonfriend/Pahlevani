@@ -36,14 +36,14 @@ void main() {
 
     await _openMenu(tester);
 
-    expect(find.text('Who is Rahavi'), findsOneWidget);
+    expect(find.text('Who is Rahaavi'), findsOneWidget);
     expect(find.text('Privacy notice'), findsOneWidget);
     expect(find.text('Impressum'), findsOneWidget);
     expect(find.text('Terms of use'), findsOneWidget);
   });
 
   for (final (label, url) in [
-    ('Who is Rahavi', 'https://rahaavi.com/'),
+    ('Who is Rahaavi', 'https://rahaavi.com/'),
     ('Privacy notice', 'https://rahaavi.com/privacy'),
     ('Impressum', 'https://rahaavi.com/impressum'),
     ('Terms of use', 'https://rahaavi.com/terms'),
@@ -62,6 +62,6 @@ void main() {
   testWidgets('the mark is announced as a menu to screen readers',
       (tester) async {
     await _pump(tester);
-    expect(find.byTooltip('Rahavi: about us and legal'), findsOneWidget);
+    expect(find.byTooltip('Rahaavi: about us and legal'), findsOneWidget);
   });
 }
