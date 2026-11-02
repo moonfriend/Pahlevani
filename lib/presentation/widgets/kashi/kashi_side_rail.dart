@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_palette.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../layout/kashi_layout.dart';
 import 'kashi_tab_bar.dart';
+import 'rahavi_menu_button.dart';
 
 /// The web layout's lajvard side rail (232px): the Rahavi mark and name,
 /// one row per tab, and an optional [footer] (e.g. the user) at the bottom.
@@ -40,8 +40,7 @@ class KashiSideRail extends StatelessWidget {
                   padding: const EdgeInsets.only(left: 8, bottom: 32),
                   child: Row(
                     children: [
-                      Image.asset(KashiAssets.rahaviMark,
-                          width: 52, semanticLabel: 'Rahavi'),
+                      const RahaviMenuButton(width: 52),
                       const SizedBox(width: 12),
                       Flexible(
                         child: Text('Rahavi',

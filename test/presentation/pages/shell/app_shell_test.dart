@@ -4,6 +4,7 @@ import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_side_rail.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_tab_bar.dart';
+import 'package:pahlevani/presentation/widgets/kashi/rahavi_menu_button.dart';
 
 int _libraryBuilds = 0;
 
@@ -157,6 +158,12 @@ void main() {
       await _pump(tester, window: const Size(1440, 900));
       expect(find.byType(KashiTabBar), findsNothing);
       expect(tester.getSize(find.byType(KashiSideRail)).width, 232);
+      expect(
+          find.descendant(
+              of: find.byType(KashiSideRail),
+              matching: find.byType(RahaviMenuButton)),
+          findsOneWidget,
+          reason: 'on the web the mark (and its legal menu) is in the rail');
 
       await tester.tap(find.text('Progress'));
       await tester.pump();

@@ -22,6 +22,7 @@ import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_info_tile.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
+import '../../widgets/kashi/rahavi_menu_button.dart';
 
 /// A session as the Today card shows it.
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
@@ -294,9 +295,7 @@ class _Header extends StatelessWidget {
             ),
           ),
           // On the web layout the mark lives in the side rail.
-          if (!layout.isWide)
-            Image.asset(KashiAssets.rahaviMark,
-                width: phone ? 34 : 44, semanticLabel: 'Rahavi'),
+          if (!layout.isWide) RahaviMenuButton(width: phone ? 34 : 44),
         ],
       ),
     );
