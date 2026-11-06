@@ -58,8 +58,25 @@ class ActivationsCsvTest(unittest.TestCase):
             "activated_at": "2026-10-14T12:30:00.123+00:00"})]
         self.assertEqual(
             activations_csv(rows).splitlines(),
-            ["email,code,activated_at",
-             "sara@example.com,ABC,2026-10-14 12:30:00"])
+            ["email,source,code,activated_at,expires_at,steady_state",
+             "sara@example.com,code,ABC,2026-10-14 12:30:00,,"])
+
+    def test_steady_rows_show_their_end_date_and_state(self):
+        a = Activation.from_row({
+            "email": "mina@example.com", "code": None, "source": "steady",
+            "activated_at": "2026-11-07T10:00:00+00:00",
+            "expires_at": "2026-12-07T10:00:00+00:00",
+            "steady_state": "active"})
+        self.assertEqual((a.source, a.code, a.expires_at, a.steady_state),
+                         ("steady", "", "2026-12-07 10:00:00", "active"))
+        self.assertEqual(activations_csv([a]).splitlines()[1],
+                         "mina@example.com,steady,,2026-11-07 10:00:00,"
+                         "2026-12-07 10:00:00,active")
+
+    def test_rows_from_before_0051_count_as_codes(self):
+        a = Activation.from_row({"email": "x@example.com", "code": "C",
+                                 "activated_at": "2026-10-01T00:00:00Z"})
+        self.assertEqual((a.source, a.expires_at), ("code", ""))
 
 
 if __name__ == "__main__":

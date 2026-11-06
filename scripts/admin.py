@@ -3629,11 +3629,13 @@ def tab_activation():
 
     st.divider()
     st.subheader(f"Activations ({len(activations)})")
-    st.caption("Who activated with which code — compare the emails with Steady's "
-               "members each month.")
+    st.caption("Who has access, from a code (never ends) or a Steady membership "
+               "(re-checked daily; ends unless renewed).")
     if activations:
         st.dataframe(
-            [{"email": a.email, "code": a.code, "activated": a.activated_at}
+            [{"email": a.email, "source": a.source, "code": a.code,
+              "activated": a.activated_at,
+              "ends": a.expires_at or "never", "steady": a.steady_state}
              for a in activations],
             hide_index=True, use_container_width=True)
         st.download_button("⬇️ Download CSV", activations_csv(activations),
