@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import 'kashi/video_scrub_bar.dart';
+import 'passive_video.dart';
 
 /// Standalone demonstration-video player, shared by the ⓘ info page and
 /// Learning Mode's pre-track prompt — plays with its own original audio and
@@ -125,7 +126,7 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                   child: SizedBox(
                     width: _controller.value.size.width,
                     height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
+                    child: PassiveVideo(_controller),
                   ),
                 )
               else

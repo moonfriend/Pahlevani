@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:pahlevani/core/release_features.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
@@ -49,6 +48,7 @@ import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dar
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/presentation/widgets/player/fullscreen_mode.dart';
+import 'package:pahlevani/presentation/widgets/player/passive_video.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 import '../../usage/app_routes.dart';
@@ -778,18 +778,6 @@ class _StageState extends State<_Stage> {
                 else
                   // No video or photo for this move yet.
                   const MovePlaceholder(),
-                // On the web the video is a browser <video> element that
-                // takes every click over it, so the tap that shows the
-                // controls (and the controls themselves) never reached
-                // Flutter. This invisible layer stops clicks there; the
-                // controls are painted above it. Elsewhere the video is
-                // drawn by Flutter and this is a plain pass-through.
-                Positioned.fill(
-                  child: PointerInterceptor(
-                    intercepting: kIsWeb,
-                    child: const SizedBox.expand(),
-                  ),
-                ),
                 // Controls: a tap on the video shows them for a while;
                 // while paused they stay up.
                 if (controlsVisible)
@@ -1041,7 +1029,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       child: SizedBox(
         width: size.width,
         height: size.height,
-        child: VideoPlayer(_controller),
+        child: PassiveVideo(_controller),
       ),
     );
   }

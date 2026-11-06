@@ -10,6 +10,12 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   final _controllers = <int, StreamController<VideoEvent>>{};
   int created = 0;
 
+  /// Makes each video's view claim taps, as the browser's `<video>`
+  /// element does on the web (its platform view joins the gesture arena and
+  /// wins it), so a test can prove the video never takes a tap meant for
+  /// the widgets around it.
+  bool viewClaimsTaps = false;
+
   /// The file path or URL of each player made, in order.
   final sources = <String?>[];
 
@@ -63,8 +69,12 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<Duration> getPosition(int playerId) async => Duration.zero;
 
   @override
-  Widget buildViewWithOptions(VideoViewOptions options) =>
-      const SizedBox.shrink();
+  Widget buildViewWithOptions(VideoViewOptions options) => viewClaimsTaps
+      ? GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {},
+          child: const SizedBox.expand())
+      : const SizedBox.shrink();
 
   @override
   Future<void> dispose(int playerId) async {}
