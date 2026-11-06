@@ -10,8 +10,9 @@ import '../../widgets/access/retry_countdown.dart';
 import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
 
-/// Signed in, not activated: the admin's message and Steady link, and a
-/// field for the activation code the member got from us.
+/// Signed in, not activated: the admin's message and Steady link, a field
+/// for an activation code, and "Check my membership again" for members
+/// who just joined on Steady.
 class LockedPage extends StatefulWidget {
   const LockedPage({super.key, this.email});
 
@@ -89,7 +90,14 @@ class _LockedPageState extends State<LockedPage> {
                     : 'Activate'),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: state.submitting
+              ? null
+              : () => context.read<ActivationCubit>().recheckMembership(),
+          child: const Text(recheckMembershipLabel),
+        ),
+        const SizedBox(height: 12),
         if (widget.email != null)
           Text('Signed in as ${widget.email}',
               textAlign: TextAlign.center,
@@ -106,3 +114,6 @@ class _LockedPageState extends State<LockedPage> {
     );
   }
 }
+
+/// Re-checks the membership (Steady) without signing out.
+const recheckMembershipLabel = 'Check my membership again';

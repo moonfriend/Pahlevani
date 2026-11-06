@@ -27,6 +27,14 @@ class ActivationRepositoryImpl implements ActivationRepository {
   Future<bool> isActivated(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     try {
+      // A Steady member's access is recorded by the server's Steady check;
+      // run it first so a new or renewed membership counts right away.
+      await _remote.syncSteadyMembership();
+    } catch (error) {
+      AppLogger.w('Steady membership check failed — using the last result',
+          error: error);
+    }
+    try {
       final activated = await _remote.isActivated();
       if (activated) {
         await prefs.setBool(activatedKey(userId), true);

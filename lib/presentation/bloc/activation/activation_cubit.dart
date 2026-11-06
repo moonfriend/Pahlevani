@@ -56,6 +56,9 @@ class ActivationCubit extends Cubit<ActivationState> {
   static const invalidCodeMessage =
       'That code isn’t valid or has been used up. Check it, or ask us '
       'on Steady.';
+  static const noMembershipMessage =
+      'No running Steady membership found for this account yet. If you '
+      'just joined, wait a minute and check again.';
   static const offlineMessage =
       'Couldn’t check the code. Try again with an internet connection.';
 
@@ -101,6 +104,20 @@ class ActivationCubit extends Cubit<ActivationState> {
         emit(ActivationLocked(text: current.text, error: offlineMessage));
       }
     }
+  }
+
+  /// The locked screen's "Check my membership again": asks again (for a
+  /// Steady account, Steady itself) without leaving the locked screen.
+  Future<void> recheckMembership() async {
+    final current = state;
+    final userId = _userId;
+    if (current is! ActivationLocked || userId == null) return;
+    emit(ActivationLocked(text: current.text, submitting: true));
+    final active = await _repo.isActivated(userId);
+    if (isClosed || _userId != userId) return;
+    emit(active
+        ? const ActivationActive()
+        : ActivationLocked(text: current.text, error: noMembershipMessage));
   }
 
   /// The locked screen's text, for the sign-in screen's "no code yet?" link.

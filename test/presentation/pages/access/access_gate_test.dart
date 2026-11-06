@@ -8,6 +8,7 @@ import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/access/access_gate.dart';
 import 'package:pahlevani/presentation/pages/access/account_page.dart';
+import 'package:pahlevani/presentation/pages/access/locked_page.dart';
 import 'package:pahlevani/presentation/pages/access/consent_texts.dart';
 
 import '../../../fakes/fake_activation_repository.dart';
@@ -281,6 +282,15 @@ void main() {
     expect(_button(tester, 'Try again in 3 s').onPressed, isNull);
     await tester.pump(const Duration(seconds: 3));
     expect(_button(tester, 'Activate').onPressed, isNotNull);
+  });
+
+  testWidgets('the locked screen re-checks the membership', (tester) async {
+    final h = await _pump(tester, user: _accepted);
+    expect(find.text('THE APP'), findsNothing);
+    h.activation.activated.add('u1');
+    await tapVisible(tester, find.text(recheckMembershipLabel));
+    await tester.pumpAndSettle();
+    expect(find.text('THE APP'), findsOneWidget);
   });
 
   testWidgets('the locked screen can sign out', (tester) async {

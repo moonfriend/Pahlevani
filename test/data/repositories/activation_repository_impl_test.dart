@@ -14,9 +14,18 @@ class _FakeRemote implements ActivationRemoteDataSource {
   Map<String, dynamic>? gateRow;
   Map<String, dynamic>? termsRow;
   final checkedCodes = <String>[];
+  final calls = <String>[];
+  bool steadySyncFails = false;
+
+  @override
+  Future<void> syncSteadyMembership() async {
+    calls.add('sync');
+    if (steadySyncFails) throw Exception('steady-sync 502');
+  }
 
   @override
   Future<bool> isActivated() async {
+    calls.add('isActivated');
     if (offline) throw Exception('offline');
     if (gateNotInstalled) throw const ActivationGateNotInstalledException();
     return activated;
@@ -141,5 +150,20 @@ void main() {
       () async {
     remote.termsRow = {'terms_version': null};
     expect(await repo.termsInfo(), TermsInfo.fallback);
+  });
+
+  test('asks Steady first, so a fresh membership unlocks on this check',
+      () async {
+    remote.activated = true;
+    expect(await repo.isActivated('u1'), isTrue);
+    expect(remote.calls, ['sync', 'isActivated']);
+  });
+
+  test('Steady unreachable: still answers from the server as before', () async {
+    remote
+      ..steadySyncFails = true
+      ..activated = true;
+    expect(await repo.isActivated('u1'), isTrue);
+    expect(remote.calls, ['sync', 'isActivated']);
   });
 }

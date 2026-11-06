@@ -25,6 +25,11 @@ abstract class ActivationRemoteDataSource {
 
   /// The terms columns of the activation_gate row (migration 0049), or null.
   Future<Map<String, dynamic>?> fetchTerms();
+
+  /// For an account signed in with Steady: asks the steady-sync Edge
+  /// Function to check the membership and record it (migration 0051). A
+  /// no-op for other accounts. Errors propagate.
+  Future<void> syncSteadyMembership();
 }
 
 class ActivationRemoteDataSourceImpl implements ActivationRemoteDataSource {
@@ -35,8 +40,18 @@ class ActivationRemoteDataSourceImpl implements ActivationRemoteDataSource {
 
   static const _timeout = Duration(seconds: 10);
 
+  /// Supabase's name for the Steady sign-in provider.
+  static const _steadyProvider = 'custom:steady';
+
   /// PostgREST: "Could not find the function … in the schema cache".
   static const _functionNotFound = 'PGRST202';
+
+  @override
+  Future<void> syncSteadyMembership() async {
+    final providers = _client.auth.currentUser?.appMetadata['providers'];
+    if (providers is! List || !providers.contains(_steadyProvider)) return;
+    await _client.functions.invoke('steady-sync').timeout(_timeout);
+  }
 
   @override
   Future<bool> isActivated() async {
