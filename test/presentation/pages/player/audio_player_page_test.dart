@@ -43,6 +43,10 @@ import '../../../fakes/fake_training_history_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
 import '../../../fakes/fake_wakelock_plus_platform.dart';
 import '../../../fakes/test_seed_data.dart';
+import '../../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_scope.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,9 +65,9 @@ void _registerFakes(DomainSnapshot snapshot) {
 }
 
 Widget _buildPage(DomainSnapshot snapshot,
-    {PlayerMode mode = PlayerMode.athlete}) {
+    {PlayerMode mode = PlayerMode.athlete, UsageTracker? usage}) {
   // The Rep log tests below need it on; release 1 switches it off.
-  return BlocProvider(
+  final page = BlocProvider(
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
       downloadRepository: FakeDownloadRepository(),
@@ -75,6 +79,7 @@ Widget _buildPage(DomainSnapshot snapshot,
           trainingSession: testSession1, mode: mode, repLogging: true),
     ),
   );
+  return usage == null ? page : UsageScope(tracker: usage, child: page);
 }
 
 // Allow async work from the cubit (loadTracks, _loadSourceAtIndex) to complete.
@@ -341,6 +346,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Move 2 of 2'), findsOneWidget);
+  });
+
+  testWidgets('the player logs to the app tracker; How to is logged',
+      (tester) async {
+    final usage = FakeUsageTracker();
+    await tester.pumpWidget(_buildPage(buildTestSnapshot(), usage: usage));
+    await _pumpAndLoad(tester);
+    expect(usage.names, contains('session.started'));
+
+    await tester.tap(find.byTooltip('How to'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final howTo = usage.of<PlayerHowToOpened>().single;
+    expect(howTo.index, 0);
+    expect(usage.of<LearningCardOpened>().single.from, CardSource.player);
   });
 
   testWidgets('How to pauses playback and opens the learning card',

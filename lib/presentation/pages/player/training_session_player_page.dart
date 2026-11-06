@@ -53,6 +53,8 @@ import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/back_signals.dart';
 import '../../usage/usage_ui.dart';
+import '../../usage/usage_scope.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -107,7 +109,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     }
   }
 
-  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
+  void _toggleFullscreen() {
+    context.usage.track(PlayerFullscreen(on: !_fullscreen));
+    setState(() => _fullscreen = !_fullscreen);
+  }
 
   /// The effective Morshed's name for the top bar; null until known (or
   /// when there is no roster), and then the label is simply left out.
@@ -163,6 +168,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         learntExercisesRepository: getIt<LearntExercisesRepository>(),
         notificationService: getIt<PlayerNotificationService>(),
         repLogging: widget.repLogging,
+        usage: context.usage,
       );
 
   /// Edit from the player: pause first (audio and demo video stop while
@@ -262,6 +268,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   Future<void> _openHowTo(BuildContext context, int index) async {
     final exercise = _cubit.exerciseAt(index);
     if (exercise == null) return;
+    context.usage
+      ..track(PlayerHowToOpened(index: index, movementId: exercise.id))
+      ..track(
+          LearningCardOpened(movementId: exercise.id, from: CardSource.player));
     _cubit.pause();
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
@@ -574,6 +584,7 @@ class _StageState extends State<_Stage> {
   static const _progressVisibleFor = Duration(seconds: 3);
 
   void _toggleProgress() {
+    context.usage.track(PlayerProgressToggled(visible: !_showProgress));
     if (_showProgress) {
       _hideProgress?.cancel();
       setState(() => _showProgress = false);
