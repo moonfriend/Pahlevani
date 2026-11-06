@@ -15,8 +15,9 @@ import '../../datasources/usage/usage_remote_datasource.dart';
 /// uploads them in batches.
 ///
 /// Uploads run every [flushInterval], once [flushAfter] events piled up,
-/// and when the app goes to the background — only while signed in (the
-/// database takes `user_id` from the session). Events from before sign-in
+/// and when the app goes to the background — only while signed in. Rows
+/// get the signed-in account's `user_id` at upload (the table's insert
+/// policy only accepts the caller's own id), so events from before sign-in
 /// wait in the queue and go up with the first signed-in flush; `install_id`
 /// ties them together. A failed upload keeps its rows and waits longer
 /// before the next try (30 s, doubling, at most 15 min).
@@ -25,7 +26,7 @@ class RecordingUsageTracker implements UsageTracker {
     required UsageEventQueue queue,
     required UsageRemoteDataSource remote,
     required SharedPreferences prefs,
-    required bool Function() isSignedIn,
+    required String? Function() currentUserId,
     required String appVersion,
     required String platform,
     required DateTime Function() now,
@@ -37,7 +38,7 @@ class RecordingUsageTracker implements UsageTracker {
   })  : _queue = queue,
         _remote = remote,
         _prefs = prefs,
-        _isSignedIn = isSignedIn,
+        _currentUserId = currentUserId,
         _appVersion = appVersion,
         _platform = platform,
         _now = now,
@@ -51,7 +52,7 @@ class RecordingUsageTracker implements UsageTracker {
     required UsageEventQueue queue,
     required UsageRemoteDataSource remote,
     required Future<SharedPreferences> prefs,
-    required bool Function() isSignedIn,
+    required String? Function() currentUserId,
     required String appVersion,
     required String platform,
     DateTime Function()? now,
@@ -70,7 +71,7 @@ class RecordingUsageTracker implements UsageTracker {
       queue: queue,
       remote: remote,
       prefs: p,
-      isSignedIn: isSignedIn,
+      currentUserId: currentUserId,
       appVersion: appVersion,
       platform: platform,
       now: now ?? DateTime.now,
@@ -97,7 +98,7 @@ class RecordingUsageTracker implements UsageTracker {
   final UsageEventQueue _queue;
   final UsageRemoteDataSource _remote;
   final SharedPreferences _prefs;
-  final bool Function() _isSignedIn;
+  final String? Function() _currentUserId;
   final String _appVersion;
   final String _platform;
   final DateTime Function() _now;
@@ -177,12 +178,13 @@ class RecordingUsageTracker implements UsageTracker {
     }
     await _writes;
     final retryAfter = _retryAfter;
+    final userId = _currentUserId();
     if (!_enabled ||
-        !_isSignedIn() ||
+        userId == null ||
         (retryAfter != null && _now().isBefore(retryAfter))) {
       return;
     }
-    final run = _upload();
+    final run = _upload(userId);
     _inFlight = run;
     try {
       await run;
@@ -191,13 +193,15 @@ class RecordingUsageTracker implements UsageTracker {
     }
   }
 
-  Future<void> _upload() async {
+  Future<void> _upload(String userId) async {
     _sinceFlush = 0;
     try {
       while (true) {
         final batch = await _queue.peek(_batchSize);
         if (batch.isEmpty) break;
-        await _remote.insert([for (final r in batch) r.row]);
+        await _remote.insert([
+          for (final r in batch) {...r.row, 'user_id': userId}
+        ]);
         await _queue.remove([for (final r in batch) r.key]);
         if (batch.length < _batchSize) break;
       }

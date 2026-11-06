@@ -258,7 +258,7 @@ class DependencyInjection {
         queue: UsageEventQueue(),
         remote: SupabaseUsageRemoteDataSource(),
         prefs: SharedPreferences.getInstance(),
-        isSignedIn: () => Supabase.instance.client.auth.currentSession != null,
+        currentUserId: () => Supabase.instance.client.auth.currentUser?.id,
         appVersion: version,
         platform: kIsWeb ? 'web' : Platform.operatingSystem,
       );

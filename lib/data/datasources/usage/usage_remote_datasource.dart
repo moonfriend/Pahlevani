@@ -13,8 +13,10 @@ class SupabaseUsageRemoteDataSource implements UsageRemoteDataSource {
 
   final SupabaseClient _client;
 
+  /// `defaultToNull: false`: columns the rows leave out (`received_at`) get
+  /// their database default instead of NULL.
   @override
-  Future<void> insert(List<Map<String, Object?>> rows) => _client
-      .from('usage_events')
-      .upsert(rows, onConflict: 'id', ignoreDuplicates: true);
+  Future<void> insert(List<Map<String, Object?>> rows) =>
+      _client.from('usage_events').upsert(rows,
+          onConflict: 'id', ignoreDuplicates: true, defaultToNull: false);
 }

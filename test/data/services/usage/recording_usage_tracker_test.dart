@@ -26,14 +26,14 @@ void main() {
   late Directory tmpDir;
   late _FakeRemote remote;
   late DateTime now;
-  late bool signedIn;
+  late String? userId;
 
   Future<RecordingUsageTracker> tracker({int batchSize = 200}) =>
       RecordingUsageTracker.create(
         queue: UsageEventQueue(),
         remote: remote,
         prefs: SharedPreferences.getInstance(),
-        isSignedIn: () => signedIn,
+        currentUserId: () => userId,
         appVersion: '1.7.0+17',
         platform: 'android',
         now: () => now,
@@ -47,7 +47,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     remote = _FakeRemote();
     now = DateTime.utc(2026, 11, 6, 10);
-    signedIn = true;
+    userId = 'user-1';
   });
 
   tearDown(() async {
@@ -85,8 +85,8 @@ void main() {
     expect(first['occurred_at'], '2026-11-06T10:00:00.000Z');
     expect(first['app_version'], '1.7.0+17');
     expect(first['platform'], 'android');
-    expect(first.containsKey('user_id'), isFalse,
-        reason: 'the database fills user_id from auth.uid()');
+    expect(first['user_id'], 'user-1',
+        reason: 'stamped at upload: the signed-in account owns the rows');
   });
 
   test('the first run of an install is a first open; later runs are not',
@@ -102,15 +102,16 @@ void main() {
   });
 
   test('keeps events while signed out and sends them after sign-in', () async {
-    signedIn = false;
+    userId = null;
     final t = await tracker();
     t.track(const AuthScreenMode(mode: AuthMode.signIn));
     await t.flush();
     expect(remote.rows, isEmpty);
 
-    signedIn = true;
+    userId = 'user-2';
     await t.flush();
     expect(remote.rows.single['event'], 'auth.screen_mode');
+    expect(remote.rows.single['user_id'], 'user-2');
   });
 
   test('a failed upload keeps the rows for the next try', () async {
@@ -150,11 +151,11 @@ void main() {
 
   test('switched off: nothing is queued and the queue is emptied', () async {
     final t = await tracker();
-    signedIn = false;
+    userId = null;
     t.track(const PlayerMuted(on: true));
     await t.setEnabled(false);
     t.track(const PlayerMuted(on: false));
-    signedIn = true;
+    userId = 'user-1';
     await t.flush();
     expect(remote.rows, isEmpty);
     expect(t.enabled, isFalse);
