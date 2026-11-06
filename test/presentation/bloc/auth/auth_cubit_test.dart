@@ -587,4 +587,50 @@ void main() {
 
     await expectLater(pending, completes);
   });
+
+  group('signInWithSteady()', () {
+    test(
+        'opens Steady once and waits: the session arrives later through '
+        'the auth stream, so no spinner is left hanging', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      final before = cubit.state;
+
+      await cubit.signInWithSteady();
+
+      expect(repo.signInWithSteadyCallCount, 1);
+      expect(cubit.state, before);
+    });
+
+    test('a Steady session arriving later asks for consent first', () async {
+      final repo = FakeAuthRepository();
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      await cubit.signInWithSteady();
+      repo.emitUser(const AppUser(id: 'steady-1', email: 'ali@example.com'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state, isA<AuthNeedsConsent>());
+    });
+
+    test('Steady could not be opened: a plain message, earlier state kept',
+        () async {
+      final repo = FakeAuthRepository()..throwOnSteadySignIn = true;
+      final cubit = AuthCubit(repository: repo);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      final before = cubit.state;
+
+      await cubit.signInWithSteady();
+
+      final failure = cubit.state as AuthFailure;
+      expect(failure.message, steadyOpenFailedMessage);
+      expect(failure.previous, before);
+      expect(failure.field, AuthFailureField.general);
+    });
+  });
 }

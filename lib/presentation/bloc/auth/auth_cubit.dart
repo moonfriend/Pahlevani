@@ -288,6 +288,23 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  /// Opens Steady's sign-in. Deliberately no [AuthSubmitting]: the user may
+  /// close the browser and never come back, which would leave a spinner
+  /// hanging. A successful sign-in comes back through the auth stream like
+  /// any other session (consent first if needed).
+  Future<void> signInWithSteady() async {
+    if (isClosed) return;
+    final previous = state;
+    try {
+      await _repo.signInWithSteady();
+    } catch (e, st) {
+      AppLogger.w('signInWithSteady failed', error: e, stackTrace: st);
+      if (!isClosed) {
+        emit(AuthFailure(message: steadyOpenFailedMessage, previous: previous));
+      }
+    }
+  }
+
   Future<void> signInWithGoogle() async {
     if (isClosed) return;
     final previous = state;
@@ -353,3 +370,7 @@ class AuthCubit extends Cubit<AuthState> {
     return super.close();
   }
 }
+
+/// Shown when the Steady sign-in page can't be opened.
+const steadyOpenFailedMessage =
+    'Couldn’t open Steady. Check your connection and try again.';

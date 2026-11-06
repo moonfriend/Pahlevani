@@ -11,6 +11,8 @@ class FakeAuthRepository implements AuthRepository {
   bool throwOnDeleteAccount = false;
   int deleteAccountCallCount = 0;
   bool throwOnGoogleSignIn = false;
+  bool throwOnSteadySignIn = false;
+  int signInWithSteadyCallCount = 0;
   bool throwOnSignUpWithInviteCode = false;
   bool throwInvalidInviteCode = false;
   bool throwOnSignInWithUsername = false;
@@ -112,6 +114,14 @@ class FakeAuthRepository implements AuthRepository {
     const user = AppUser(id: 'user-google-1', email: 'google@example.com');
     _currentUser = user;
     return user;
+  }
+
+  /// Like Supabase: only opens the browser. The session arrives later via
+  /// [emitUser], the way the real deep link feeds [authStateChanges].
+  @override
+  Future<void> signInWithSteady() async {
+    signInWithSteadyCallCount++;
+    if (throwOnSteadySignIn) throw Exception('could not open browser');
   }
 
   @override

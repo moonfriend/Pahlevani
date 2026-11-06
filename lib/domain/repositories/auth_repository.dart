@@ -59,6 +59,13 @@ abstract class AuthRepository {
   /// react to [googleSignInEvents] rather than awaiting this method.
   Future<AppUser> signInWithGoogle();
 
+  /// Opens Steady's sign-in in the browser (Supabase custom OAuth provider
+  /// `custom:steady`). Returns once the browser is open, not when the user
+  /// is signed in: the session arrives later through [authStateChanges],
+  /// when Steady sends the user back to the app. Throws when the browser
+  /// can't be opened.
+  Future<void> signInWithSteady();
+
   /// Prepares the Google sign-in SDK so a platform-rendered button (web)
   /// can be shown and [googleSignInEvents] can start firing. A no-op on
   /// platforms that don't need it; safe to call multiple times.

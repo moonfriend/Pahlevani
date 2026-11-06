@@ -12,10 +12,13 @@ import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import 'access_scaffold.dart';
 
-/// The one screen after onboarding. "Create account" takes the email,
-/// password, activation code and the safety/privacy agreement together;
-/// "I have an account" takes just the email and password. No confirmation
-/// mail is sent.
+/// The one screen after onboarding. The main way in is "Sign in with
+/// Steady" (members already have a Steady account; terms are asked on the
+/// next screen). "Other ways to sign in" opens the older email forms, kept
+/// for gifted codes, the store reviewer and existing email accounts:
+/// "Create account" takes the email, password, activation code and the
+/// safety/privacy agreement together; "I have an account" takes just the
+/// email and password. No confirmation mail is sent.
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
 
@@ -27,6 +30,7 @@ class _AccountPageState extends State<AccountPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+  bool _showOtherWays = false;
   bool _newAccount = true;
   bool _safety = false;
   bool _privacy = false;
@@ -81,92 +85,121 @@ class _AccountPageState extends State<AccountPage> {
         failure?.field == AuthFailureField.general ? failure!.message : null;
     final action = _newAccount ? 'Create account' : 'Sign in';
 
+    final errorText = generalError == null
+        ? null
+        : Text(generalError,
+            style: KashiTextStyles.ui.copyWith(
+                fontSize: 13, color: Theme.of(context).colorScheme.error));
+
     return AccessScaffold(
       title: 'Welcome to Pahlevani Gowd',
       children: [
-        KashiSegmented<bool>(
-          options: const [
-            (true, 'Create account'),
-            (false, 'I have an account')
-          ],
-          selected: _newAccount,
-          onSelected: (value) => setState(() => _newAccount = value),
-        ),
-        const SizedBox(height: 20),
-        if (_newAccount) ...[
-          _ActivateIntro(source: _codeSource),
-          const SizedBox(height: 16),
-        ],
-        TextField(
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          autocorrect: false,
-          autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(labelText: 'Email'),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _password,
-          obscureText: true,
-          autofillHints: [
-            _newAccount ? AutofillHints.newPassword : AutofillHints.password
-          ],
-          decoration: InputDecoration(
-            labelText: 'Password',
-            helperText: _newAccount ? 'At least 6 characters' : null,
+        FilledButton(
+          onPressed: submitting
+              ? null
+              : () => context.read<AuthCubit>().signInWithSteady(),
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.action,
+            minimumSize: const Size.fromHeight(52),
+            shape: const RoundedRectangleBorder(),
           ),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) => _submit(),
+          child: const Text(steadySignInLabel),
         ),
-        if (_newAccount) ...[
+        if (!_showOtherWays && errorText != null) ...[
           const SizedBox(height: 12),
+          errorText,
+        ],
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => setState(() => _showOtherWays = !_showOtherWays),
+          child: Text(otherWaysLabel,
+              style: KashiTextStyles.ui
+                  .copyWith(fontSize: 13, color: colors.textBody)),
+        ),
+        if (_showOtherWays) ...[
+          const SizedBox(height: 12),
+          KashiSegmented<bool>(
+            options: const [
+              (true, 'Create account'),
+              (false, 'I have an account')
+            ],
+            selected: _newAccount,
+            onSelected: (value) => setState(() => _newAccount = value),
+          ),
+          const SizedBox(height: 20),
+          if (_newAccount) ...[
+            _ActivateIntro(source: _codeSource),
+            const SizedBox(height: 16),
+          ],
           TextField(
-            controller: _code,
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
             autocorrect: false,
-            textCapitalization: TextCapitalization.characters,
-            decoration: InputDecoration(
-              labelText: 'Activation code',
-              errorText: codeError,
-              errorMaxLines: 3,
-            ),
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(labelText: 'Email'),
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 16),
-          ConsentChecks(
-            safety: _safety,
-            privacy: _privacy,
-            onSafetyChanged: (v) => setState(() => _safety = v),
-            onPrivacyChanged: (v) => setState(() => _privacy = v),
-          ),
-        ],
-        if (generalError != null) ...[
           const SizedBox(height: 12),
-          Text(generalError,
-              style: KashiTextStyles.ui.copyWith(
-                  fontSize: 13, color: Theme.of(context).colorScheme.error)),
-        ],
-        const SizedBox(height: 20),
-        RetryCountdown(
-          until: failure?.retryAt,
-          builder: (context, secondsLeft) => FilledButton(
-            onPressed: submitting || secondsLeft != null || !_canSubmit
-                ? null
-                : _submit,
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.action,
-              minimumSize: const Size.fromHeight(48),
-              shape: const RoundedRectangleBorder(),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            autofillHints: [
+              _newAccount ? AutofillHints.newPassword : AutofillHints.password
+            ],
+            decoration: InputDecoration(
+              labelText: 'Password',
+              helperText: _newAccount ? 'At least 6 characters' : null,
             ),
-            child: submitting
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(secondsLeft != null
-                    ? 'Try again in $secondsLeft s'
-                    : action),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _submit(),
           ),
-        ),
+          if (_newAccount) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _code,
+              autocorrect: false,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: 'Activation code',
+                errorText: codeError,
+                errorMaxLines: 3,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            ConsentChecks(
+              safety: _safety,
+              privacy: _privacy,
+              onSafetyChanged: (v) => setState(() => _safety = v),
+              onPrivacyChanged: (v) => setState(() => _privacy = v),
+            ),
+          ],
+          if (errorText != null) ...[
+            const SizedBox(height: 12),
+            errorText,
+          ],
+          const SizedBox(height: 20),
+          RetryCountdown(
+            until: failure?.retryAt,
+            builder: (context, secondsLeft) => FilledButton(
+              onPressed: submitting || secondsLeft != null || !_canSubmit
+                  ? null
+                  : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.action,
+                minimumSize: const Size.fromHeight(48),
+                shape: const RoundedRectangleBorder(),
+              ),
+              child: submitting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(secondsLeft != null
+                      ? 'Try again in $secondsLeft s'
+                      : action),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -214,3 +247,9 @@ class _ActivateIntro extends StatelessWidget {
 /// The heading over how to get an activation code (here and on the locked
 /// screen).
 const activateTitle = 'Activate and enter the Gowd';
+
+/// The main button on the account screen.
+const steadySignInLabel = 'Sign in with Steady';
+
+/// Opens the email + code forms under the Steady button.
+const otherWaysLabel = 'Other ways to sign in';

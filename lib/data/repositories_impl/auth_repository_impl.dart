@@ -244,6 +244,28 @@ class AuthRepositoryImpl implements AuthRepository {
     return _completeGoogleSignIn(googleUser);
   }
 
+  /// Supabase's name for the Steady provider (Dashboard → Auth → Providers).
+  static const steadyProvider = sb.OAuthProvider('custom:steady');
+
+  /// Where Steady → Supabase sends a phone back. Must match the intent
+  /// filter in AndroidManifest.xml, CFBundleURLTypes in Info.plist, and the
+  /// Supabase "Redirect URLs" allowlist.
+  static const steadyMobileRedirect = 'com.pahlevani.app://login-callback';
+
+  @override
+  Future<void> signInWithSteady() async {
+    // Web returns to the page it started on (localhost while developing,
+    // gowd.rahaavi.com live), which must also be in the allowlist.
+    final opened = await _client.auth.signInWithOAuth(
+      steadyProvider,
+      redirectTo: kIsWeb ? '${Uri.base.origin}/' : steadyMobileRedirect,
+      authScreenLaunchMode: kIsWeb
+          ? sb.LaunchMode.platformDefault
+          : sb.LaunchMode.externalApplication,
+    );
+    if (!opened) throw Exception('Could not open the Steady sign-in page');
+  }
+
   Future<AppUser> _completeGoogleSignIn(GoogleSignInAccount googleUser) async {
     final idToken = googleUser.authentication.idToken;
     if (idToken == null) throw Exception('Google sign-in returned no ID token');

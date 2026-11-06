@@ -7,6 +7,7 @@ import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/access/access_gate.dart';
+import 'package:pahlevani/presentation/pages/access/account_page.dart';
 import 'package:pahlevani/presentation/pages/access/consent_texts.dart';
 
 import '../../../fakes/fake_activation_repository.dart';
@@ -29,6 +30,7 @@ Future<_Harness> _pump(
   WidgetTester tester, {
   AppUser? user,
   void Function(FakeAuthRepository, FakeActivationRepository)? setUp,
+  bool openOtherWays = true,
 }) async {
   tester.view.physicalSize = const Size(400, 900);
   tester.view.devicePixelRatio = 1;
@@ -57,6 +59,12 @@ Future<_Harness> _pump(
     ),
   ));
   await tester.pumpAndSettle();
+  // Email + code sits behind "Other ways to sign in"; most tests need it.
+  final otherWays = find.text(otherWaysLabel);
+  if (openOtherWays && otherWays.evaluate().isNotEmpty) {
+    await tapVisible(tester, otherWays);
+    await tester.pumpAndSettle();
+  }
   return _Harness(authRepo, activationRepo, resyncs);
 }
 
@@ -80,6 +88,51 @@ FilledButton _button(WidgetTester tester, String label) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, label));
 
 void main() {
+  group('Sign in with Steady', () {
+    testWidgets('is the main way in; email and code stay hidden',
+        (tester) async {
+      final h = await _pump(tester, openOtherWays: false);
+      expect(find.text('THE APP'), findsNothing);
+      expect(
+          find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Email'), findsNothing);
+
+      await tapVisible(
+          tester, find.widgetWithText(FilledButton, steadySignInLabel));
+      await tester.pump();
+      expect(h.auth.signInWithSteadyCallCount, 1);
+    });
+
+    testWidgets('"Other ways to sign in" shows email, password and code',
+        (tester) async {
+      await _pump(tester, openOtherWays: false);
+      await tapVisible(tester, find.text(otherWaysLabel));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
+      expect(find.text('I have an account'), findsOneWidget);
+    });
+
+    testWidgets('Steady could not be opened: says so on the screen',
+        (tester) async {
+      await _pump(tester,
+          openOtherWays: false,
+          setUp: (auth, _) => auth.throwOnSteadySignIn = true);
+      await tapVisible(
+          tester, find.widgetWithText(FilledButton, steadySignInLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(steadyOpenFailedMessage), findsOneWidget);
+    });
+
+    testWidgets('back from Steady as a new member: terms first',
+        (tester) async {
+      final h = await _pump(tester, openOtherWays: false);
+      h.auth.emitUser(const AppUser(id: 's1', email: 'ali@example.com'));
+      await tester.pumpAndSettle();
+      expect(
+          find.textContaining(ConsentTexts.safetyPoints.first), findsOneWidget);
+    });
+  });
+
   testWidgets('signed out: the account screen, not the app', (tester) async {
     await _pump(tester);
     expect(find.text('THE APP'), findsNothing);
@@ -236,7 +289,8 @@ void main() {
     await tapVisible(tester, find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(h.auth.signOutCallCount, 1);
-    expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget,
+        reason: 'back on the account screen');
   });
 
   testWidgets('a wrong password says so, and pauses the next try',

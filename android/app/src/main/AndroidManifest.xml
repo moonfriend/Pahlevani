@@ -30,6 +30,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Links are handled by app_links (Supabase), not Flutter's
+                 Navigator, which would try to open "login-callback" as a route. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
+            <!-- Sign in with Steady: Supabase sends the browser back here
+                 (AuthRepositoryImpl.steadyMobileRedirect). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="com.pahlevani.app" android:host="login-callback"/>
+            </intent-filter>
         </activity>
 
         <!-- audio_service background playback service -->
