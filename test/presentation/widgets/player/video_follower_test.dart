@@ -89,6 +89,24 @@ void main() {
     });
   });
 
+  group('showsGetReady', () {
+    test('a hold longer than a second: shown until the audio gets there', () {
+      expect(showsGetReady(moveMs: 0, offsetMs: -2500), isTrue);
+      expect(showsGetReady(moveMs: 2400, offsetMs: -2500), isTrue);
+      expect(showsGetReady(moveMs: 2500, offsetMs: -2500), isFalse);
+    });
+
+    test('a hold of a second or less is too short to announce', () {
+      expect(showsGetReady(moveMs: 0, offsetMs: -1000), isFalse);
+      expect(showsGetReady(moveMs: 0, offsetMs: -800), isFalse);
+    });
+
+    test('no hold: no offset or a positive one', () {
+      expect(showsGetReady(moveMs: 0, offsetMs: null), isFalse);
+      expect(showsGetReady(moveMs: 0, offsetMs: 700), isFalse);
+    });
+  });
+
   group('VideoFollower', () {
     late FakeAudioPlayerService engine;
     late MoveTimeline timeline;

@@ -14,6 +14,27 @@ abstract interface class FollowedVideo {
   Future<void> seekTo(Duration position);
 }
 
+/// How long, in move time, the video waits at frame 0 at the start of a
+/// move for the audio's beat — only for a negative [offsetMs] (see
+/// [videoAlignment]); null when it doesn't wait.
+int? beatHoldMs(int? offsetMs) =>
+    (offsetMs != null && offsetMs < 0) ? -offsetMs : null;
+
+/// Whether the video is still waiting for the beat [moveMs] into the move.
+bool isHoldingForBeat({required int moveMs, required int? offsetMs}) {
+  final hold = beatHoldMs(offsetMs);
+  return hold != null && moveMs < hold;
+}
+
+/// Waits up to this long pass unannounced; longer ones say "Get ready".
+const getReadyMinHoldMs = 1000;
+
+/// Whether the stage shows "Get ready": the video is holding for the beat,
+/// and the whole hold is longer than [getReadyMinHoldMs].
+bool showsGetReady({required int moveMs, required int? offsetMs}) =>
+    (beatHoldMs(offsetMs) ?? 0) > getReadyMinHoldMs &&
+    isHoldingForBeat(moveMs: moveMs, offsetMs: offsetMs);
+
 /// Where the demo video must be when the audio is [clipMs] into its clip and
 /// [moveMs] into the move.
 ///
@@ -32,9 +53,10 @@ abstract interface class FollowedVideo {
   required int videoMs,
 }) {
   if (videoMs <= 0) return (seekToMs: 0, holdUntilMoveMs: null);
-  final offset = offsetMs ?? 0;
-  if (moveMs + offset < 0) return (seekToMs: 0, holdUntilMoveMs: -offset);
-  final raw = clipMs + offset;
+  if (isHoldingForBeat(moveMs: moveMs, offsetMs: offsetMs)) {
+    return (seekToMs: 0, holdUntilMoveMs: beatHoldMs(offsetMs));
+  }
+  final raw = clipMs + (offsetMs ?? 0);
   return (
     seekToMs: ((raw % videoMs) + videoMs) % videoMs,
     holdUntilMoveMs: null

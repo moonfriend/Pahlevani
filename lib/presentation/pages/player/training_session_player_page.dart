@@ -769,6 +769,8 @@ class _StageState extends State<_Stage> {
                       ),
                     ),
                   ),
+                // The video waits at frame 0 for the morshed's beat.
+                if (hasVideo) _GetReady(timeline: cubit.timeline),
                 if (state.isPlaying || state.isMuted)
                   PositionedDirectional(
                     start: 10,
@@ -793,6 +795,46 @@ class _StageState extends State<_Stage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Get ready" over the video while it waits more than a second at frame 0
+/// for the audio's main beat (see [showsGetReady]). Its own builder, so
+/// audio-speed progress rebuilds only this label, and only when it flips.
+class _GetReady extends StatelessWidget {
+  const _GetReady({required this.timeline});
+
+  final MoveTimeline timeline;
+
+  bool _shows(MoveProgress progress) => showsGetReady(
+        moveMs: progress.position.inMilliseconds,
+        offsetMs: timeline.clipAt(progress.clipIndex)?.videoOffsetMs,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<MoveProgressCubit, MoveProgress>(
+      buildWhen: (a, b) => _shows(a) != _shows(b),
+      builder: (context, progress) => !_shows(progress)
+          ? const SizedBox.shrink()
+          : Align(
+              alignment: const Alignment(0, -0.6),
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(color: Color(0xCC0B1638)),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Text('Get ready',
+                        style: KashiTextStyles.ui.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: KashiPalette.yellow400)),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }
