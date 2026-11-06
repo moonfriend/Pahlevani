@@ -29,7 +29,7 @@ the learning cards and session items); `session_id` is `training_session.id`.
 | Event | Props | Logged by |
 |---|---|---|
 | `app.first_open` | – | tracker, when the install id is first created |
-| `app.opened` | `start` cold/warm · `since_last_visit_s` · `device_class` phone/tablet/desktop · `os` · `os_version` · `locale` · `network` wifi/mobile/none/other | usage root, at each new visit |
+| `app.opened` | `start` cold/warm · `since_last_visit_s` · `device_class` phone/tablet/desktop · `os` · `os_version` · `locale` · `network` wifi/mobile/none/other · `utc_offset_min` | usage root, at each new visit |
 | `app.backgrounded` | `visit_s` | usage root |
 | `app.foregrounded` | `away_s` · `new_visit` | usage root |
 

@@ -30,6 +30,7 @@ final class AppOpened extends UsageEvent {
     required this.osVersion,
     required this.locale,
     required this.network,
+    required this.utcOffsetMinutes,
   });
 
   final AppStart start;
@@ -41,6 +42,9 @@ final class AppOpened extends UsageEvent {
   final String osVersion;
   final String locale;
   final NetworkKind network;
+
+  /// The device's time zone offset, so visits can be read in local time.
+  final int utcOffsetMinutes;
 
   @override
   String get name => 'app.opened';
@@ -54,6 +58,7 @@ final class AppOpened extends UsageEvent {
         'os_version': osVersion,
         'locale': locale,
         'network': network.wire,
+        'utc_offset_min': utcOffsetMinutes,
       };
 }
 

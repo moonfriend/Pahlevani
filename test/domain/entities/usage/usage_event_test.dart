@@ -16,6 +16,7 @@ final List<UsageEvent> samples = [
     osVersion: '14',
     locale: 'en_US',
     network: NetworkKind.wifi,
+    utcOffsetMinutes: 60,
   ),
   const AppBackgrounded(visitSeconds: 42),
   const AppForegrounded(awaySeconds: 12, newVisit: false),

@@ -38,6 +38,7 @@ void main() {
     expect(opened.os, 'android');
     expect(opened.locale, 'de-DE');
     expect(opened.network, NetworkKind.wifi);
+    expect(opened.utcOffsetMinutes, DateTime.now().timeZoneOffset.inMinutes);
     expect(tracker.names, isNot(contains('app.first_open')));
   });
 

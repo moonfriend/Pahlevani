@@ -77,6 +77,7 @@ class UsageLifecycle {
       osVersion: device.osVersion,
       locale: device.locale,
       network: device.network,
+      utcOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
     ));
   }
 }
