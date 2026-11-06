@@ -7,6 +7,7 @@ import '../../../domain/usecases/audio_catalog/effective_morshed.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/download/media_download_cubit.dart';
 import '../../widgets/download/media_download_dialog.dart';
+import '../../usage/app_routes.dart';
 
 /// Exercise-demonstration videos are timed (their "sarzarb"/beat anchors)
 /// against this specific performer's recordings — hardcoded on purpose
@@ -48,6 +49,7 @@ Future<void> chooseMorshed(BuildContext context, Morshed morshed) async {
 Future<void> _showVideoSyncWarning(BuildContext context, Morshed morshed) =>
     showDialog<void>(
       context: context,
+      routeSettings: AppRoutes.settings(AppRoutes.morshedSyncWarning),
       builder: (ctx) => AlertDialog(
         title: const Text('Video sync heads-up'),
         content: Text(

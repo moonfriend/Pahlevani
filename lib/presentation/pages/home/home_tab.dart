@@ -12,6 +12,7 @@ import '../progress/calendar_page.dart';
 import '../session_flow/session_preview_page.dart';
 import '../session_flow/session_start.dart';
 import 'home_page.dart';
+import '../../usage/app_routes.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
 /// play flow (preview → player), the calendar and the info card from
@@ -42,6 +43,7 @@ class HomeTab extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.calendar),
         builder: (_) =>
             BlocProvider.value(value: history, child: const CalendarPage()),
       ),

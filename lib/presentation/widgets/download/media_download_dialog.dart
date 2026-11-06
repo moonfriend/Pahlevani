@@ -10,6 +10,7 @@ import 'package:pahlevani/domain/repositories/media_size_repository.dart';
 import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/usecases/download/estimate_download.dart';
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
+import '../../usage/app_routes.dart';
 
 /// Asks before downloading [target]'s media (showing the size, and for a
 /// session the tier choice), then downloads with a progress bar.
@@ -26,6 +27,7 @@ Future<bool> showMediaDownloadDialog(
 }) async {
   final completed = await showDialog<bool>(
     context: context,
+    routeSettings: AppRoutes.settings(AppRoutes.downloadDialog),
     barrierDismissible: false,
     builder: (_) => BlocProvider(
       create: (_) => (createCubit?.call() ?? _cubitFromGetIt(target))..load(),

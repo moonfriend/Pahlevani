@@ -24,6 +24,7 @@ import '../../layout/kashi_layout.dart';
 import '../library/learning_card_page.dart';
 import '../library/open_move_card.dart';
 import 'session_start.dart';
+import '../../usage/app_routes.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
@@ -33,6 +34,7 @@ Future<void> openSessionPreview(
     Navigator.push(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.sessionPreview),
         builder: (_) => BlocProvider.value(
           value: getIt<AudioCatalogCubit>()..load(),
           child: SessionPreviewPage(session: session),

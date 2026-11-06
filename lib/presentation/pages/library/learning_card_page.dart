@@ -14,6 +14,7 @@ import '../../widgets/player/exercise_demo_video_player.dart';
 import '../../widgets/player/fullscreen_mode.dart';
 import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
+import '../../usage/app_routes.dart';
 
 /// What the learning card shows about one move — from the Library's sample
 /// moves or from a session's real move.
@@ -159,6 +160,7 @@ Future<bool> showLearningCard(
 Future<bool?> pushLearningCard(BuildContext context, LearningCardPage page) {
   return showGeneralDialog<bool>(
     context: context,
+    routeSettings: AppRoutes.settings(AppRoutes.learningCard),
     barrierDismissible: true,
     barrierLabel: page.move.name,
     // Light enough that the page behind stays visible: a pop-up over it.

@@ -37,6 +37,8 @@ import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
 import 'package:pahlevani/domain/services/usage_tracker.dart';
 import 'package:pahlevani/presentation/usage/usage_scope.dart';
 import 'package:pahlevani/presentation/usage/usage_root.dart';
+import 'package:pahlevani/presentation/usage/screen_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_navigator_observer.dart';
 import 'package:pahlevani/data/services/usage/device_context_reader.dart';
 
 Future<void> main() async {
@@ -127,15 +129,28 @@ Future<void> main() async {
   runApp(PahlevaniApp(currentBuildNumber: currentBuildNumber));
 }
 
-class PahlevaniApp extends StatelessWidget {
+class PahlevaniApp extends StatefulWidget {
   const PahlevaniApp({super.key, required this.currentBuildNumber});
 
   final int currentBuildNumber;
 
   @override
+  State<PahlevaniApp> createState() => _PahlevaniAppState();
+}
+
+class _PahlevaniAppState extends State<PahlevaniApp> {
+  final UsageTracker _usage = getIt<UsageTracker>();
+  late final ScreenTracker _screens = ScreenTracker(tracker: _usage);
+  late final UsageNavigatorObserver _navigationUsage =
+      UsageNavigatorObserver(_screens, _usage);
+
+  int get currentBuildNumber => widget.currentBuildNumber;
+
+  @override
   Widget build(BuildContext context) {
     return UsageScope(
-      tracker: getIt<UsageTracker>(),
+      tracker: _usage,
+      screens: _screens,
       child: _providers(),
     );
   }
@@ -187,6 +202,7 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
+          navigatorObservers: [_navigationUsage],
           builder: (context, child) =>
               UsageRoot(device: readDeviceContext, child: child!),
           // Version gate stays outermost: an outdated app is blocked before

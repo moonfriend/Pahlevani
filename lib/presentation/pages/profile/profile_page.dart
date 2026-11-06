@@ -22,6 +22,7 @@ import '../session_flow/rep_log_page.dart';
 import '../training_session/training_sessions_page.dart';
 import '../../bloc/usage/usage_sharing_cubit.dart';
 import '../../usage/usage_scope.dart';
+import '../../usage/app_routes.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -227,6 +228,7 @@ class _Account extends StatelessWidget {
     final auth = context.read<AuthCubit>();
     final delete = await showDialog<bool>(
       context: context,
+      routeSettings: AppRoutes.settings(AppRoutes.deleteAccountConfirm),
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete your account?'),
         content: const Text(
@@ -301,6 +303,7 @@ class _TrainerTools extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute<void>(
+                settings: AppRoutes.settings(AppRoutes.trainerTools),
                 builder: (_) => Scaffold(
                   appBar: AppBar(title: const Text('Trainer tools')),
                   body: const TrainingSessionPage(),
@@ -328,8 +331,11 @@ class _DesignPreviews extends StatelessWidget {
     final sessions =
         state is TrainingHistoryLoaded ? state.completions.length : 0;
 
-    void push(Widget page) =>
-        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    void push(Widget page) => Navigator.push(
+        context,
+        MaterialPageRoute(
+            settings: AppRoutes.settings(AppRoutes.designPreview),
+            builder: (_) => page));
 
     Widget entry(String label, VoidCallback onTap) => ListTile(
           contentPadding: EdgeInsets.zero,

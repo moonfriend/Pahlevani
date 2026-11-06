@@ -50,6 +50,7 @@ import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/presentation/widgets/player/fullscreen_mode.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
+import '../../usage/app_routes.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -174,6 +175,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
+          settings: AppRoutes.settings(AppRoutes.editSession),
           builder: (_) => EditTrainingSessionPage(
                 trainingSession: _session,
                 items: detail?.items ?? const [],
@@ -288,6 +290,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final reps = await Navigator.push<int>(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.repLog),
         builder: (routeContext) => RepLogPage(
           moveName: move.displayName,
           moveNumber: state.playingIndex + 1,
@@ -344,6 +347,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     unawaited(Navigator.pushReplacement(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.complete),
         builder: (completeContext) => CompletePage(
           tileNumber: tileNumber,
           loggedReps: [
