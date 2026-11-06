@@ -68,6 +68,8 @@ import '../../presentation/bloc/path/path_cubit.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 import '../../presentation/bloc/tracking/training_history_cubit.dart';
 import '../../features/fitness_test/fitness_test_module.dart';
+import '../../data/repositories_impl/open_session_store_impl.dart';
+import '../../domain/usage/open_session.dart';
 
 final getIt = GetIt.instance;
 
@@ -89,6 +91,7 @@ class DependencyInjection {
     // The usage study (docs/usage_study/event_catalogue.md). Needs Hive,
     // so it comes after the local databases.
     getIt.registerSingleton<UsageTracker>(await _createUsageTracker());
+    getIt.registerLazySingleton<OpenSessionStore>(() => OpenSessionStoreImpl());
 
     getIt.registerLazySingleton<Dio>(() => Dio());
 

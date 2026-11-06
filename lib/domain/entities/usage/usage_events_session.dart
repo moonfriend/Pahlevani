@@ -12,7 +12,9 @@ enum PreviewExit { start, back }
 /// in presentation).
 enum UsageSessionMode { learning, athlete, zoorkhaneh }
 
-enum AbandonHow { back, appClosed, killed }
+/// `back`: the player was left. `killed`: the app died with the session
+/// open (reported at the next start).
+enum AbandonHow { back, killed }
 
 enum DownloadTargetKind { session, morshedPack }
 

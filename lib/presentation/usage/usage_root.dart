@@ -10,15 +10,20 @@ import '../layout/kashi_layout.dart';
 import 'dead_tap.dart';
 import 'usage_lifecycle.dart';
 import 'usage_scope.dart';
+import '../../domain/usage/open_session.dart';
 
 /// The usage study's app-wide listeners, installed once around every route
 /// (`MaterialApp.builder`): the app lifecycle (visits), how far each
 /// screen is scrolled, and taps that hit nothing that reacts (dead taps).
 class UsageRoot extends StatefulWidget {
-  const UsageRoot({super.key, required this.device, required this.child});
+  const UsageRoot(
+      {super.key, required this.device, this.openSession, required this.child});
 
   /// Reads the device facts for `app.opened` (data layer, injected).
   final Future<DeviceContext> Function() device;
+
+  /// Where the player marks a session open (killed-session detection).
+  final OpenSessionStore? openSession;
   final Widget child;
 
   @override
@@ -44,6 +49,7 @@ class _UsageRootState extends State<UsageRoot> {
       tracker: context.usage,
       device: widget.device,
       deviceClass: _deviceClass,
+      openSession: widget.openSession,
     );
     _listener = AppLifecycleListener(
         onStateChange: (state) => unawaited(_lifecycle.changed(state)));

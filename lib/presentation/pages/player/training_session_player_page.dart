@@ -55,6 +55,7 @@ import '../../usage/back_signals.dart';
 import '../../usage/usage_ui.dart';
 import '../../usage/usage_scope.dart';
 import '../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/usage/open_session.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -169,6 +170,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         notificationService: getIt<PlayerNotificationService>(),
         repLogging: widget.repLogging,
         usage: context.usage,
+        openSession: getIt.isRegistered<OpenSessionStore>()
+            ? getIt<OpenSessionStore>()
+            : null,
       );
 
   /// Edit from the player: pause first (audio and demo video stop while

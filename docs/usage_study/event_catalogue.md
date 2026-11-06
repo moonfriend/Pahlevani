@@ -99,7 +99,7 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | `preview.left` | `session_id` · `how` start/back · `seconds` · `moves_opened` | preview |
 | `session.started` | `session_id` · `mode` learning/athlete/zoorkhaneh · `morshed_id` · `downloaded` · `moves` | SessionPlayerCubit |
 | `session.completed` | `session_id` · `seconds` · `played_s` · `pauses` · `replays` · `seeks` | SessionPlayerCubit |
-| `session.abandoned` | `session_id` · `last_index` · `played_s` · `how` back/app_closed/killed | SessionPlayerCubit / next start |
+| `session.abandoned` | `session_id` · `last_index` · `played_s` · `how` back/killed | SessionPlayerCubit; `killed` (with a `player.move_ended` how=app_killed) is logged at the next cold start from the open-session marker |
 | `download.started` | `target` session/morshed_pack · `id` · `tier` · `bytes` | MediaDownloadCubit |
 | `download.finished` | `target` · `id` · `tier` · `bytes` · `seconds` | MediaDownloadCubit |
 | `download.failed` | `target` · `id` · `tier` · `error` network/storage/other | MediaDownloadCubit |

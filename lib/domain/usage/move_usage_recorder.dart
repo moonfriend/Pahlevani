@@ -54,6 +54,11 @@ class MoveUsageRecorder {
   /// Index of the move being played, if any.
   int? get openIndex => _open?.index;
 
+  int? get openMovementId => _open?.movementId;
+  int? get openRepsPlanned => _open?.repsPlanned;
+  int get openPauses => _open?.pauses ?? 0;
+  int get openSeeks => _open?.seeks ?? 0;
+
   /// Seconds the open move has played so far.
   double get openPlayedSeconds => _seconds(_playedOf(_open));
 

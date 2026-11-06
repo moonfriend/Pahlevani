@@ -24,6 +24,7 @@ import 'package:pahlevani/presentation/bloc/player/session_player_state.dart';
 import 'package:pahlevani/domain/usage/move_usage_recorder.dart';
 import 'package:pahlevani/domain/services/usage_tracker.dart';
 import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 export 'package:pahlevani/presentation/bloc/player/session_player_state.dart';
 
@@ -82,6 +83,12 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   int _replays = 0;
   int _seeks = 0;
 
+  /// The open-session marker (see OpenSession), refreshed on every change
+  /// and every [_markerEvery] while open; null keeps no marker.
+  final OpenSessionStore? _openSession;
+  Timer? _markerTimer;
+  static const _markerEvery = Duration(seconds: 15);
+
   SessionPlayerCubit({
     required TrainingSession trainingSession,
     required PlayerMode mode,
@@ -96,7 +103,9 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     Random? random,
     UsageTracker usage = const NoOpUsageTracker(),
     DateTime Function()? clock,
+    OpenSessionStore? openSession,
   })  : _usage = usage,
+        _openSession = openSession,
         _now = clock ?? DateTime.now,
         _moves = MoveUsageRecorder(now: clock),
         _audioCatalog = audioCatalogRepository,
@@ -489,6 +498,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     _usage.track(PlayerPaused(
         index: s.playingIndex, positionSeconds: _position, source: source));
     _moves.setPlaying(false);
+    _saveMarker();
     _timeline.pause();
     emit(s.copyWith(isPlaying: false));
   }
@@ -521,6 +531,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     ));
     _moves.seeked();
     _seeks++;
+    _saveMarker();
     return _timeline.seek(position);
   }
 
@@ -539,6 +550,10 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
       morshedId = await _audioCatalog.getSelectedMorshedId();
     } catch (error) {
       AppLogger.w('Usage study: morshed unknown', error: error);
+    }
+    _markerTimer?.cancel();
+    if (_openSession != null) {
+      _markerTimer = Timer.periodic(_markerEvery, (_) => _saveMarker());
     }
     _usage.track(SessionStarted(
       sessionId: _trainingSession.id,
@@ -566,6 +581,29 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     _waitingSince = waiting ? _now() : null;
     _usage.track(PlayerMoveReached(
         index: index, movementId: movementId, waitingForGo: waiting));
+    _saveMarker();
+  }
+
+  void _saveMarker() {
+    final store = _openSession;
+    final index = _moves.openIndex;
+    if (store == null || index == null || _finished) return;
+    unawaited(store.save(OpenSession(
+      sessionId: _trainingSession.id,
+      sessionPlayedSeconds: _moves.sessionPlayedSeconds,
+      index: index,
+      movementId: _moves.openMovementId ?? 0,
+      movePlayedSeconds: _moves.openPlayedSeconds,
+      repsPlanned: _moves.openRepsPlanned ?? 0,
+      pauses: _moves.openPauses,
+      seeks: _moves.openSeeks,
+    )));
+  }
+
+  void _clearMarker() {
+    _markerTimer?.cancel();
+    final store = _openSession;
+    if (store != null) unawaited(store.clear());
   }
 
   void _goTapped() {
@@ -585,6 +623,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
 
   void _runCompleted() {
     _finished = true;
+    _clearMarker();
     final started = _runStartedAt;
     _usage.track(SessionCompleted(
       sessionId: _trainingSession.id,
@@ -613,6 +652,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
         how: AbandonHow.back,
       ));
     }
+    _clearMarker();
     await _notificationSub?.cancel();
     await _moveEventSub.cancel();
     await _timeline.close();

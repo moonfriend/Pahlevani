@@ -6,6 +6,7 @@ import 'package:pahlevani/domain/usage/visit_clock.dart';
 import 'package:pahlevani/presentation/usage/usage_lifecycle.dart';
 
 import '../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 const _device = DeviceContext(
   os: 'android',
@@ -90,4 +91,46 @@ void main() {
     expect(tracker.foregroundCalls, 0);
     expect(tracker.names, ['app.opened']);
   });
+
+  test('a session left open by a killed app is reported on the next start',
+      () async {
+    final store = _OneMarker(const OpenSession(
+      sessionId: 7,
+      sessionPlayedSeconds: 60,
+      index: 2,
+      movementId: 12,
+      movePlayedSeconds: 9,
+      repsPlanned: 10,
+      pauses: 0,
+      seeks: 0,
+    ));
+    final withStore = UsageLifecycle(
+      tracker: tracker,
+      device: () async => _device,
+      deviceClass: () => DeviceClass.phone,
+      openSession: store,
+    );
+    await withStore.started();
+    expect(tracker.names,
+        ['app.opened', 'player.move_ended', 'session.abandoned']);
+    expect(tracker.of<SessionAbandoned>().single.how, AbandonHow.killed);
+  });
+}
+
+class _OneMarker implements OpenSessionStore {
+  _OneMarker(this.marker);
+  OpenSession? marker;
+
+  @override
+  Future<void> save(OpenSession m) async => marker = m;
+
+  @override
+  Future<OpenSession?> take() async {
+    final m = marker;
+    marker = null;
+    return m;
+  }
+
+  @override
+  Future<void> clear() async => marker = null;
 }

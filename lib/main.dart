@@ -41,6 +41,7 @@ import 'package:pahlevani/presentation/usage/screen_tracker.dart';
 import 'package:pahlevani/presentation/usage/usage_navigator_observer.dart';
 import 'package:pahlevani/data/services/usage/device_context_reader.dart';
 import 'package:pahlevani/presentation/usage/back_signals.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -215,8 +216,10 @@ class _PahlevaniAppState extends State<PahlevaniApp> {
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
           navigatorObservers: [_navigationUsage],
-          builder: (context, child) =>
-              UsageRoot(device: readDeviceContext, child: child!),
+          builder: (context, child) => UsageRoot(
+              device: readDeviceContext,
+              openSession: getIt<OpenSessionStore>(),
+              child: child!),
           // Version gate stays outermost: an outdated app is blocked before
           // the first-open splash.
           home: VersionGate(

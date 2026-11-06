@@ -28,6 +28,7 @@ import '../../../fakes/fake_player_notification_service.dart';
 import '../../../fakes/fake_usage_tracker.dart';
 import 'package:pahlevani/domain/services/usage_tracker.dart';
 import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -164,11 +165,13 @@ SessionPlayerCubit _makeCubit(
   UsageTracker? usage,
   DateTime Function()? clock,
   FakePlayerNotificationService? notification,
+  OpenSessionStore? openSession,
 }) {
   final session = snapshot.sessionsById.values.first;
   return SessionPlayerCubit(
     usage: usage ?? const NoOpUsageTracker(),
     clock: clock,
+    openSession: openSession,
     trainingSession: session,
     mode: mode,
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
@@ -2359,5 +2362,52 @@ void main() {
       await c.loadTracks();
       expect(usage.of<UiErrorShown>().single.messageKey, 'session_empty');
     });
+
+    test('keeps an open-session marker while playing, cleared at the end',
+        () async {
+      final store = _MemoryOpenSession();
+      final c = _makeCubit(three(),
+          usage: usage, clock: () => now, openSession: store);
+      await c.loadTracks();
+      await Future<void>.delayed(Duration.zero);
+      expect(store.saved?.index, 0);
+      wait(5);
+      c.next();
+      await Future<void>.delayed(Duration.zero);
+      expect([store.saved?.index, store.saved?.sessionId], [1, 7]);
+      expect(store.saved?.sessionPlayedSeconds, 5);
+      await c.close();
+      expect(store.saved, isNull, reason: 'a closed player is not killed');
+    });
+
+    test('a finished session clears the marker', () async {
+      final store = _MemoryOpenSession();
+      final c = _makeCubit(three(),
+          usage: usage, clock: () => now, openSession: store);
+      addTearDown(c.close);
+      await c.loadTracks();
+      for (var i = 0; i < 3; i++) {
+        c.next();
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(store.saved, isNull);
+    });
   });
+}
+
+class _MemoryOpenSession implements OpenSessionStore {
+  OpenSession? saved;
+
+  @override
+  Future<void> save(OpenSession marker) async => saved = marker;
+
+  @override
+  Future<OpenSession?> take() async {
+    final m = saved;
+    saved = null;
+    return m;
+  }
+
+  @override
+  Future<void> clear() async => saved = null;
 }
