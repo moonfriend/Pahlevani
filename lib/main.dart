@@ -197,13 +197,14 @@ class _PahlevaniAppState extends State<PahlevaniApp> {
           create: (_) => AuthCubit(
             repository: getIt<AuthRepository>(),
             activation: getIt<ActivationRepository>(),
+            usage: _usage,
           )..initialize(),
           lazy: false,
         ),
         // Release 1's activation gate (Steady supporters, migration 0045).
         BlocProvider<ActivationCubit>(
-          create: (_) =>
-              ActivationCubit(repository: getIt<ActivationRepository>()),
+          create: (_) => ActivationCubit(
+              repository: getIt<ActivationRepository>(), usage: _usage),
         ),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(

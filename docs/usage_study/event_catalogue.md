@@ -53,14 +53,14 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 |---|---|---|
 | `auth.screen_mode` | `mode` create_account/sign_in | account page |
 | `auth.submit` | `mode` · `seconds_on_screen` · `corrections` · `attempt` | account page |
-| `auth.result` | `mode` · `ok` · `error` wrong_credentials/email_taken/code_invalid/code_used/weak_password/rate_limited/network/other · `seconds` | AuthCubit |
+| `auth.result` | `mode` · `ok` · `error` wrong_credentials/email_taken/code_invalid/weak_password/rate_limited/network/other · `seconds` | AuthCubit |
 | `auth.consent_shown` | `is_update` | consent page |
 | `auth.consent_accepted` | `seconds` · `opened_terms` · `opened_privacy` | consent page |
 | `auth.consent_declined` | `seconds` | consent page |
 | `auth.signed_out` | – | AuthCubit |
 | `auth.account_deleted` | – | AuthCubit |
-| `access.code_entered` | `result` ok/invalid/used/offline · `attempt` | ActivationCubit |
-| `access.locked_screen_action` | `action` link/sign_out/retry | locked page |
+| `access.code_entered` | `result` ok/invalid/offline (invalid includes used up) · `attempt` | ActivationCubit |
+| `access.locked_screen_action` | `action` link/sign_out | locked page |
 
 ## C — first open, Home, Library, learning card, Profile (RQ3, RQ4)
 

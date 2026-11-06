@@ -6,6 +6,8 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../bloc/auth/auth_cubit.dart';
 import '../../widgets/access/consent_checks.dart';
 import 'access_scaffold.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Signed in, but not agreed to the current terms: after the terms changed
 /// (with a notice saying when), or if saving the agreement failed while
@@ -22,7 +24,32 @@ class _ConsentPageState extends State<ConsentPage> {
   bool _privacy = false;
   bool _saving = false;
 
+  // For the usage study.
+  final DateTime _shownAt = DateTime.now();
+  final Set<ExternalLink> _opened = {};
+
+  double get _seconds =>
+      DateTime.now().difference(_shownAt).inMilliseconds / 1000;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = context.read<AuthCubit>().state;
+    context.usage.track(AuthConsentShown(
+        isUpdate: state is AuthNeedsConsent && state.isUpdate));
+  }
+
+  void _decline() {
+    context.usage.track(AuthConsentDeclined(seconds: _seconds));
+    context.read<AuthCubit>().declineConsentAndSignOut();
+  }
+
   Future<void> _continue() async {
+    context.usage.track(AuthConsentAccepted(
+      seconds: _seconds,
+      openedTerms: _opened.contains(ExternalLink.terms),
+      openedPrivacy: _opened.contains(ExternalLink.privacy),
+    ));
     setState(() => _saving = true);
     await context.read<AuthCubit>().acceptConsent();
     if (mounted) setState(() => _saving = false);
@@ -59,6 +86,7 @@ class _ConsentPageState extends State<ConsentPage> {
           privacy: _privacy,
           onSafetyChanged: (v) => setState(() => _safety = v),
           onPrivacyChanged: (v) => setState(() => _privacy = v),
+          onLinkOpened: _opened.add,
         ),
         if (error != null) ...[
           const SizedBox(height: 12),
@@ -78,7 +106,7 @@ class _ConsentPageState extends State<ConsentPage> {
         ),
         const SizedBox(height: 8),
         TextButton(
-          onPressed: () => context.read<AuthCubit>().declineConsentAndSignOut(),
+          onPressed: _decline,
           child: const Text('Sign out'),
         ),
       ],

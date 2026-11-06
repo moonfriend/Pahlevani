@@ -1,4 +1,5 @@
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 
 /// Thrown by [AuthRepository.signUpWithInviteCode] when the code doesn't
 /// match a live (non-revoked) invite code — see
@@ -86,4 +87,8 @@ abstract class AuthRepository {
   /// Trainer-only — the profiles RLS policy restricts this to callers where
   /// is_trainer is true.
   Future<List<AppUser>> listTrainees();
+
+  /// Why a sign-in or sign-up failed, in the usage study's closed classes
+  /// — the repository knows its backend's error types; callers don't.
+  AuthErrorKind classifyError(Object error);
 }

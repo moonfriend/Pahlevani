@@ -10,6 +10,7 @@ import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
 import '../../usage/usage_ui.dart';
 import '../../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Signed in, not activated: the admin's message and Steady link, and a
 /// field for the activation code the member got from us.
@@ -50,8 +51,12 @@ class _LockedPageState extends State<LockedPage> {
                 .copyWith(fontSize: 15, height: 1.5, color: colors.textBody)),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: () => openExternalLink(
-              context, ExternalLink.activationInfo, text.linkUrl),
+          onPressed: () {
+            context.usage.track(
+                const AccessLockedScreenAction(action: LockedAction.link));
+            openExternalLink(
+                context, ExternalLink.activationInfo, text.linkUrl);
+          },
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),
             shape: const RoundedRectangleBorder(),
@@ -98,6 +103,8 @@ class _LockedPageState extends State<LockedPage> {
                   .copyWith(fontSize: 12.5, color: colors.textMuted)),
         TextButton(
           onPressed: () {
+            context.usage.track(
+                const AccessLockedScreenAction(action: LockedAction.signOut));
             context.read<ActivationCubit>().reset();
             context.read<AuthCubit>().signOut();
           },

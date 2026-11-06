@@ -9,16 +9,16 @@ enum AuthErrorKind {
   wrongCredentials,
   emailTaken,
   codeInvalid,
-  codeUsed,
   weakPassword,
   rateLimited,
   network,
   other,
 }
 
-enum CodeResult { ok, invalid, used, offline }
+/// `invalid` covers used-up codes too: the server gives one answer for both.
+enum CodeResult { ok, invalid, offline }
 
-enum LockedAction { link, signOut, retry }
+enum LockedAction { link, signOut }
 
 /// The account screen's "Create account" / "I have an account" switch.
 final class AuthScreenMode extends UsageEvent {

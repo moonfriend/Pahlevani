@@ -7,7 +7,9 @@ import 'package:pahlevani/domain/entities/auth/app_user.dart';
 import 'package:pahlevani/domain/entities/auth/terms_info.dart';
 import 'package:pahlevani/domain/repositories/activation_repository.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 import 'package:pahlevani/domain/services/retry_cooldown.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
 import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
 
 part 'auth_state.dart';
@@ -19,6 +21,8 @@ class AuthCubit extends Cubit<AuthState> {
   final RetryCooldown _codeCooldown;
   StreamSubscription<AppUser?>? _authSub;
   StreamSubscription<AppUser>? _googleSub;
+  final UsageTracker _usage;
+  final DateTime Function() _now;
 
   /// The terms everyone must have agreed to: the app's own until the
   /// server's arrives.
@@ -35,7 +39,10 @@ class AuthCubit extends Cubit<AuthState> {
     required AuthRepository repository,
     ActivationRepository? activation,
     DateTime Function()? clock,
+    UsageTracker usage = const NoOpUsageTracker(),
   })  : _repo = repository,
+        _usage = usage,
+        _now = clock ?? DateTime.now,
         _activation = activation,
         _signInCooldown = RetryCooldown(clock: clock),
         _codeCooldown = RetryCooldown(clock: clock),
@@ -108,15 +115,18 @@ class AuthCubit extends Cubit<AuthState> {
   }) async {
     if (isClosed || _signInCooldown.blockedUntil != null) return;
     final previous = state;
+    final started = _now();
     emit(const AuthSubmitting());
     try {
       final user =
           await _repo.signInWithEmail(email: email, password: password);
+      _result(AuthMode.signIn, started);
       if (isClosed) return;
       _signInCooldown.reset();
       _emitForUser(user);
     } catch (e, st) {
       AppLogger.w('signInWithEmail failed', error: e, stackTrace: st);
+      _result(AuthMode.signIn, started, error: _repo.classifyError(e));
       if (!isClosed) {
         emit(AuthFailure(
           message: e.toString(),
@@ -145,6 +155,7 @@ class AuthCubit extends Cubit<AuthState> {
     }
     if (isClosed || _codeCooldown.blockedUntil != null) return;
     final previous = state;
+    final started = _now();
     emit(const AuthSubmitting());
 
     final bool valid;
@@ -153,6 +164,7 @@ class AuthCubit extends Cubit<AuthState> {
     } catch (e, st) {
       AppLogger.w('Checking the activation code failed',
           error: e, stackTrace: st);
+      _result(AuthMode.createAccount, started, error: AuthErrorKind.network);
       if (!isClosed) {
         emit(AuthFailure(
           message: ActivationCubit.offlineMessage,
@@ -161,6 +173,10 @@ class AuthCubit extends Cubit<AuthState> {
         ));
       }
       return;
+    }
+    if (!valid) {
+      _result(AuthMode.createAccount, started,
+          error: AuthErrorKind.codeInvalid);
     }
     if (isClosed) return;
     if (!valid) {
@@ -182,6 +198,7 @@ class AuthCubit extends Cubit<AuthState> {
       } catch (e, st) {
         AppLogger.w('registerWithCode: sign-up failed',
             error: e, stackTrace: st);
+        _result(AuthMode.createAccount, started, error: _repo.classifyError(e));
         if (!isClosed) {
           emit(AuthFailure(message: e.toString(), previous: previous));
         }
@@ -193,6 +210,7 @@ class AuthCubit extends Cubit<AuthState> {
       } catch (e, st) {
         AppLogger.w('registerWithCode: consent not saved',
             error: e, stackTrace: st);
+        _result(AuthMode.createAccount, started, error: AuthErrorKind.other);
         if (!isClosed) {
           emit(AuthFailure(
             message: e.toString(),
@@ -208,6 +226,7 @@ class AuthCubit extends Cubit<AuthState> {
         AppLogger.w('registerWithCode: code not redeemed',
             error: e, stackTrace: st);
       }
+      _result(AuthMode.createAccount, started);
       if (!isClosed) emit(AuthAuthenticated(user));
     } finally {
       _registering = false;
@@ -325,6 +344,7 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> signOut() async {
+    _usage.track(const AuthSignedOut());
     await _repo.signOut();
     if (!isClosed) emit(const AuthAnonymous());
   }
@@ -337,6 +357,7 @@ class AuthCubit extends Cubit<AuthState> {
     final current = state;
     try {
       await _repo.deleteAccount();
+      _usage.track(const AuthAccountDeleted());
       if (!isClosed) emit(const AuthAnonymous());
     } catch (e, st) {
       AppLogger.w('deleteAccount failed', error: e, stackTrace: st);
@@ -345,6 +366,15 @@ class AuthCubit extends Cubit<AuthState> {
       }
     }
   }
+
+  /// Logs how a sign-in or sign-up attempt ended (`error` null = ok).
+  void _result(AuthMode mode, DateTime started, {AuthErrorKind? error}) =>
+      _usage.track(AuthResult(
+        mode: mode,
+        ok: error == null,
+        error: error,
+        seconds: _now().difference(started).inMilliseconds / 1000,
+      ));
 
   @override
   Future<void> close() async {

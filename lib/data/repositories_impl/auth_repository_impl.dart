@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show SocketException;
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 /// [AuthRepository] backed by Supabase auth + the `profiles` table
@@ -350,4 +352,31 @@ class AuthRepositoryImpl implements AuthRepository {
       (_) => _nonceCharset[random.nextInt(_nonceCharset.length)],
     ).join();
   }
+
+  @override
+  AuthErrorKind classifyError(Object error) => classifyAuthError(error);
+}
+
+/// Maps Supabase auth failures to the study's error classes, by GoTrue's
+/// error codes (https://supabase.com/docs/guides/auth/debugging/error-codes).
+AuthErrorKind classifyAuthError(Object error) {
+  if (error is sb.AuthRetryableFetchException ||
+      error is SocketException ||
+      error is TimeoutException) {
+    return AuthErrorKind.network;
+  }
+  if (error is sb.AuthWeakPasswordException) return AuthErrorKind.weakPassword;
+  if (error is sb.AuthException) {
+    return switch (error.code) {
+      'invalid_credentials' => AuthErrorKind.wrongCredentials,
+      'user_already_exists' || 'email_exists' => AuthErrorKind.emailTaken,
+      'weak_password' => AuthErrorKind.weakPassword,
+      'over_request_rate_limit' ||
+      'over_email_send_rate_limit' =>
+        AuthErrorKind.rateLimited,
+      _ when error.statusCode == '429' => AuthErrorKind.rateLimited,
+      _ => AuthErrorKind.other,
+    };
+  }
+  return AuthErrorKind.other;
 }
