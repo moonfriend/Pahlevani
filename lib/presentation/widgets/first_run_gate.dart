@@ -10,6 +10,8 @@ import '../pages/onboarding/onboarding_page.dart';
 import '../pages/splash/splash_page.dart';
 import '../usage/app_routes.dart';
 import '../usage/tracked_surface.dart';
+import '../../domain/entities/usage/usage_event.dart';
+import '../usage/usage_scope.dart';
 
 /// Shows the first-open flow (splash, then onboarding) once, otherwise
 /// [child].
@@ -53,6 +55,14 @@ class _FirstOpenFlow extends StatefulWidget {
 
 class _FirstOpenFlowState extends State<_FirstOpenFlow> {
   bool _onboarding = false;
+  final DateTime _splashShownAt = DateTime.now();
+
+  void _begin() {
+    context.usage.track(SplashBeginTapped(
+        seconds:
+            DateTime.now().difference(_splashShownAt).inMilliseconds / 1000));
+    setState(() => _onboarding = true);
+  }
 
   @override
   void initState() {
@@ -77,8 +87,7 @@ class _FirstOpenFlowState extends State<_FirstOpenFlow> {
             : TrackedSurface(
                 key: const ValueKey(AppRoutes.splash),
                 name: AppRoutes.splash,
-                child: SplashPage(
-                    onBegin: () => setState(() => _onboarding = true)),
+                child: SplashPage(onBegin: _begin),
               ),
       );
 }

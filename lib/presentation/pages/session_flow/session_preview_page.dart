@@ -26,7 +26,7 @@ import 'session_start.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/back_signals.dart';
 import '../../usage/usage_ui.dart';
-import '../../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't

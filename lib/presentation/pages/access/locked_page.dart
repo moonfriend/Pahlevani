@@ -9,7 +9,7 @@ import '../../widgets/access/retry_countdown.dart';
 import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
 import '../../usage/usage_ui.dart';
-import '../../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
 
 /// Signed in, not activated: the admin's message and Steady link, and a

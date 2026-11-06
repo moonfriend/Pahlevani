@@ -67,7 +67,7 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | Event | Props | Logged by |
 |---|---|---|
 | `splash.begin_tapped` | `seconds` | splash |
-| `onboarding.card_viewed` | `index` · `of` · `previous_card_s` · `via` swipe/button | onboarding |
+| `onboarding.card_viewed` | `index` (from 1; card 0 is the screen view) · `of` · `previous_card_s` · `via` swipe/button | onboarding |
 | `onboarding.finished` | `at_card` · `seconds` | onboarding |
 | `onboarding.skipped` | `at_card` · `seconds` | onboarding |
 | `home.session_card_tapped` | `slot` · `session_id` · `target` card/start_button | Home |

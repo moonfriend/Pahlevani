@@ -12,7 +12,7 @@ import '../session_flow/session_start.dart';
 import 'home_page.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
-import '../../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
 /// play flow (preview → player), the calendar and the info card from

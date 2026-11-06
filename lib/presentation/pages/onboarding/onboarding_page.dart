@@ -11,7 +11,8 @@ import '../../widgets/kashi/khatam_window.dart';
 import '../../widgets/kashi/shamseh.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
 import '../../usage/usage_ui.dart';
-import '../../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// The first-open cards (morshed, counting, shamseh by default) — no sign-up
 /// and no fitness questions. The cards come from the admin panel, so there
@@ -43,6 +44,33 @@ class _OnboardingPageState extends State<OnboardingPage> {
   List<OnboardingCard> get _cards => widget.cards;
   bool get _isLast => _index >= _cards.length - 1;
 
+  // For the usage study: when the flow and the current card started, and
+  // whether the next page change comes from the Next button.
+  final DateTime _startedAt = DateTime.now();
+  DateTime _cardShownAt = DateTime.now();
+  bool _byButton = false;
+
+  double _since(DateTime t) =>
+      DateTime.now().difference(t).inMilliseconds / 1000;
+
+  void _pageChanged(int i) {
+    context.usage.track(OnboardingCardViewed(
+      index: i,
+      of: _cards.length,
+      previousCardSeconds: _since(_cardShownAt),
+      via: _byButton ? OnboardingVia.button : OnboardingVia.swipe,
+    ));
+    _byButton = false;
+    _cardShownAt = DateTime.now();
+    setState(() => _index = i);
+  }
+
+  void _skip() {
+    context.usage
+        .track(OnboardingSkipped(atCard: _index, seconds: _since(_startedAt)));
+    widget.onFinished();
+  }
+
   @override
   void dispose() {
     _pages.dispose();
@@ -51,9 +79,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   void _next() {
     if (_isLast) {
+      context.usage.track(
+          OnboardingFinished(atCard: _index, seconds: _since(_startedAt)));
       widget.onFinished();
       return;
     }
+    _byButton = true;
     _pages.nextPage(
         duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
   }
@@ -108,7 +139,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   Align(
                     alignment: AlignmentDirectional.centerEnd,
                     child: TextButton(
-                      onPressed: widget.onFinished,
+                      onPressed: _skip,
                       style: TextButton.styleFrom(
                         foregroundColor: colors.textMuted,
                         shape: const RoundedRectangleBorder(),
@@ -124,7 +155,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       scrollBehavior: const SwipeScrollBehavior(),
                       controller: _pages,
                       itemCount: _cards.length,
-                      onPageChanged: (i) => setState(() => _index = i),
+                      onPageChanged: _pageChanged,
                       itemBuilder: (context, i) => _OnboardingCard(
                         card: _cards[i],
                         picture: _picture(_cards[i]),

@@ -11,7 +11,7 @@ import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import 'access_scaffold.dart';
 import '../../usage/usage_ui.dart';
-import '../../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
 
 /// The one screen after onboarding. "Create account" takes the email,
