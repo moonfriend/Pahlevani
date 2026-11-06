@@ -27,7 +27,7 @@ class HomeTab extends StatelessWidget {
   Future<void> _openSession(
       BuildContext context, TrainingSession session) async {
     final history = context.read<TrainingHistoryCubit>();
-    await openSessionPreview(context, session);
+    await openSessionPreview(context, session, source: PreviewSource.home);
     await history.load();
   }
 

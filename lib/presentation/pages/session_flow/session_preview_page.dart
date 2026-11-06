@@ -27,19 +27,21 @@ import '../../usage/app_routes.dart';
 import '../../usage/back_signals.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
+import '../../../domain/services/usage_tracker.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
 /// reach pushed routes).
-Future<void> openSessionPreview(
-        BuildContext context, TrainingSession session) =>
+Future<void> openSessionPreview(BuildContext context, TrainingSession session,
+        {PreviewSource source = PreviewSource.other}) =>
     Navigator.push(
       context,
       MaterialPageRoute(
         settings: AppRoutes.settings(AppRoutes.sessionPreview),
         builder: (_) => BlocProvider.value(
           value: getIt<AudioCatalogCubit>()..load(),
-          child: SessionPreviewPage(session: session),
+          child: SessionPreviewPage(session: session, source: source),
         ),
       ),
     );
@@ -54,9 +56,16 @@ Future<void> openSessionPreview(
 /// Zoorkhaneh mode is not offered here; it is a long-press on a session card.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
 class SessionPreviewPage extends StatefulWidget {
-  const SessionPreviewPage({super.key, required this.session, this.onStart});
+  const SessionPreviewPage(
+      {super.key,
+      required this.session,
+      this.source = PreviewSource.other,
+      this.onStart});
 
   final TrainingSession session;
+
+  /// Where the preview was opened from, for the usage study.
+  final PreviewSource source;
 
   /// Starts the session; defaults to [startSession]. For tests.
   final void Function(BuildContext context, PlayerMode mode)? onStart;
@@ -66,7 +75,55 @@ class SessionPreviewPage extends StatefulWidget {
 }
 
 class _SessionPreviewPageState extends State<SessionPreviewPage> {
+  // For the usage study: the RQ5 "lost before Start?" question.
+  final DateTime _openedAt = DateTime.now();
+  int _movesOpened = 0;
+  bool _leftLogged = false;
+
+  /// Kept from initState: dispose can't look up the context.
+  late final UsageTracker _usage;
+
+  int get _sessionId => widget.session.id;
+
+  @override
+  void initState() {
+    super.initState();
+    _usage = context.usage;
+    final moves = context
+            .read<TrainingSessionCubit>()
+            .getSessionDetail(_sessionId)
+            ?.items
+            .length ??
+        0;
+    _usage.track(SessionPreviewed(
+        sessionId: _sessionId, source: widget.source, moves: moves));
+  }
+
+  @override
+  void dispose() {
+    _left(PreviewExit.back);
+    super.dispose();
+  }
+
+  /// Logged once per preview visit: Start, or leaving without starting.
+  void _left(PreviewExit how) {
+    if (_leftLogged) return;
+    _leftLogged = true;
+    _usage.track(PreviewLeft(
+      sessionId: _sessionId,
+      how: how,
+      seconds: DateTime.now().difference(_openedAt).inMilliseconds / 1000,
+      movesOpened: _movesOpened,
+    ));
+  }
+
   void _start(PlayerMode mode) {
+    context.usage.track(PreviewModeTapped(
+        sessionId: _sessionId,
+        mode: mode == PlayerMode.athlete
+            ? UsageSessionMode.athlete
+            : UsageSessionMode.learning));
+    _left(PreviewExit.start);
     final onStart = widget.onStart;
     if (onStart != null) {
       onStart(context, mode);
@@ -75,7 +132,12 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
     }
   }
 
-  Future<void> _openMove(ItemDetail detail) {
+  Future<void> _openMove(ItemDetail detail, int position) {
+    _movesOpened++;
+    context.usage.track(PreviewMoveOpened(
+        sessionId: _sessionId,
+        movementId: detail.exercise.id,
+        position: position));
     final seconds =
         context.read<TrainingSessionCubit>().moveDurationSeconds(detail.item);
     return openMoveCard(
@@ -115,7 +177,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
           name: moves[i].exercise.name,
           reps: _countedTarget(moves[i]),
           seconds: seconds[i],
-          onTap: () => _openMove(moves[i]),
+          onTap: () => _openMove(moves[i], i),
         ),
     ];
     final startButtons = Column(

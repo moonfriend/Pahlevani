@@ -17,6 +17,10 @@ import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_download_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
+import '../../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'dart:io' show FileSystemException;
 
 class _Sizes implements MediaSizeRepository {
   _Sizes(this.sizes, {this.fail = false});
@@ -103,8 +107,10 @@ void main() {
     prefs = _Prefs();
   });
 
-  MediaDownloadCubit sessionCubit({MediaSizeRepository? sizeRepo}) =>
+  MediaDownloadCubit sessionCubit(
+          {MediaSizeRepository? sizeRepo, UsageTracker? usage}) =>
       MediaDownloadCubit(
+        usage: usage ?? const NoOpUsageTracker(),
         target: const SessionDownloadTarget(1),
         sessionRepository: FakeTrainingSessionRepository(snapshot),
         audioCatalogRepository: catalog,
@@ -274,5 +280,46 @@ void main() {
     expect(downloads.markedDownloaded, isEmpty);
     expect(prefs.tier, isNull,
         reason: 'a pack download does not change the tier');
+  });
+
+  group('usage study', () {
+    test('a finished download: started then finished, with tier and size',
+        () async {
+      final usage = FakeUsageTracker();
+      final cubit = sessionCubit(usage: usage);
+      addTearDown(cubit.close);
+      await cubit.load();
+      cubit.selectTier(DownloadTier.audio);
+      await cubit.start();
+      await settle();
+      final started = usage.of<DownloadStarted>().single;
+      expect([started.target, started.id, started.tier, started.bytes],
+          [DownloadTargetKind.session, 1, 'audio', 3010]);
+      expect(usage.of<DownloadFinished>().single.tier, 'audio');
+    });
+
+    test('a failed download is logged with its error class', () async {
+      downloads.planController = StreamController<DownloadProgress>();
+      final usage = FakeUsageTracker();
+      final cubit = sessionCubit(usage: usage);
+      addTearDown(cubit.close);
+      await cubit.load();
+      unawaited(cubit.start());
+      await settle();
+      downloads.planController!
+          .addError(const FileSystemException('disk full'));
+      await settle();
+      expect(
+          usage.of<DownloadFailed>().single.error, DownloadErrorKind.storage);
+    });
+
+    test('Not now is a declined download', () async {
+      final usage = FakeUsageTracker();
+      final cubit = sessionCubit(usage: usage);
+      addTearDown(cubit.close);
+      await cubit.load();
+      cubit.decline();
+      expect(usage.of<DownloadDeclined>().single.id, 1);
+    });
   });
 }

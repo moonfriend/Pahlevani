@@ -11,6 +11,8 @@ import 'package:pahlevani/domain/repositories/training_session_repository.dart';
 import 'package:pahlevani/domain/usecases/download/estimate_download.dart';
 import 'package:pahlevani/presentation/bloc/download/media_download_cubit.dart';
 import '../../usage/app_routes.dart';
+import '../../../domain/services/usage_tracker.dart';
+import '../../usage/usage_scope.dart';
 
 /// Asks before downloading [target]'s media (showing the size, and for a
 /// session the tier choice), then downloads with a progress bar.
@@ -30,15 +32,19 @@ Future<bool> showMediaDownloadDialog(
     routeSettings: AppRoutes.settings(AppRoutes.downloadDialog),
     barrierDismissible: false,
     builder: (_) => BlocProvider(
-      create: (_) => (createCubit?.call() ?? _cubitFromGetIt(target))..load(),
+      create: (_) =>
+          (createCubit?.call() ?? _cubitFromGetIt(target, context.usage))
+            ..load(),
       child: _MediaDownloadDialog(title: title, message: message),
     ),
   );
   return completed ?? false;
 }
 
-MediaDownloadCubit _cubitFromGetIt(MediaDownloadTarget target) =>
+MediaDownloadCubit _cubitFromGetIt(
+        MediaDownloadTarget target, UsageTracker usage) =>
     MediaDownloadCubit(
+      usage: usage,
       target: target,
       sessionRepository: getIt<TrainingSessionRepository>(),
       audioCatalogRepository: getIt<AudioCatalogRepository>(),
@@ -100,7 +106,10 @@ class _MediaDownloadDialog extends StatelessWidget {
           actions: switch (state) {
             MediaDownloadReady() => [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () {
+                      cubit.decline();
+                      Navigator.pop(context, false);
+                    },
                     child: const Text('Not now')),
                 if (state.selectedEstimate.isComplete)
                   FilledButton(

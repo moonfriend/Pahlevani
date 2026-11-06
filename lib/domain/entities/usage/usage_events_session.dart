@@ -4,8 +4,9 @@ part of 'usage_event.dart';
 
 enum PreviewSource { home, library, other }
 
-/// How the user left a session preview.
-enum PreviewExit { start, back, tab, appClosed }
+/// How the user left a session preview (a preview open when the app was
+/// closed shows up in SQL as a visit ending on it).
+enum PreviewExit { start, back }
 
 /// The player mode, as the study names it (mirrors PlayerMode, which lives
 /// in presentation).
@@ -13,7 +14,7 @@ enum UsageSessionMode { learning, athlete, zoorkhaneh }
 
 enum AbandonHow { back, appClosed, killed }
 
-enum DownloadTargetKind { session, move }
+enum DownloadTargetKind { session, morshedPack }
 
 enum DownloadErrorKind { network, storage, other }
 

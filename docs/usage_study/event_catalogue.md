@@ -96,11 +96,11 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | `session.previewed` | `session_id` · `source` home/library/other · `moves` | preview |
 | `preview.move_opened` | `session_id` · `movement_id` · `position` | preview |
 | `preview.mode_tapped` | `session_id` · `mode` learning/athlete | preview |
-| `preview.left` | `session_id` · `how` start/back/tab/app_closed · `seconds` · `moves_opened` | preview |
+| `preview.left` | `session_id` · `how` start/back · `seconds` · `moves_opened` | preview |
 | `session.started` | `session_id` · `mode` learning/athlete/zoorkhaneh · `morshed_id` · `downloaded` · `moves` | SessionPlayerCubit |
 | `session.completed` | `session_id` · `seconds` · `played_s` · `pauses` · `replays` · `seeks` | SessionPlayerCubit |
 | `session.abandoned` | `session_id` · `last_index` · `played_s` · `how` back/app_closed/killed | SessionPlayerCubit / next start |
-| `download.started` | `target` session/move · `id` · `tier` · `bytes` | MediaDownloadCubit |
+| `download.started` | `target` session/morshed_pack · `id` · `tier` · `bytes` | MediaDownloadCubit |
 | `download.finished` | `target` · `id` · `tier` · `bytes` · `seconds` | MediaDownloadCubit |
 | `download.failed` | `target` · `id` · `tier` · `error` network/storage/other | MediaDownloadCubit |
 | `download.declined` | `target` · `id` | download dialog |
