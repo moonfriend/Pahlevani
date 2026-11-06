@@ -506,6 +506,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                   id: TapProbeIds.playerRepCounter,
                   child: _Counter(
                     counted: _cubit.isCounted(index),
+                    confirmsAfter: _cubit.logsReps(index),
                     target: state.currentTrack?.effectiveRepetitions ?? 0,
                     loopsForever: widget.mode == PlayerMode.zoorkhaneh,
                     size: switch (layout) {
@@ -1288,12 +1289,16 @@ class _Cues extends StatelessWidget {
 class _Counter extends StatelessWidget {
   const _Counter({
     required this.counted,
+    required this.confirmsAfter,
     required this.target,
     required this.loopsForever,
     this.size = RepStar.phoneSize,
   });
 
   final bool counted;
+
+  /// The Rep log follows this move, where the user confirms the count.
+  final bool confirmsAfter;
   final int target;
   final bool loopsForever;
   final double size;
@@ -1319,7 +1324,7 @@ class _Counter extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-            counted
+            confirmsAfter
                 ? 'The morshed counts; you confirm after'
                 : 'Follow the morshed’s count',
             textAlign: TextAlign.center,

@@ -160,12 +160,17 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
   /// Complete screen and the training history. Skipped moves are absent.
   Map<int, int> get loggedReps => Map.unmodifiable(_loggedReps);
 
-  /// Whether the move at [index] was flagged by a trainer for counting.
+  /// Whether the move at [index] was flagged by a trainer for counting —
+  /// the star then counts its reps instead of showing the time left.
+  /// Independent of the Rep log: release 1 counts without logging.
   bool isCounted(int index) =>
       index >= 0 &&
       index < _itemDetails.length &&
-      _itemDetails[index].item.isTracked &&
-      _repLogging;
+      _itemDetails[index].item.isTracked;
+
+  /// Whether finishing the move at [index] opens the Rep log (a counted
+  /// move, with rep logging switched on).
+  bool logsReps(int index) => _repLogging && isCounted(index);
 
   bool _startsOnItsOwn(int index) {
     final exercise = exerciseAt(index);
@@ -355,7 +360,7 @@ class SessionPlayerCubit extends Cubit<SessionPlayerState> {
     final index = s.playingIndex;
     _endMove(reason);
     switch (afterMove(
-        index: index, moveCount: s.tracks.length, logsReps: isCounted(index))) {
+        index: index, moveCount: s.tracks.length, logsReps: logsReps(index))) {
       case LogReps():
         _timeline.pause();
         emit(PlayerLoggingReps(

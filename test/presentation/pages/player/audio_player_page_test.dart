@@ -65,7 +65,9 @@ void _registerFakes(DomainSnapshot snapshot) {
 }
 
 Widget _buildPage(DomainSnapshot snapshot,
-    {PlayerMode mode = PlayerMode.athlete, UsageTracker? usage}) {
+    {PlayerMode mode = PlayerMode.athlete,
+    UsageTracker? usage,
+    bool repLogging = true}) {
   // The Rep log tests below need it on; release 1 switches it off.
   final page = BlocProvider(
     create: (_) => TrainingSessionCubit(
@@ -76,7 +78,7 @@ Widget _buildPage(DomainSnapshot snapshot,
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
       home: AudioPlayerPage(
-          trainingSession: testSession1, mode: mode, repLogging: true),
+          trainingSession: testSession1, mode: mode, repLogging: repLogging),
     ),
   );
   return usage == null ? page : UsageScope(tracker: usage, child: page);
@@ -593,6 +595,42 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();
     expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets(
+      'release 1 (no Rep log): a flagged move still shows the rep counter, '
+      'not the timer', (tester) async {
+    const shena = Exercise(
+      id: 101,
+      name: 'Shena',
+      audioFileUrl: 'https://example.com/shena.mp3',
+      repetitionsDefault: 3,
+    );
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(40),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {101: shena},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildPage(snap, repLogging: false));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('of 40'), findsOneWidget);
+    expect(find.text('remaining'), findsNothing);
+    expect(find.text('Follow the morshed’s count'), findsOneWidget,
+        reason: 'nothing to confirm without the Rep log');
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
