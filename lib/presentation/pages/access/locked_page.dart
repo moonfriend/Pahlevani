@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
@@ -9,6 +8,8 @@ import '../../bloc/auth/auth_cubit.dart';
 import '../../widgets/access/retry_countdown.dart';
 import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
+import '../../usage/usage_ui.dart';
+import '../../../../domain/entities/usage/usage_event.dart';
 
 /// Signed in, not activated: the admin's message and Steady link, and a
 /// field for the activation code the member got from us.
@@ -49,8 +50,8 @@ class _LockedPageState extends State<LockedPage> {
                 .copyWith(fontSize: 15, height: 1.5, color: colors.textBody)),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: () => launchUrl(Uri.parse(text.linkUrl),
-              mode: LaunchMode.externalApplication),
+          onPressed: () => openExternalLink(
+              context, ExternalLink.activationInfo, text.linkUrl),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),
             shape: const RoundedRectangleBorder(),

@@ -23,6 +23,7 @@ import '../training_session/training_sessions_page.dart';
 import '../../bloc/usage/usage_sharing_cubit.dart';
 import '../../usage/usage_scope.dart';
 import '../../usage/app_routes.dart';
+import '../../usage/usage_ui.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -42,9 +43,8 @@ class _ProfilePageState extends State<ProfilePage> {
       ? KashiAssets.pahlevanMale
       : KashiAssets.pahlevanFemale;
 
-  void _comingSoon(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _comingSoon(String message, {required String key}) =>
+      showUsageSnackBar(context, message, key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +69,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     dimmed: const {'fa'},
                     onSelected: (value) {
                       if (value == 'fa') {
-                        _comingSoon('فارسی arrives with the translations.');
+                        _comingSoon('فارسی arrives with the translations.',
+                            key: 'farsi_coming_soon');
                       }
                     },
                   ),

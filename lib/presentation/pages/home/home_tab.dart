@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../domain/entities/info/info_link.dart';
 import '../../../domain/entities/training_session/training_session.dart';
 import '../../bloc/announcement/announcement_cubit.dart';
@@ -13,6 +11,8 @@ import '../session_flow/session_preview_page.dart';
 import '../session_flow/session_start.dart';
 import 'home_page.dart';
 import '../../usage/app_routes.dart';
+import '../../usage/usage_ui.dart';
+import '../../../../domain/entities/usage/usage_event.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
 /// play flow (preview → player), the calendar and the info card from
@@ -55,7 +55,7 @@ class HomeTab extends StatelessWidget {
   /// of the card as seen.
   Future<void> _openInfo(BuildContext context, InfoLink link) async {
     final announcement = context.read<AnnouncementCubit>();
-    await launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication);
+    await openExternalLink(context, ExternalLink.announcement, link.url);
     await announcement.markSeen();
   }
 

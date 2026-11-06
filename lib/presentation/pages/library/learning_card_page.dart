@@ -15,6 +15,7 @@ import '../../widgets/player/fullscreen_mode.dart';
 import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
 import '../../usage/app_routes.dart';
+import '../../usage/usage_ui.dart';
 
 /// What the learning card shows about one move — from the Library's sample
 /// moves or from a session's real move.
@@ -199,11 +200,9 @@ class LearningCardPage extends StatefulWidget {
         showVariations: showVariations,
         move: LearningMove.fromSample(move),
         actionLabel: 'Let’s go',
-        onAction: (context) => ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
-              content: Text(
-                  'Practising a single move arrives with the new player.'))),
+        onAction: (context) => showUsageSnackBar(
+            context, 'Practising a single move arrives with the new player.',
+            key: 'lets_go_coming_soon'),
       );
 
   final LearningMove move;

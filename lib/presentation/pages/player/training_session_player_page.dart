@@ -52,6 +52,7 @@ import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/back_signals.dart';
+import '../../usage/usage_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -191,8 +192,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final saved = sessionCubit.getSessionDetail(updated.id);
     final messenger = ScaffoldMessenger.of(context);
     if (saved == null) {
-      messenger.showSnackBar(
-          SnackBar(content: Text("Couldn't save ${updated.title}")));
+      showUsageSnackBar(context, "Couldn't save ${updated.title}",
+          key: 'session_save_failed');
       return;
     }
     await _restartPlayer(saved.session);
@@ -335,8 +336,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       AppLogger.e('Could not record the finished session',
           error: e, stackTrace: st);
       if (!mounted || !context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Couldn't save this session to your history.")));
+      showUsageSnackBar(context, "Couldn't save this session to your history.",
+          key: 'history_save_failed');
       return;
     }
     // Home and Progress read the shared history cubit.

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
@@ -11,6 +10,8 @@ import '../../widgets/access/consent_checks.dart';
 import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import 'access_scaffold.dart';
+import '../../usage/usage_ui.dart';
+import '../../../../domain/entities/usage/usage_event.dart';
 
 /// The one screen after onboarding. "Create account" takes the email,
 /// password, activation code and the safety/privacy agreement together;
@@ -200,8 +201,8 @@ class _ActivateIntro extends StatelessWidget {
                     fontSize: 14, height: 1.5, color: colors.textBody)),
             TextButton(
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
-              onPressed: () => launchUrl(Uri.parse(text.linkUrl),
-                  mode: LaunchMode.externalApplication),
+              onPressed: () => openExternalLink(
+                  context, ExternalLink.activationInfo, text.linkUrl),
               child: Text(text.linkLabel),
             ),
           ],

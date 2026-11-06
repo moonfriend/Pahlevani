@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_links.dart';
 import '../../../core/di/dependency_injection.dart';
@@ -26,6 +25,8 @@ import '../library/open_move_card.dart';
 import 'session_start.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/back_signals.dart';
+import '../../usage/usage_ui.dart';
+import '../../../../domain/entities/usage/usage_event.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
@@ -273,8 +274,8 @@ class _MeelGuide extends StatelessWidget {
             style: KashiTextStyles.ui
                 .copyWith(fontSize: 12.5, color: colors.textMuted)),
         TextButton(
-          onPressed: () => launchUrl(Uri.parse(AppLinks.meelGuide),
-              mode: LaunchMode.externalApplication),
+          onPressed: () => openExternalLink(
+              context, ExternalLink.meelGuide, AppLinks.meelGuide),
           child: const Text('How to get your meel'),
         ),
       ],

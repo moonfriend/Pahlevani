@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
+import 'package:pahlevani/presentation/usage/usage_ui.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 
 /// Full-screen, unskippable — shown when the version gate decides this
 /// install must update before continuing. No back button, no dismiss.
@@ -13,12 +14,8 @@ class VersionGateScreen extends StatelessWidget {
   static const _playStoreUrl =
       'https://play.google.com/store/apps/details?id=com.pahlevani.app';
 
-  Future<void> _openPlayStore() async {
-    final uri = Uri.parse(_playStoreUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
+  Future<void> _openPlayStore(BuildContext context) =>
+      openExternalLink(context, ExternalLink.store, _playStoreUrl);
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +52,7 @@ class VersionGateScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 28),
                 FilledButton(
-                  onPressed: _openPlayStore,
+                  onPressed: () => _openPlayStore(context),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     child: Text('Update now'),

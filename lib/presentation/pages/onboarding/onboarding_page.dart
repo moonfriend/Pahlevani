@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
@@ -11,6 +10,8 @@ import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/khatam_window.dart';
 import '../../widgets/kashi/shamseh.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
+import '../../usage/usage_ui.dart';
+import '../../../../domain/entities/usage/usage_event.dart';
 
 /// The first-open cards (morshed, counting, shamseh by default) — no sign-up
 /// and no fitness questions. The cards come from the admin panel, so there
@@ -212,8 +213,8 @@ class _OnboardingCard extends StatelessWidget {
                 children: [
                   for (final link in card.links)
                     OutlinedButton(
-                      onPressed: () => launchUrl(Uri.parse(link.url),
-                          mode: LaunchMode.externalApplication),
+                      onPressed: () => openExternalLink(
+                          context, ExternalLink.onboarding, link.url),
                       style: OutlinedButton.styleFrom(
                           shape: const RoundedRectangleBorder()),
                       child: Text(link.label),
