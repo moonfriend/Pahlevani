@@ -19,7 +19,7 @@ Deno.test("flattens Steady's JSON:API user into OAuth userinfo", () => {
   assertEquals(toUserInfo(steadyUser), {
     sub: "7f3c2a10-0000-4000-8000-000000000001",
     email: "ali@example.com",
-    email_verified: false,
+    email_verified: true,
     name: "Ali Rezaei",
     given_name: "Ali",
     family_name: "Rezaei",

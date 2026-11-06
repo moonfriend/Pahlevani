@@ -17,11 +17,13 @@ export interface UserInfo {
   sub: string;
   email: string;
   /**
-   * Always false: Steady doesn't tell us whether it verified the address.
-   * Keeping it false stops Supabase from auto-joining a Steady login to an
-   * existing account that merely uses the same email (account takeover).
+   * Always true: Steady confirms every account's email before use (checked by
+   * the project owner, 2026-11-06). Supabase therefore joins a Steady login to
+   * an existing account with the same email, so current users keep their
+   * history. If Steady ever stops confirming emails, set this to false, or
+   * anyone could register a fan's email on Steady and enter that fan's account.
    */
-  email_verified: false;
+  email_verified: true;
   name?: string;
   given_name?: string;
   family_name?: string;
@@ -47,7 +49,7 @@ export function toUserInfo(steady: unknown): UserInfo | null {
   const given = text(attrs["first-name"]);
   const family = text(attrs["last-name"]);
   const name = [given, family].filter(Boolean).join(" ") || undefined;
-  const info: UserInfo = { sub, email, email_verified: false };
+  const info: UserInfo = { sub, email, email_verified: true };
   if (name) info.name = name;
   if (given) info.given_name = given;
   if (family) info.family_name = family;
