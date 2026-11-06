@@ -16,6 +16,8 @@ import '../../widgets/player/learnt_toggle.dart';
 import 'sample_moves.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// What the learning card shows about one move — from the Library's sample
 /// moves or from a session's real move.
@@ -241,6 +243,15 @@ class _LearningCardPageState extends State<LearningCardPage> {
   final _videoKeys = {for (final v in _CardVideo.values) v: GlobalKey()};
 
   @override
+  void initState() {
+    super.initState();
+    if (_videoOpen) {
+      context.usage.track(LearningCardVideoPlayed(
+          movementId: _move.exerciseId ?? 0, video: CardVideo.learning));
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Turning the phone follows the rotation; the button decides in between.
@@ -251,7 +262,32 @@ class _LearningCardPageState extends State<LearningCardPage> {
     }
   }
 
-  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
+  void _toggleFullscreen() {
+    context.usage.track(LearningCardFullscreen(on: !_fullscreen));
+    setState(() => _fullscreen = !_fullscreen);
+  }
+
+  /// The move's id for the study (0 for the design-preview samples).
+  int get _movementId => _move.exerciseId ?? 0;
+
+  void _playLearningVideo() {
+    context.usage.track(LearningCardVideoPlayed(
+        movementId: _movementId, video: CardVideo.learning));
+    setState(() => _videoOpen = true);
+  }
+
+  void _show(_CardVideo video) {
+    final to = switch (video) {
+      _CardVideo.learning => CardVideo.learning,
+      _CardVideo.followAlong => CardVideo.followAlong,
+    };
+    context.usage.track(LearningCardVideoToggled(to: to));
+    if (video == _CardVideo.followAlong) {
+      context.usage
+          .track(LearningCardVideoPlayed(movementId: _movementId, video: to));
+    }
+    setState(() => _showing = video);
+  }
 
   static const _photoHeight = 210.0;
   static const _maxWidth = 440.0;
@@ -284,6 +320,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
       _hasVariations ? _move.variations[_variation] : null;
 
   void _act() {
+    context.usage.track(LearningCardAction(
+        movementId: _movementId, action: widget.actionLabel));
     final onAction = widget.onAction;
     if (onAction != null) {
       onAction(context);
@@ -431,7 +469,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                             child: Material(
                               color: colors.action,
                               child: InkWell(
-                                onTap: () => setState(() => _videoOpen = true),
+                                onTap: _playLearningVideo,
                                 child: SizedBox.square(
                                   dimension: 64,
                                   child: Icon(Icons.play_arrow_rounded,
@@ -512,7 +550,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
         end: 8,
         child: _VideoToggle(
           showing: _showing,
-          onChanged: (video) => setState(() => _showing = video),
+          onChanged: _show,
         ),
       );
 
@@ -554,7 +592,7 @@ class _LearningCardPageState extends State<LearningCardPage> {
                   child: Material(
                     color: colors.action,
                     child: InkWell(
-                      onTap: () => setState(() => _videoOpen = true),
+                      onTap: _playLearningVideo,
                       child: SizedBox.square(
                         dimension: 60,
                         child: Icon(Icons.play_arrow_rounded,

@@ -81,6 +81,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
     return openMoveCard(
       context,
       detail.exercise,
+      from: CardSource.preview,
       target: _countedTarget(detail),
       minutes: seconds == null ? null : _wholeMinutes(seconds),
       hint: learnFirstHint,
@@ -450,8 +451,8 @@ class _MorshedDropdown extends StatelessWidget {
 
     Future<void> pick(int id) async {
       final sessions = context.read<TrainingSessionCubit>();
-      await chooseMorshed(
-          context, state.morsheds.firstWhere((m) => m.id == id));
+      await chooseMorshed(context, state.morsheds.firstWhere((m) => m.id == id),
+          from: MorshedSource.preview);
       await sessions.refreshAudioSelection();
     }
 

@@ -21,6 +21,8 @@ Strategy and research questions (RQ1–RQ6): `~/.claude/plans/read-the-context-o
 | `app_version`, `platform` | e.g. `1.7.0+17`, `android` / `ios` / `web` / `linux` |
 
 Seconds are rounded to 0.1. Enum values are snake_case. No typed text is ever logged.
+`movement_id` is the move's id as the app knows it (`Exercise.id`, the key of the Library,
+the learning cards and session items); `session_id` is `training_session.id`.
 
 ## A — visits (RQ1, RQ6)
 
@@ -78,15 +80,14 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | `library.session_opened` | `session_id` · `position` | Library |
 | `learning_card.opened` | `movement_id` · `from` library/preview/player | learning card |
 | `learning_card.video_played` | `movement_id` · `video` learning/follow_along | learning card |
-| `learning_card.video_closed` | `movement_id` · `video` · `watched_pct` | learning card |
 | `learning_card.video_toggled` | `to` | learning card |
 | `learning_card.fullscreen` | `on` | learning card |
 | `learning_card.action` | `movement_id` · `action` | learning card |
 | `learning_card.learnt_toggled` | `movement_id` · `learnt` | learnt toggle |
-| `profile.entry_tapped` | `entry` language_fa/appearance/morshed/sign_out/delete_account/trainer_tools | Profile |
+| `profile.entry_tapped` | `entry` language_fa/sign_out/delete_account/trainer_tools | Profile |
 | `profile.tracking_toggled` | `on` | Profile switch (turning off is the last event sent) |
 | `settings.theme_changed` | `mode` | SettingsCubit |
-| `morshed.chosen` | `morshed_id` · `from` profile/preview | chooseMorshed |
+| `morshed.chosen` | `morshed_id` · `from` profile/preview/other | chooseMorshed |
 
 ## C — session preview, downloads, session outcome (RQ5)
 

@@ -13,6 +13,7 @@ import 'home_page.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
 /// play flow (preview → player), the calendar and the info card from
@@ -55,6 +56,7 @@ class HomeTab extends StatelessWidget {
   /// of the card as seen.
   Future<void> _openInfo(BuildContext context, InfoLink link) async {
     final announcement = context.read<AnnouncementCubit>();
+    context.usage.track(const HomeAnnouncementTapped());
     await openExternalLink(context, ExternalLink.announcement, link.url);
     await announcement.markSeen();
   }

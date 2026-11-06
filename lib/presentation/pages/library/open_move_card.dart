@@ -7,6 +7,8 @@ import '../../../domain/repositories/download_repository.dart';
 import '../../../domain/usecases/player/resolve_learning_video.dart';
 import '../../../domain/usecases/player/resolve_move_media.dart';
 import 'learning_card_page.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Opens [exercise]'s learning card with its still, learning video and
 /// follow-along video resolved the way the player resolves media (local file
@@ -17,7 +19,8 @@ import 'learning_card_page.dart';
 /// and its estimated length; the Library has neither. [hint] is the line
 /// above the card (a session's [learnFirstHint]).
 Future<void> openMoveCard(BuildContext context, Exercise exercise,
-    {int? target, int? minutes, String? hint}) async {
+    {required CardSource from, int? target, int? minutes, String? hint}) async {
+  context.usage.track(LearningCardOpened(movementId: exercise.id, from: from));
   final downloads = getIt<DownloadRepository>();
   final (media, followAlongReady) =
       await ResolveMoveMedia(downloads)(exercise.media, useRemoteMedia: kIsWeb);

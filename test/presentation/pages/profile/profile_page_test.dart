@@ -99,6 +99,24 @@ Future<_Harness> _pump(
 }
 
 void main() {
+  testWidgets('Profile choices are logged for the usage study', (tester) async {
+    final h = await _pump(tester,
+        size: const Size(360, 1400),
+        user: const AppUser(
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: currentTermsVersion));
+    await tester.tap(find.text('فارسی'));
+    await tester.tap(find.text('Light'));
+    await tester.pump();
+    await tester.tap(find.text('Sign out'));
+    await tester.pump();
+    expect(h.usage.of<ProfileEntryTapped>().map((e) => e.entry),
+        [ProfileEntry.languageFa, ProfileEntry.signOut]);
+    expect(h.usage.of<SettingsThemeChanged>().single.mode, 'light');
+  });
+
   testWidgets('Share usage data is on by default and can be turned off',
       (tester) async {
     final h = await _pump(tester, size: const Size(360, 1400));
@@ -161,6 +179,8 @@ void main() {
     await tester.tap(find.text('Reza'));
     await tester.pumpAndSettle();
     expect(h.catalogRepo.selectedMorshedId, 3);
+    final chosen = h.usage.of<MorshedChosen>().single;
+    expect([chosen.morshedId, chosen.from], [3, MorshedSource.profile]);
 
     // Same steps as the morshed picker: their recordings, then the
     // video-sync heads-up (Reza isn't the videos' reference morshed).

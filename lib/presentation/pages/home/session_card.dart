@@ -13,11 +13,15 @@ class SessionCard extends StatelessWidget {
       required this.session,
       required this.compact,
       required this.onOpen,
+      this.onPlay,
       this.onMenu});
 
   final HomeSession session;
   final bool compact;
   final VoidCallback onOpen;
+
+  /// The ▶ button; defaults to [onOpen] (the study tells the two apart).
+  final VoidCallback? onPlay;
   final VoidCallback? onMenu;
 
   @override
@@ -75,7 +79,7 @@ class SessionCard extends StatelessWidget {
                 child: Material(
                   color: colors.action,
                   child: InkWell(
-                    onTap: onOpen,
+                    onTap: onPlay ?? onOpen,
                     child: SizedBox.square(
                       dimension: play,
                       child: Icon(Icons.play_arrow_rounded,

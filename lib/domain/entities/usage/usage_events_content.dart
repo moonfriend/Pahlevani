@@ -13,16 +13,16 @@ enum CardSource { library, preview, player }
 
 enum CardVideo { learning, followAlong }
 
+/// Profile taps without an event of their own (theme and morshed changes
+/// have `settings.theme_changed` and `morshed.chosen`).
 enum ProfileEntry {
   languageFa,
-  appearance,
-  morshed,
   signOut,
   deleteAccount,
   trainerTools,
 }
 
-enum MorshedSource { profile, preview }
+enum MorshedSource { profile, preview, other }
 
 final class SplashBeginTapped extends UsageEvent {
   const SplashBeginTapped({required this.seconds});
@@ -197,29 +197,6 @@ final class LearningCardVideoPlayed extends UsageEvent {
   @override
   Map<String, Object?> get props =>
       {'movement_id': movementId, 'video': video.wire};
-}
-
-final class LearningCardVideoClosed extends UsageEvent {
-  const LearningCardVideoClosed(
-      {required this.movementId,
-      required this.video,
-      required this.watchedPct});
-
-  final int movementId;
-  final CardVideo video;
-
-  /// Furthest point reached, 0–100.
-  final int watchedPct;
-
-  @override
-  String get name => 'learning_card.video_closed';
-
-  @override
-  Map<String, Object?> get props => {
-        'movement_id': movementId,
-        'video': video.wire,
-        'watched_pct': watchedPct,
-      };
 }
 
 final class LearningCardVideoToggled extends UsageEvent {

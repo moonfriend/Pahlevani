@@ -24,6 +24,7 @@ import '../../bloc/usage/usage_sharing_cubit.dart';
 import '../../usage/usage_scope.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -69,6 +70,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     dimmed: const {'fa'},
                     onSelected: (value) {
                       if (value == 'fa') {
+                        context.usage.track(const ProfileEntryTapped(
+                            entry: ProfileEntry.languageFa));
                         _comingSoon('فارسی arrives with the translations.',
                             key: 'farsi_coming_soon');
                       }
@@ -84,7 +87,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       (ThemeMode.dark, 'Dark'),
                     ],
                     selected: context.watch<SettingsCubit>().state.themeMode,
-                    onSelected: context.read<SettingsCubit>().setThemeMode,
+                    onSelected: (mode) {
+                      context.usage
+                          .track(SettingsThemeChanged(mode: mode.name));
+                      context.read<SettingsCubit>().setThemeMode(mode);
+                    },
                   ),
                 ),
                 _section('Morshed voice', _morshedPicker(colors)),
@@ -193,8 +200,9 @@ class _ProfilePageState extends State<ProfilePage> {
         KashiSegmented<int>(
           options: [for (final m in morsheds) (m.id, m.name)],
           selected: selectedMorshedId,
-          onSelected: (id) =>
-              chooseMorshed(context, morsheds.firstWhere((m) => m.id == id)),
+          onSelected: (id) => chooseMorshed(
+              context, morsheds.firstWhere((m) => m.id == id),
+              from: MorshedSource.profile),
         ),
       AudioCatalogLoaded(:final morsheds, :final selectedMorshedId) => Column(
           children: [
@@ -205,7 +213,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   options: [(m.id, m.name)],
                   selected: selectedMorshedId,
                   onSelected: (id) => chooseMorshed(
-                      context, morsheds.firstWhere((m) => m.id == id)),
+                      context, morsheds.firstWhere((m) => m.id == id),
+                      from: MorshedSource.profile),
                 ),
               ),
           ],
@@ -272,9 +281,16 @@ class _Account extends StatelessWidget {
                   style: KashiTextStyles.ui
                       .copyWith(fontSize: 13, color: colors.textMuted)),
             ),
-          entry('Sign out', () => context.read<AuthCubit>().signOut()),
-          entry('Delete my account', () => _confirmDelete(context),
-              color: Theme.of(context).colorScheme.error),
+          entry('Sign out', () {
+            context.usage
+                .track(const ProfileEntryTapped(entry: ProfileEntry.signOut));
+            context.read<AuthCubit>().signOut();
+          }),
+          entry('Delete my account', () {
+            context.usage.track(
+                const ProfileEntryTapped(entry: ProfileEntry.deleteAccount));
+            _confirmDelete(context);
+          }, color: Theme.of(context).colorScheme.error),
         ],
       ),
     );
@@ -301,16 +317,20 @@ class _TrainerTools extends StatelessWidget {
             title: Text('Sessions and assignments',
                 style: KashiTextStyles.ui.copyWith(color: colors.textPrimary)),
             trailing: Icon(Icons.chevron_right, color: colors.textMuted),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                settings: AppRoutes.settings(AppRoutes.trainerTools),
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: const Text('Trainer tools')),
-                  body: const TrainingSessionPage(),
+            onTap: () {
+              context.usage.track(
+                  const ProfileEntryTapped(entry: ProfileEntry.trainerTools));
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  settings: AppRoutes.settings(AppRoutes.trainerTools),
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Trainer tools')),
+                    body: const TrainingSessionPage(),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),

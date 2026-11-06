@@ -67,8 +67,6 @@ final List<UsageEvent> samples = [
   const LibrarySessionOpened(sessionId: 7, position: 0),
   const LearningCardOpened(movementId: 3, from: CardSource.library),
   const LearningCardVideoPlayed(movementId: 3, video: CardVideo.learning),
-  const LearningCardVideoClosed(
-      movementId: 3, video: CardVideo.followAlong, watchedPct: 80),
   const LearningCardVideoToggled(to: CardVideo.followAlong),
   const LearningCardFullscreen(on: true),
   const LearningCardAction(movementId: 3, action: 'Go'),
