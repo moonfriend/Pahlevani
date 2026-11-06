@@ -9,6 +9,8 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/kashi_tile.dart';
 import '../../widgets/kashi/khatam.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// First-open splash: a wall of trained day tiles (what a perfect month looks
 /// like), the Rahavi logo in a cream khatam, the promise and Begin.
@@ -79,11 +81,13 @@ class SplashPage extends StatelessWidget {
                   child: ColoredBox(
                     color: colors.splashStar,
                     child: Center(
-                      child: Image.asset(
-                        KashiAssets.rahaviLogo,
-                        width: star * _logoToStar,
-                        semanticLabel: 'Rahavi',
-                      ),
+                      child: TapProbe(
+                          id: TapProbeIds.splashLogo,
+                          child: Image.asset(
+                            KashiAssets.rahaviLogo,
+                            width: star * _logoToStar,
+                            semanticLabel: 'Rahavi',
+                          )),
                     ),
                   ),
                 ),

@@ -56,6 +56,8 @@ import '../../usage/usage_ui.dart';
 import '../../usage/usage_scope.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../../domain/usage/open_session.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -500,16 +502,18 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 },
               ),
               cues: exercise?.cues ?? const [],
-              counter: _Counter(
-                counted: _cubit.isCounted(index),
-                target: state.currentTrack?.effectiveRepetitions ?? 0,
-                loopsForever: widget.mode == PlayerMode.zoorkhaneh,
-                size: switch (layout) {
-                  KashiLayout.phone => RepStar.phoneSize,
-                  KashiLayout.tablet => 260,
-                  KashiLayout.web => 300,
-                },
-              ),
+              counter: TapProbe(
+                  id: TapProbeIds.playerRepCounter,
+                  child: _Counter(
+                    counted: _cubit.isCounted(index),
+                    target: state.currentTrack?.effectiveRepetitions ?? 0,
+                    loopsForever: widget.mode == PlayerMode.zoorkhaneh,
+                    size: switch (layout) {
+                      KashiLayout.phone => RepStar.phoneSize,
+                      KashiLayout.tablet => 260,
+                      KashiLayout.web => 300,
+                    },
+                  )),
               transport: _Transport(
                   state: state, cubit: _cubit, stacked: layout.isTablet),
               layout: layout,
@@ -1033,7 +1037,7 @@ class _KashiPlayerView extends StatelessWidget {
               title,
               if (cues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                _Cues(cues: cues),
+                TapProbe(id: TapProbeIds.playerCues, child: _Cues(cues: cues)),
               ],
               const SizedBox(height: 10),
               counter,
@@ -1053,7 +1057,7 @@ class _KashiPlayerView extends StatelessWidget {
               title,
               if (cues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                _Cues(cues: cues),
+                TapProbe(id: TapProbeIds.playerCues, child: _Cues(cues: cues)),
               ],
               const SizedBox(height: 24),
               Row(
@@ -1082,7 +1086,9 @@ class _KashiPlayerView extends StatelessWidget {
                   title,
                   if (cues.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _Cues(cues: cues, inRow: true),
+                    TapProbe(
+                        id: TapProbeIds.playerCues,
+                        child: _Cues(cues: cues, inRow: true)),
                   ],
                 ],
               ),

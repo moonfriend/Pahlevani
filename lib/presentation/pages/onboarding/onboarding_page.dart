@@ -13,6 +13,8 @@ import '../../widgets/kashi/swipe_scroll_behavior.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// The first-open cards (morshed, counting, shamseh by default) — no sign-up
 /// and no fitness questions. The cards come from the admin panel, so there
@@ -220,18 +222,24 @@ class _OnboardingCard extends StatelessWidget {
           children: [
             const SizedBox(height: 6),
             Center(
-              child: KhatamWindow(
-                size: window,
-                frameWidth: window * 14 / _windowSize,
-                frameColor: colors.action,
-                background: colors.inset,
-                child: picture,
-              ),
+              child: TapProbe(
+                  id: TapProbeIds.onboardingCardImage,
+                  child: KhatamWindow(
+                    size: window,
+                    frameWidth: window * 14 / _windowSize,
+                    frameColor: colors.action,
+                    background: colors.inset,
+                    child: picture,
+                  )),
             ),
             SizedBox(height: window < _windowSize ? 20 : 36),
-            Text(card.title,
-                style: KashiTextStyles.heading.copyWith(
-                    fontSize: 29, height: 1.15, color: colors.textPrimary)),
+            TapProbe(
+                id: TapProbeIds.onboardingCardTitle,
+                child: Text(card.title,
+                    style: KashiTextStyles.heading.copyWith(
+                        fontSize: 29,
+                        height: 1.15,
+                        color: colors.textPrimary))),
             const SizedBox(height: 12),
             Text(card.body,
                 style: KashiTextStyles.body

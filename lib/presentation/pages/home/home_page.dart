@@ -24,6 +24,8 @@ import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// A session as the Today card shows it.
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
@@ -297,23 +299,27 @@ class _Header extends StatelessWidget {
                 Text(homeDateLabel(date),
                     style: KashiTextStyles.ui.copyWith(
                         fontSize: phone ? 12 : 13, color: colors.textMuted)),
-                Text('Salam, $name',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: KashiTextStyles.title.copyWith(
-                        fontSize: switch (layout) {
-                          KashiLayout.phone => 23,
-                          KashiLayout.tablet => 32,
-                          KashiLayout.web => 34,
-                        },
-                        color: colors.textPrimary)),
+                TapProbe(
+                    id: TapProbeIds.homeGreeting,
+                    child: Text('Salam, $name',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: KashiTextStyles.title.copyWith(
+                            fontSize: switch (layout) {
+                              KashiLayout.phone => 23,
+                              KashiLayout.tablet => 32,
+                              KashiLayout.web => 34,
+                            },
+                            color: colors.textPrimary))),
               ],
             ),
           ),
           // On the web layout the mark lives in the side rail.
           if (!layout.isWide)
-            Image.asset(KashiAssets.rahaviMark,
-                width: phone ? 34 : 44, semanticLabel: 'Rahavi'),
+            TapProbe(
+                id: TapProbeIds.homeHeaderLogo,
+                child: Image.asset(KashiAssets.rahaviMark,
+                    width: phone ? 34 : 44, semanticLabel: 'Rahavi')),
         ],
       ),
     );

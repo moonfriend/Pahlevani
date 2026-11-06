@@ -134,6 +134,38 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | `ui.error_shown` | `kind` snackbar/dialog/inline · `message_key` | error helpers, auth/activation error states |
 | `ui.dead_tap` | `element` (TapProbe id) · `cell` · `x_pct` · `y_pct` · `disabled_control` | usage root tap listener |
 
+### TapProbe ids (`ui.dead_tap` → `element`)
+
+Look-alike elements tagged in code (`lib/presentation/widgets/usage/tap_probe_ids.dart`, reviewed
+2026-11-06). Any other dead tap is logged by grid cell only.
+
+- `splash.logo`
+- `onboarding.card_image`
+- `onboarding.card_title`
+- `home.header_logo`
+- `home.greeting`
+- `library.title`
+- `library.section_label`
+- `preview.session_still`
+- `preview.session_title`
+- `preview.session_meta`
+- `preview.review_text`
+- `preview.moves_label`
+- `preview.warmup_note`
+- `learning_card.title`
+- `learning_card.reps`
+- `learning_card.cues`
+- `learning_card.coming_soon`
+- `player.rep_counter`
+- `player.cues`
+- `complete.rep_card`
+- `complete.title`
+- `profile.avatar`
+- `profile.name`
+- `profile.counted_note`
+- `locked.text`
+- `consent.text`
+
 Derived in SQL only (never stored): rage taps (3+ dead taps within 2 s in one cell), tap-then-leave,
 ping-pong between two screens, screen visits under 2 s, a screen re-entered within a visit,
 login retried more than twice.

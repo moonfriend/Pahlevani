@@ -25,6 +25,8 @@ import '../../usage/usage_scope.dart';
 import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -97,11 +99,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 _section('Morshed voice', _morshedPicker(colors)),
                 _section('Usage data', const _ShareUsage()),
                 const SizedBox(height: 22),
-                Text(
-                  'Your trainers choose which moves are counted.',
-                  style: KashiTextStyles.body.copyWith(
-                      fontSize: 12.5, height: 1.55, color: colors.textMuted),
-                ),
+                TapProbe(
+                    id: TapProbeIds.profileCountedNote,
+                    child: Text(
+                      'Your trainers choose which moves are counted.',
+                      style: KashiTextStyles.body.copyWith(
+                          fontSize: 12.5,
+                          height: 1.55,
+                          color: colors.textMuted),
+                    )),
                 if (_signedInEmail case final email?) _Account(email: email),
                 if (_isTrainer) const _TrainerTools(),
                 if (kDebugMode) const _DesignPreviews(),
@@ -141,33 +147,37 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Row(
       children: [
-        KhatamWindow(
-          size: 72,
-          frameWidth: 5,
-          frameColor: colors.reward,
-          background: colors.tile,
-          child: Transform.scale(
-            scale: 1.25,
-            child: Image.asset(_figure, fit: BoxFit.cover),
-          ),
-        ),
+        TapProbe(
+            id: TapProbeIds.profileAvatar,
+            child: KhatamWindow(
+              size: 72,
+              frameWidth: 5,
+              frameColor: colors.reward,
+              background: colors.tile,
+              child: Transform.scale(
+                scale: 1.25,
+                child: Image.asset(_figure, fit: BoxFit.cover),
+              ),
+            )),
         const SizedBox(width: 14),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: KashiTextStyles.title
-                      .copyWith(fontSize: 22, color: colors.textPrimary)),
-              Text(subtitle,
-                  style: KashiTextStyles.ui.copyWith(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                      color: colors.textMuted)),
-            ],
-          ),
+          child: TapProbe(
+              id: TapProbeIds.profileName,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: KashiTextStyles.title
+                          .copyWith(fontSize: 22, color: colors.textPrimary)),
+                  Text(subtitle,
+                      style: KashiTextStyles.ui.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: colors.textMuted)),
+                ],
+              )),
         ),
       ],
     );

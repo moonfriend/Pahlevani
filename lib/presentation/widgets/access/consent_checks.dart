@@ -5,6 +5,8 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../pages/access/consent_texts.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
+import '../usage/tap_probe.dart';
+import '../usage/tap_probe_ids.dart';
 
 /// Safety and privacy, each a short summary with a link to the full text and
 /// a required box. Shown when creating an account, and again when the terms
@@ -95,7 +97,10 @@ class _Summary extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 color: colors.textPrimary)),
         const SizedBox(height: 6),
-        for (final point in points) Text('• $point', style: body),
+        for (final point in points)
+          TapProbe(
+              id: TapProbeIds.consentText,
+              child: Text('• $point', style: body)),
         TextButton(
           style: TextButton.styleFrom(padding: EdgeInsets.zero),
           onPressed: () {

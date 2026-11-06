@@ -18,6 +18,8 @@ import '../../usage/app_routes.dart';
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// What the learning card shows about one move — from the Library's sample
 /// moves or from a session's real move.
@@ -540,7 +542,9 @@ class _LearningCardPageState extends State<LearningCardPage> {
           top: _hasToggle ? 56 : 14,
           start: 14,
           end: 14,
-          child: _ComingSoonLabel(offersFollowAlong: _hasToggle)),
+          child: TapProbe(
+              id: TapProbeIds.learningCardComingSoon,
+              child: _ComingSoonLabel(offersFollowAlong: _hasToggle))),
     ]);
   }
 
@@ -638,10 +642,15 @@ class _LearningCardPageState extends State<LearningCardPage> {
           runSpacing: 6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(selected?.name ?? _move.name,
-                style: KashiTextStyles.title
-                    .copyWith(fontSize: 30, color: colors.textPrimary)),
-            if (reps != null) KashiRepsTag(count: reps),
+            TapProbe(
+                id: TapProbeIds.learningCardTitle,
+                child: Text(selected?.name ?? _move.name,
+                    style: KashiTextStyles.title
+                        .copyWith(fontSize: 30, color: colors.textPrimary))),
+            if (reps != null)
+              TapProbe(
+                  id: TapProbeIds.learningCardReps,
+                  child: KashiRepsTag(count: reps)),
           ],
         ),
         if (subtitle.isNotEmpty) ...[
@@ -700,7 +709,8 @@ class _LearningCardPageState extends State<LearningCardPage> {
           const SizedBox(height: 16),
           const KashiSectionLabel('Pay attention to'),
           const SizedBox(height: 8),
-          for (final cue in _move.cues) _Cue(text: cue),
+          for (final cue in _move.cues)
+            TapProbe(id: TapProbeIds.learningCardCues, child: _Cue(text: cue)),
         ],
       ],
     );

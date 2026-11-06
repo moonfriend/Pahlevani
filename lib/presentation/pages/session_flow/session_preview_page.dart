@@ -29,6 +29,8 @@ import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
 import '../../../domain/services/usage_tracker.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
@@ -185,10 +187,12 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.session.needsMeel) const _MeelGuide(),
-        Text('Warm up first, and stop if anything hurts.',
-            textAlign: TextAlign.center,
-            style: KashiTextStyles.ui
-                .copyWith(fontSize: 12.5, color: colors.textMuted)),
+        TapProbe(
+            id: TapProbeIds.previewWarmupNote,
+            child: Text('Warm up first, and stop if anything hurts.',
+                textAlign: TextAlign.center,
+                style: KashiTextStyles.ui
+                    .copyWith(fontSize: 12.5, color: colors.textMuted))),
         const SizedBox(height: 8),
         // Learning mode: cards show for moves not yet learnt.
         KashiActionButton(
@@ -242,11 +246,13 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
 
   Widget _review(KashiColors colors) => Padding(
         padding: const EdgeInsets.only(top: 6, bottom: 10),
-        child: Text(_reviewText,
-            style: KashiTextStyles.ui.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary)),
+        child: TapProbe(
+            id: TapProbeIds.previewReviewText,
+            child: Text(_reviewText,
+                style: KashiTextStyles.ui.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary))),
       );
 
   /// Tablet and web: the lajvard session panel (header, still, morshed and
@@ -305,9 +311,11 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
                   padding: EdgeInsets.fromLTRB(listSide, 40, listSide, 32),
                   children: [
                     _review(colors),
-                    Text('MOVES · TAP ONE TO WATCH HOW',
-                        style: KashiTextStyles.label
-                            .copyWith(color: colors.textMuted)),
+                    TapProbe(
+                        id: TapProbeIds.previewMovesLabel,
+                        child: Text('MOVES · TAP ONE TO WATCH HOW',
+                            style: KashiTextStyles.label
+                                .copyWith(color: colors.textMuted))),
                     const SizedBox(height: 14),
                     ...moveRows,
                   ],
@@ -424,21 +432,27 @@ class _Header extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _FramedStill(src: still, height: embedded ? 240 : 140),
+          TapProbe(
+              id: TapProbeIds.previewSessionStill,
+              child: _FramedStill(src: still, height: embedded ? 240 : 140)),
           const SizedBox(height: 18),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
               Expanded(
-                child: Text(session.title,
-                    style: KashiTextStyles.heading
-                        .copyWith(fontSize: 26, color: Colors.white)),
+                child: TapProbe(
+                    id: TapProbeIds.previewSessionTitle,
+                    child: Text(session.title,
+                        style: KashiTextStyles.heading
+                            .copyWith(fontSize: 26, color: Colors.white))),
               ),
               const SizedBox(width: 10),
-              Text(meta,
-                  style: KashiTextStyles.ui
-                      .copyWith(fontSize: 12.5, color: KashiPalette.sky300)),
+              TapProbe(
+                  id: TapProbeIds.previewSessionMeta,
+                  child: Text(meta,
+                      style: KashiTextStyles.ui.copyWith(
+                          fontSize: 12.5, color: KashiPalette.sky300))),
             ],
           ),
           const SizedBox(height: 12),

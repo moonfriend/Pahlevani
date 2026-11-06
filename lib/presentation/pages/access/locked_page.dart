@@ -11,6 +11,8 @@ import 'account_page.dart' show activateTitle;
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Signed in, not activated: the admin's message and Steady link, and a
 /// field for the activation code the member got from us.
@@ -45,10 +47,12 @@ class _LockedPageState extends State<LockedPage> {
     return AccessScaffold(
       title: activateTitle,
       children: [
-        Text(text.message,
-            textAlign: TextAlign.center,
-            style: KashiTextStyles.body
-                .copyWith(fontSize: 15, height: 1.5, color: colors.textBody)),
+        TapProbe(
+            id: TapProbeIds.lockedText,
+            child: Text(text.message,
+                textAlign: TextAlign.center,
+                style: KashiTextStyles.body.copyWith(
+                    fontSize: 15, height: 1.5, color: colors.textBody))),
         const SizedBox(height: 12),
         OutlinedButton(
           onPressed: () {
