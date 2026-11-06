@@ -28,6 +28,7 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/move_list_drawer.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
@@ -363,6 +364,63 @@ void main() {
     final howTo = usage.of<PlayerHowToOpened>().single;
     expect(howTo.index, 0);
     expect(usage.of<LearningCardOpened>().single.from, CardSource.player);
+  });
+
+  group('move list', () {
+    Finder list() => find.byType(MoveListDrawer);
+    Finder inList(String text) =>
+        find.descendant(of: list(), matching: find.text(text));
+
+    // The audio wave animates while playing, so nothing ever settles: pump
+    // through the drawer's open/close animation instead.
+    Future<void> pumpDrawer(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('the arrow on the right edge opens the list of all moves',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      expect(list(), findsNothing);
+
+      await tester.tap(find.byTooltip('All moves'));
+      await pumpDrawer(tester);
+
+      expect(inList('Shena'), findsOneWidget);
+      expect(inList('Kabbadeh'), findsOneWidget);
+      expect(
+          tester
+              .widget<MoveListDrawer>(list())
+              .moves
+              .indexWhere((m) => m.isCurrent),
+          0);
+    });
+
+    testWidgets('swiping left from the right edge opens it', (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      await tester.dragFrom(const Offset(795, 450), const Offset(-300, 0));
+      await pumpDrawer(tester);
+
+      expect(list(), findsOneWidget);
+    });
+
+    testWidgets('tapping a move closes the list and plays that move',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      await tester.tap(find.byTooltip('All moves'));
+      await pumpDrawer(tester);
+
+      await tester.tap(inList('Kabbadeh'));
+      await pumpDrawer(tester);
+
+      expect(list(), findsNothing);
+      expect(find.text('Move 2 of 2'), findsOneWidget);
+      expect(_playerCubit(tester).state.isPlaying, isTrue);
+    });
   });
 
   testWidgets('How to pauses playback and opens the learning card',

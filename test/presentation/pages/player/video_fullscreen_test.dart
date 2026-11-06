@@ -109,6 +109,16 @@ void main() {
   });
   tearDown(getIt.reset);
 
+  testWidgets('full screen has no move list arrow', (tester) async {
+    await _pump(tester, _snapshot(_videoMedia));
+    expect(find.byTooltip('All moves'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+    await tester.pump();
+
+    expect(find.byTooltip('All moves'), findsNothing);
+  });
+
   testWidgets('⛶ shows the same video full screen; ✕ goes back',
       (tester) async {
     await _pump(tester, _snapshot(_videoMedia));

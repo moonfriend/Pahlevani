@@ -43,6 +43,7 @@ import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/move_list_drawer.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
@@ -388,138 +389,219 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         BlocProvider.value(value: _cubit),
         BlocProvider.value(value: _progress),
       ],
-      child: Scaffold(
-        // The player is a lajvard scene, the same in both themes.
-        backgroundColor: KashiPalette.lajvard900,
-        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
-          // A restart (see _restartPlayer) rebuilds the whole player subtree.
-          key: ValueKey(_playerGeneration),
-          listenWhen: (prev, cur) =>
-              prev.playingIndex != cur.playingIndex ||
-              (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (prev is! PlayerFinished && cur is PlayerFinished) ||
-              (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
-          listener: (context, state) {
-            if (state is PlayerLoggingReps) {
-              unawaited(_showRepLog(context, state));
-              return;
-            }
-            if (state is PlayerFinished) {
-              unawaited(_handleSessionFinished(context));
-            }
-            if (state.tracks.isNotEmpty &&
-                state is! PlayerFinished &&
-                _cubit.shouldPromptLearningMode) {
-              final exercise = _cubit.exerciseAt(state.playingIndex);
-              if (exercise != null) {
-                unawaited(
-                    _promptLearningMode(context, state.playingIndex, exercise));
-              }
-            }
-            // Precache each image URL at most once per player session.
-            // Previously this looped all tracks on every index change, causing
-            // repeated Supabase egress when the in-memory cache was full.
-            for (final track in state.tracks) {
-              final src = track.media.src;
-              if (track.media.type == 'photo' &&
-                  src != null &&
-                  src.isNotEmpty &&
-                  !src.startsWith('/') &&
-                  _precachedUrls.add(src)) {
-                precacheImage(ExerciseImageProvider(src), context,
-                    onError: (_, __) {});
-              }
-            }
-          },
-          builder: (context, state) {
-            if (state is PlayerLoading) {
-              return const Center(
-                  child: CircularProgressIndicator(color: _Scene.accent));
-            }
-            if (state is PlayerNeedsDownload) {
-              return _NeedsDownload(
-                topBar: _TopBar(
-                  state: state,
-                  morshedName: _morshedName,
-                  onSelectMove: null,
-                  onEdit: () => _openEdit(context),
-                ),
-                onDownload: () => _download(context),
-              );
-            }
-            if (state is PlayerFailed && state.tracks.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(state.message,
-                      textAlign: TextAlign.center,
-                      style: KashiTextStyles.body.copyWith(color: _Scene.text)),
-                ),
-              );
-            }
-            final index = state.playingIndex;
-            final exercise = _cubit.exerciseAt(index);
-            final layout = KashiLayout.of(context);
-            final hasVideo = _showsVideo(state.currentTrack);
-            final fullscreen = _fullscreen && hasVideo;
-            final stage = _Stage(
-              key: _stageKey,
+      // The move list depends on which move plays and on full screen; the
+      // player below rebuilds on its own.
+      child: BlocBuilder<SessionPlayerCubit, SessionPlayerState>(
+        bloc: _cubit,
+        buildWhen: (prev, cur) =>
+            prev.runtimeType != cur.runtimeType ||
+            prev.playingIndex != cur.playingIndex ||
+            prev.tracks != cur.tracks,
+        builder: (context, state) {
+          final listsMoves = state is PlayerReady &&
+              state.tracks.isNotEmpty &&
+              !(_fullscreen && _showsVideo(state.currentTrack));
+          return Scaffold(
+            // The player is a lajvard scene, the same in both themes.
+            backgroundColor: KashiPalette.lajvard900,
+            // Swipe left from the right edge (or the edge arrow): every
+            // move, to jump straight to one. Not in full screen.
+            endDrawer: listsMoves
+                ? MoveListDrawer(
+                    moves: _moveEntries(state),
+                    onSelect: _cubit.setIndexAndPlay)
+                : null,
+            drawerEdgeDragWidth: _moveListEdgeWidth,
+            body: Stack(fit: StackFit.expand, children: [
+              _player(),
+              if (listsMoves)
+                const Positioned(
+                    right: 0, top: 0, bottom: 0, child: _MoveListTab()),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The right-edge strip a swipe left starts from to open the move list.
+  static const double _moveListEdgeWidth = 32;
+
+  /// The move list's rows, from the session's moves.
+  List<MoveListEntry> _moveEntries(SessionPlayerState state) => [
+        for (final (i, track) in state.tracks.indexed)
+          MoveListEntry(
+            name: track.title,
+            nameFa: _cubit.exerciseAt(i)?.titleFa,
+            reps: track.effectiveRepetitions,
+            imageSrc: track.media.type == 'photo'
+                ? track.media.src
+                : track.media.poster,
+            isCurrent: i == state.playingIndex,
+            isDone: i < state.playingIndex,
+          ),
+      ];
+
+  Widget _player() {
+    return BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
+      // A restart (see _restartPlayer) rebuilds the whole player subtree.
+      key: ValueKey(_playerGeneration),
+      listenWhen: (prev, cur) =>
+          prev.playingIndex != cur.playingIndex ||
+          (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
+          (prev is! PlayerFinished && cur is PlayerFinished) ||
+          (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
+      listener: (context, state) {
+        if (state is PlayerLoggingReps) {
+          unawaited(_showRepLog(context, state));
+          return;
+        }
+        if (state is PlayerFinished) {
+          unawaited(_handleSessionFinished(context));
+        }
+        if (state.tracks.isNotEmpty &&
+            state is! PlayerFinished &&
+            _cubit.shouldPromptLearningMode) {
+          final exercise = _cubit.exerciseAt(state.playingIndex);
+          if (exercise != null) {
+            unawaited(
+                _promptLearningMode(context, state.playingIndex, exercise));
+          }
+        }
+        // Precache each image URL at most once per player session.
+        // Previously this looped all tracks on every index change, causing
+        // repeated Supabase egress when the in-memory cache was full.
+        for (final track in state.tracks) {
+          final src = track.media.src;
+          if (track.media.type == 'photo' &&
+              src != null &&
+              src.isNotEmpty &&
+              !src.startsWith('/') &&
+              _precachedUrls.add(src)) {
+            precacheImage(ExerciseImageProvider(src), context,
+                onError: (_, __) {});
+          }
+        }
+      },
+      builder: (context, state) {
+        if (state is PlayerLoading) {
+          return const Center(
+              child: CircularProgressIndicator(color: _Scene.accent));
+        }
+        if (state is PlayerNeedsDownload) {
+          return _NeedsDownload(
+            topBar: _TopBar(
               state: state,
-              cubit: _cubit,
-              fullscreen: fullscreen,
-              onToggleFullscreen: hasVideo ? _toggleFullscreen : null,
-            );
-            if (fullscreen) {
-              // Back leaves full screen, not the session.
-              return PopScope(
-                canPop: false,
-                onPopInvokedWithResult: (didPop, _) {
-                  if (!didPop) setState(() => _fullscreen = false);
+              morshedName: _morshedName,
+              onSelectMove: null,
+              onEdit: () => _openEdit(context),
+            ),
+            onDownload: () => _download(context),
+          );
+        }
+        if (state is PlayerFailed && state.tracks.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(state.message,
+                  textAlign: TextAlign.center,
+                  style: KashiTextStyles.body.copyWith(color: _Scene.text)),
+            ),
+          );
+        }
+        final index = state.playingIndex;
+        final exercise = _cubit.exerciseAt(index);
+        final layout = KashiLayout.of(context);
+        final hasVideo = _showsVideo(state.currentTrack);
+        final fullscreen = _fullscreen && hasVideo;
+        final stage = _Stage(
+          key: _stageKey,
+          state: state,
+          cubit: _cubit,
+          fullscreen: fullscreen,
+          onToggleFullscreen: hasVideo ? _toggleFullscreen : null,
+        );
+        if (fullscreen) {
+          // Back leaves full screen, not the session.
+          return PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) setState(() => _fullscreen = false);
+            },
+            child: FullscreenScope(
+              key: const ValueKey('player-fullscreen'),
+              child: Center(child: stage),
+            ),
+          );
+        }
+        return _KashiPlayerView(
+          topBar: _TopBar(
+            state: state,
+            morshedName: _morshedName,
+            onSelectMove: _cubit.setIndexAndPlay,
+            onEdit: () => _openEdit(context),
+          ),
+          stage: stage,
+          title: _MoveTitle(
+            name: state.currentTrack?.title ?? '',
+            nameFa: exercise?.titleFa,
+            onHowTo: exercise == null ? null : () => _openHowTo(context, index),
+            fontSize: switch (layout) {
+              KashiLayout.phone => 24,
+              KashiLayout.tablet => 30,
+              KashiLayout.web => 36,
+            },
+          ),
+          cues: exercise?.cues ?? const [],
+          counter: TapProbe(
+              id: TapProbeIds.playerRepCounter,
+              child: _Counter(
+                counted: _cubit.isCounted(index),
+                confirmsAfter: _cubit.logsReps(index),
+                target: state.currentTrack?.effectiveRepetitions ?? 0,
+                loopsForever: widget.mode == PlayerMode.zoorkhaneh,
+                size: switch (layout) {
+                  KashiLayout.phone => RepStar.phoneSize,
+                  KashiLayout.tablet => 260,
+                  KashiLayout.web => 300,
                 },
-                child: FullscreenScope(
-                  key: const ValueKey('player-fullscreen'),
-                  child: Center(child: stage),
+              )),
+          transport:
+              _Transport(state: state, cubit: _cubit, stacked: layout.isTablet),
+          layout: layout,
+        );
+      },
+    );
+  }
+}
+
+/// The slim arrow on the player's right edge that opens the move list.
+class _MoveListTab extends StatelessWidget {
+  const _MoveListTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Tooltip(
+        message: 'All moves',
+        child: InkWell(
+          onTap: () => Scaffold.of(context).openEndDrawer(),
+          child: const SizedBox(
+            width: 28,
+            height: 72,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Color(0x662A3A78)),
+                child: SizedBox(
+                  width: 18,
+                  height: 56,
+                  child:
+                      Icon(Icons.chevron_left, size: 18, color: _Scene.muted),
                 ),
-              );
-            }
-            return _KashiPlayerView(
-              topBar: _TopBar(
-                state: state,
-                morshedName: _morshedName,
-                onSelectMove: _cubit.setIndexAndPlay,
-                onEdit: () => _openEdit(context),
               ),
-              stage: stage,
-              title: _MoveTitle(
-                name: state.currentTrack?.title ?? '',
-                nameFa: exercise?.titleFa,
-                onHowTo:
-                    exercise == null ? null : () => _openHowTo(context, index),
-                fontSize: switch (layout) {
-                  KashiLayout.phone => 24,
-                  KashiLayout.tablet => 30,
-                  KashiLayout.web => 36,
-                },
-              ),
-              cues: exercise?.cues ?? const [],
-              counter: TapProbe(
-                  id: TapProbeIds.playerRepCounter,
-                  child: _Counter(
-                    counted: _cubit.isCounted(index),
-                    confirmsAfter: _cubit.logsReps(index),
-                    target: state.currentTrack?.effectiveRepetitions ?? 0,
-                    loopsForever: widget.mode == PlayerMode.zoorkhaneh,
-                    size: switch (layout) {
-                      KashiLayout.phone => RepStar.phoneSize,
-                      KashiLayout.tablet => 260,
-                      KashiLayout.web => 300,
-                    },
-                  )),
-              transport: _Transport(
-                  state: state, cubit: _cubit, stacked: layout.isTablet),
-              layout: layout,
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
