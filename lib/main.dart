@@ -70,7 +70,7 @@ Future<void> main() async {
   }
   AppLogger.init(crashlyticsEnabled: crashlyticsEnabled);
 
-  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
 
   // Initialize audio_service on mobile so the handler is available to DI.
   // On Linux / Web, the handler is skipped and DI falls back to audioplayers.

@@ -24,7 +24,8 @@ void main() {
     // In-memory preferences: never touch the real store (on Linux that is the
     // developer's own app data). Splash already seen — start from Home.
     SharedPreferences.setMockInitialValues({FirstRunCubit.splashSeenKey: true});
-    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    await Supabase.initialize(
+        url: supabaseUrl, publishableKey: supabaseAnonKey);
     await DependencyInjection().ensureInitialized();
   });
 
