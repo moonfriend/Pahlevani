@@ -20,6 +20,8 @@ import '../progress/calendar_page.dart';
 import '../session_flow/complete_page.dart';
 import '../session_flow/rep_log_page.dart';
 import '../training_session/training_sessions_page.dart';
+import '../../bloc/usage/usage_sharing_cubit.dart';
+import '../../usage/usage_scope.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -84,6 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 _section('Morshed voice', _morshedPicker(colors)),
+                _section('Usage data', const _ShareUsage()),
                 const SizedBox(height: 22),
                 Text(
                   'Your trainers choose which moves are counted.',
@@ -372,6 +375,32 @@ class _DesignPreviews extends StatelessWidget {
                 value: history, child: const CalendarPage())),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The usage study's opt-out (on by default: testers agreed to it).
+class _ShareUsage extends StatelessWidget {
+  const _ShareUsage();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return BlocProvider(
+      create: (context) => UsageSharingCubit(context.usage),
+      child: BlocBuilder<UsageSharingCubit, bool>(
+        builder: (context, on) => SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text('Share usage data',
+              style: KashiTextStyles.ui
+                  .copyWith(fontSize: 15, color: colors.textPrimary)),
+          subtitle: Text('How you move through the app, for our study.',
+              style: KashiTextStyles.body
+                  .copyWith(fontSize: 12.5, color: colors.textMuted)),
+          value: on,
+          onChanged: context.read<UsageSharingCubit>().set,
+        ),
       ),
     );
   }

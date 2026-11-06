@@ -20,7 +20,6 @@ enum ProfileEntry {
   signOut,
   deleteAccount,
   trainerTools,
-  shareUsage,
 }
 
 enum MorshedSource { profile, preview }

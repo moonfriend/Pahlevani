@@ -34,6 +34,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -130,6 +132,13 @@ class PahlevaniApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return UsageScope(
+      tracker: getIt<UsageTracker>(),
+      child: _providers(),
+    );
+  }
+
+  Widget _providers() {
     return MultiBlocProvider(
       providers: [
         BlocProvider<SettingsCubit>(

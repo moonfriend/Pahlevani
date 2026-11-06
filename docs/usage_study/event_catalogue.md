@@ -83,7 +83,7 @@ Visit length, screens per visit and events per visit come from the `usage_visits
 | `learning_card.fullscreen` | `on` | learning card |
 | `learning_card.action` | `movement_id` · `action` | learning card |
 | `learning_card.learnt_toggled` | `movement_id` · `learnt` | learnt toggle |
-| `profile.entry_tapped` | `entry` language_fa/appearance/morshed/sign_out/delete_account/trainer_tools/share_usage | Profile |
+| `profile.entry_tapped` | `entry` language_fa/appearance/morshed/sign_out/delete_account/trainer_tools | Profile |
 | `profile.tracking_toggled` | `on` | Profile switch (turning off is the last event sent) |
 | `settings.theme_changed` | `mode` | SettingsCubit |
 | `morshed.chosen` | `morshed_id` · `from` profile/preview | chooseMorshed |
