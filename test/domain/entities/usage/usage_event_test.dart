@@ -11,7 +11,6 @@ final List<UsageEvent> samples = [
   const AppOpened(
     start: AppStart.cold,
     sinceLastVisitSeconds: 3600,
-    launch: LaunchSource.icon,
     deviceClass: DeviceClass.phone,
     os: 'android',
     osVersion: '14',

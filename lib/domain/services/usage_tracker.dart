@@ -14,8 +14,11 @@ abstract interface class UsageTracker {
   String? get screen;
   set screen(String? name);
 
-  /// The app went to the background; returns the visit's length so far.
-  Duration backgrounded();
+  /// How long the current visit has lasted.
+  Duration get visitLength;
+
+  /// The app went to the background: remember the time and upload.
+  void backgrounded();
 
   /// The app came back to the foreground (maybe starting a new visit).
   ForegroundResult foregrounded();
@@ -49,7 +52,10 @@ final class NoOpUsageTracker implements UsageTracker {
   set screen(String? name) {}
 
   @override
-  Duration backgrounded() => Duration.zero;
+  Duration get visitLength => Duration.zero;
+
+  @override
+  void backgrounded() {}
 
   @override
   ForegroundResult foregrounded() =>

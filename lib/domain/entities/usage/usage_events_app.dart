@@ -4,8 +4,6 @@ part of 'usage_event.dart';
 
 enum AppStart { cold, warm }
 
-enum LaunchSource { icon, mediaSession }
-
 /// From the layout breakpoints (KashiLayout: 600 / 1100 logical px).
 enum DeviceClass { phone, tablet, desktop }
 
@@ -27,7 +25,6 @@ final class AppOpened extends UsageEvent {
   const AppOpened({
     required this.start,
     required this.sinceLastVisitSeconds,
-    required this.launch,
     required this.deviceClass,
     required this.os,
     required this.osVersion,
@@ -39,7 +36,6 @@ final class AppOpened extends UsageEvent {
 
   /// Null on the first visit of an install.
   final int? sinceLastVisitSeconds;
-  final LaunchSource launch;
   final DeviceClass deviceClass;
   final String os;
   final String osVersion;
@@ -53,7 +49,6 @@ final class AppOpened extends UsageEvent {
   Map<String, Object?> get props => {
         'start': start.wire,
         'since_last_visit_s': sinceLastVisitSeconds,
-        'launch': launch.wire,
         'device_class': deviceClass.wire,
         'os': os,
         'os_version': osVersion,

@@ -25,18 +25,30 @@ class FakeUsageTracker implements UsageTracker {
     screens.add(screen);
   }
 
-  @override
-  Duration backgrounded() => Duration.zero;
-
-  @override
-  ForegroundResult foregrounded() =>
+  /// What [foregrounded] answers next.
+  ForegroundResult nextForeground =
       const ForegroundResult(away: Duration.zero, newVisit: false);
 
-  @override
-  Duration? get sinceLastVisit => null;
+  int backgroundCalls = 0;
+  int foregroundCalls = 0;
 
   @override
-  bool get isFirstOpen => false;
+  Duration visitLength = Duration.zero;
+
+  @override
+  void backgrounded() => backgroundCalls++;
+
+  @override
+  ForegroundResult foregrounded() {
+    foregroundCalls++;
+    return nextForeground;
+  }
+
+  @override
+  Duration? sinceLastVisit;
+
+  @override
+  bool isFirstOpen = false;
 
   @override
   Future<void> setEnabled(bool on) async => enabled = on;

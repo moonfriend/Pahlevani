@@ -36,6 +36,8 @@ import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart
 import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
 import 'package:pahlevani/domain/services/usage_tracker.dart';
 import 'package:pahlevani/presentation/usage/usage_scope.dart';
+import 'package:pahlevani/presentation/usage/usage_root.dart';
+import 'package:pahlevani/data/services/usage/device_context_reader.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -185,6 +187,8 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
+          builder: (context, child) =>
+              UsageRoot(device: readDeviceContext, child: child!),
           // Version gate stays outermost: an outdated app is blocked before
           // the first-open splash.
           home: VersionGate(

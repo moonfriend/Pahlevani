@@ -149,11 +149,13 @@ class RecordingUsageTracker implements UsageTracker {
   }
 
   @override
-  Duration backgrounded() {
-    final length = _visits.backgrounded();
+  Duration get visitLength => _visits.visitLength;
+
+  @override
+  void backgrounded() {
+    _visits.backgrounded();
     _enqueue(_saveLastActive);
     unawaited(flush());
-    return length;
   }
 
   @override
