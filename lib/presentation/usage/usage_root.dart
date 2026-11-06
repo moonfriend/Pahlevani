@@ -9,7 +9,8 @@ import 'usage_lifecycle.dart';
 import 'usage_scope.dart';
 
 /// The usage study's app-wide listeners, installed once around every route
-/// (`MaterialApp.builder`): the app lifecycle (visits).
+/// (`MaterialApp.builder`): the app lifecycle (visits) and how far each
+/// screen is scrolled.
 class UsageRoot extends StatefulWidget {
   const UsageRoot({super.key, required this.device, required this.child});
 
@@ -53,6 +54,19 @@ class _UsageRootState extends State<UsageRoot> {
     super.dispose();
   }
 
+  /// Vertical scrolling of the visible screen's own scroll views (nested or
+  /// sideways ones — carousels, page views — don't count).
+  bool _onScroll(ScrollNotification n) {
+    final m = n.metrics;
+    if (n.depth == 0 && m.axis == Axis.vertical && m.maxScrollExtent > 0) {
+      final pct = (m.pixels / m.maxScrollExtent * 100).round().clamp(0, 100);
+      context.screens?.scrolled(pct);
+    }
+    return false;
+  }
+
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) =>
+      NotificationListener<ScrollNotification>(
+          onNotification: _onScroll, child: widget.child);
 }

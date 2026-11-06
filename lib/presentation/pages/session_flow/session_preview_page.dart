@@ -25,6 +25,7 @@ import '../library/learning_card_page.dart';
 import '../library/open_move_card.dart';
 import 'session_start.dart';
 import '../../usage/app_routes.dart';
+import '../../usage/back_signals.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
@@ -345,7 +346,7 @@ class _Header extends StatelessWidget {
               Material(
                 color: Colors.white.withValues(alpha: .1),
                 child: InkWell(
-                  onTap: () => Navigator.maybePop(context),
+                  onTap: () => popWithAppBarBack(context),
                   child: const SizedBox.square(
                     dimension: 44,
                     child:

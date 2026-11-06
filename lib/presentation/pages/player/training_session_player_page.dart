@@ -51,6 +51,7 @@ import 'package:pahlevani/presentation/widgets/player/fullscreen_mode.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
 import '../../usage/app_routes.dart';
+import '../../usage/back_signals.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -1113,7 +1114,7 @@ class _TopBar extends StatelessWidget {
         Tooltip(
           message: 'Close player',
           child: InkWell(
-            onTap: () => Navigator.maybePop(context),
+            onTap: () => popWithAppBarBack(context),
             child: SizedBox(
               height: 44,
               child: Row(children: [

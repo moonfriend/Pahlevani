@@ -40,6 +40,7 @@ import 'package:pahlevani/presentation/usage/usage_root.dart';
 import 'package:pahlevani/presentation/usage/screen_tracker.dart';
 import 'package:pahlevani/presentation/usage/usage_navigator_observer.dart';
 import 'package:pahlevani/data/services/usage/device_context_reader.dart';
+import 'package:pahlevani/presentation/usage/back_signals.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,6 +127,12 @@ Future<void> main() async {
     currentBuildNumber = 999999; // fail open: never block on a read failure
   }
 
+  // The usage study's screen tracker. Its system-Back probe must be
+  // registered before runApp so it hears Back before the app handles it.
+  final screens = ScreenTracker(tracker: getIt<UsageTracker>());
+  getIt.registerSingleton<ScreenTracker>(screens);
+  WidgetsBinding.instance.addObserver(SystemBackProbe(screens.back));
+
   runApp(PahlevaniApp(currentBuildNumber: currentBuildNumber));
 }
 
@@ -140,7 +147,11 @@ class PahlevaniApp extends StatefulWidget {
 
 class _PahlevaniAppState extends State<PahlevaniApp> {
   final UsageTracker _usage = getIt<UsageTracker>();
-  late final ScreenTracker _screens = ScreenTracker(tracker: _usage);
+  // Created in main() (see SystemBackProbe); integration tests that pump
+  // the app directly get their own.
+  late final ScreenTracker _screens = getIt.isRegistered<ScreenTracker>()
+      ? getIt<ScreenTracker>()
+      : ScreenTracker(tracker: _usage);
   late final UsageNavigatorObserver _navigationUsage =
       UsageNavigatorObserver(_screens, _usage);
 

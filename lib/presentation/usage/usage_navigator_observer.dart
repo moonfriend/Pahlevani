@@ -42,7 +42,17 @@ class UsageNavigatorObserver extends NavigatorObserver {
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    if (_isScreen(route)) _screens.popped(nameOf(route));
+    if (!_isScreen(route)) return;
+    final name = nameOf(route);
+    final kind = _screens.back.consume();
+    if (kind != null) _tracker.track(NavBack(kind: kind, from: name));
+    _screens.popped(name);
+  }
+
+  @override
+  void didStartUserGesture(
+      Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _screens.back.swipe();
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../domain/entities/usage/usage_event.dart';
 import '../../domain/services/usage_tracker.dart';
+import 'back_signals.dart';
 
 /// Knows which screen the user is looking at and logs every change as
 /// `nav.screen_left` + `nav.screen_viewed` (layer B).
@@ -14,7 +15,11 @@ import '../../domain/services/usage_tracker.dart';
 class ScreenTracker {
   ScreenTracker({required UsageTracker tracker, DateTime Function()? now})
       : _tracker = tracker,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        back = BackSignals(now: now);
+
+  /// How the user is going back (system, swipe, in-app arrow).
+  final BackSignals back;
 
   final UsageTracker _tracker;
   final DateTime Function() _now;
