@@ -11,9 +11,10 @@ function required(name: string): string {
   return value;
 }
 
+const supabaseUrl = required("SUPABASE_URL");
 const serviceKey = required("SUPABASE_SERVICE_ROLE_KEY");
 const steadyKey = required("STEADY_API_KEY");
-const admin = createClient(required("SUPABASE_URL"), serviceKey, {
+const admin = createClient(supabaseUrl, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -23,9 +24,33 @@ async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise
   return data as T;
 }
 
+/** The token's role claim, unverified: only a cheap first filter. */
+function claimedRole(token: string): string | null {
+  try {
+    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part)).role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Proof, not a claim: Supabase's admin API answers only to a real
+ * service-role token of this project.
+ */
+async function isServiceToken(token: string): Promise<boolean> {
+  if (claimedRole(token) !== "service_role") return false;
+  const res = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1`, {
+    headers: { apikey: token, Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  await res.body?.cancel();
+  return res.ok;
+}
+
 Deno.serve((req) =>
   handle(req, {
-    serviceKey,
+    isServiceToken,
     now: () => new Date(),
     userIdFromJwt: async (jwt) => {
       const { data, error } = await admin.auth.getUser(jwt);

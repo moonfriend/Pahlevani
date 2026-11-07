@@ -33,7 +33,12 @@ export interface Member {
 
 /** Everything that talks to the outside world, injected for tests. */
 export interface Deps {
-  serviceKey: string;
+  /**
+   * True only for a service-role token of this project (the daily job).
+   * Asked of Supabase, not compared as text: a project can have more than
+   * one valid service key, and the copy given to the function may differ.
+   */
+  isServiceToken: (token: string) => Promise<boolean>;
   now: () => Date;
   /** The Supabase user id for a user token, or null if invalid. */
   userIdFromJwt: (jwt: string) => Promise<string | null>;
@@ -91,15 +96,6 @@ async function checkOne(userId: string, email: string, deps: Deps): Promise<Acce
   return access;
 }
 
-/** Compares without leaking the position of the first difference. */
-function sameSecret(a: string, b: string): boolean {
-  const x = new TextEncoder().encode(a);
-  const y = new TextEncoder().encode(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
-  return diff === 0 && b.length > 0;
-}
-
 const json = (status: number, body: unknown) => Response.json(body, { status });
 
 async function recheckAll(deps: Deps): Promise<Response> {
@@ -124,7 +120,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (!match) return json(401, { error: "not signed in" });
   const token = match[1];
 
-  if (sameSecret(token, deps.serviceKey)) return recheckAll(deps);
+  if (await deps.isServiceToken(token)) return recheckAll(deps);
 
   const userId = await deps.userIdFromJwt(token);
   if (!userId) return json(401, { error: "not signed in" });

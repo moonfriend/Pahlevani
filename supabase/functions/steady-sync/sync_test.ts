@@ -5,6 +5,8 @@ const endOf = (a: Access) => (a.hasAccess ? a.expiresAt : null);
 
 const NOW = new Date("2026-11-07T10:00:00Z");
 const SERVICE_KEY = "service-key";
+// Another valid service token (e.g. a second key of the same project).
+const OTHER_SERVICE_KEY = "other-service-key";
 
 // Shape documented at developers.steadyhq.com (GET /api/v1/subscriptions).
 const sub = (state: string, expiresAt: string | null) => ({
@@ -63,7 +65,7 @@ function fakes(over: Partial<Deps> = {}) {
   const applied: Applied[] = [];
   const asked: string[] = [];
   const deps: Deps = {
-    serviceKey: SERVICE_KEY,
+    isServiceToken: (t) => Promise.resolve(t === SERVICE_KEY || t === OTHER_SERVICE_KEY),
     now: () => NOW,
     userIdFromJwt: (jwt) => Promise.resolve(jwt === "user-jwt" ? "u1" : null),
     identityEmail: (id) => Promise.resolve(id === "u1" ? "mina@steady.example" : null),
@@ -139,6 +141,12 @@ Deno.test("daily re-check with the service key: every Steady sign-in", async () 
     ["u1", true, "2026-12-07T10:00:00.000Z", "active"],
     ["u2", false, null, "none"],
   ]);
+});
+
+Deno.test("daily re-check: any valid service token works, not one exact string", async () => {
+  const f = fakes();
+  const res = await handle(post(`Bearer ${OTHER_SERVICE_KEY}`), f.deps);
+  assertEquals(await res.json(), { checked: 2, active: 1, failed: 0 });
 });
 
 Deno.test("daily re-check: one Steady failure skips that user only", async () => {
