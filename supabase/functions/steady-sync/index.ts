@@ -71,6 +71,21 @@ Deno.serve((req) =>
       if (!res.ok) throw new Error(`Steady answered ${res.status}`);
       return res.json();
     },
+    newsletterEmails: async () => {
+      const res = await fetch("https://steadyhq.com/api/v1/newsletter_subscribers", {
+        headers: { "X-Api-Key": steadyKey, Accept: "application/vnd.api+json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) throw new Error(`Steady answered ${res.status}`);
+      const body = await res.json();
+      if (!Array.isArray(body?.data)) throw new Error("unreadable newsletter list");
+      return new Set(
+        body.data
+          .map((d: { attributes?: { email?: unknown } }) => d?.attributes?.email)
+          .filter((e: unknown): e is string => typeof e === "string")
+          .map((e: string) => e.trim().toLowerCase()),
+      );
+    },
     apply: (userId, hasAccess, expiresAt, state) =>
       rpc("steady_apply_membership", {
         p_user: userId,

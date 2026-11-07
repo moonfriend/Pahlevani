@@ -4,7 +4,7 @@ activations export for the monthly Steady check.
 
 Kept apart from the Streamlit UI so it can be unit-tested
 (scripts/tests/test_activation_gate.py). Mirrors
-supabase/migrations/0045_activation_gate.sql and 0051_steady_membership.sql.
+supabase/migrations/0045_activation_gate.sql and 0053_steady_membership.sql.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ def _when(value: Any) -> str:
 
 @dataclass(frozen=True)
 class Activation:
-    """One account's access (migrations 0045 + 0051): from a code (no end
+    """One account's access (migrations 0045 + 0053): from a code (no end
     date) or a Steady membership (ends unless the daily check renews it)."""
 
     email: str

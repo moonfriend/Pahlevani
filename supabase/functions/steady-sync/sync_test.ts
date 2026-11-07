@@ -16,11 +16,11 @@ const sub = (state: string, expiresAt: string | null) => ({
 });
 
 Deno.test("no current subscription: no access", () => {
-  assertEquals(accessFrom({ data: [] }, NOW), { hasAccess: false, state: "none" });
+  assertEquals(accessFrom({ data: [] }, false, NOW), { hasAccess: false, state: "none" });
 });
 
 Deno.test("active subscription: access until its end date", () => {
-  assertEquals(accessFrom({ data: [sub("active", "2026-12-07T10:00:00Z")] }, NOW), {
+  assertEquals(accessFrom({ data: [sub("active", "2026-12-07T10:00:00Z")] }, false, NOW), {
     hasAccess: true,
     state: "active",
     expiresAt: "2026-12-07T10:00:00.000Z",
@@ -29,19 +29,19 @@ Deno.test("active subscription: access until its end date", () => {
 
 Deno.test("end date missing or near: a short grace, renewed by the daily check", () => {
   const graceEnd = new Date(NOW.getTime() + GRACE_MS).toISOString();
-  assertEquals(endOf(accessFrom({ data: [sub("active", null)] }, NOW)), graceEnd);
+  assertEquals(endOf(accessFrom({ data: [sub("active", null)] }, false, NOW)), graceEnd);
   assertEquals(
-    endOf(accessFrom({ data: [sub("in_trial", "2026-11-07T11:00:00Z")] }, NOW)),
+    endOf(accessFrom({ data: [sub("in_trial", "2026-11-07T11:00:00Z")] }, false, NOW)),
     graceEnd,
   );
 });
 
 Deno.test("not renewing and gifted (guest) still count; ended ones don't", () => {
   for (const state of ["not_renewing", "in_trial", "guest"]) {
-    assertEquals(accessFrom({ data: [sub(state, "2026-12-01T00:00:00Z")] }, NOW).hasAccess, true);
+    assertEquals(accessFrom({ data: [sub(state, "2026-12-01T00:00:00Z")] }, false, NOW).hasAccess, true);
   }
   for (const state of ["cancelled", "guest_terminated", "external_terminated", "weird"]) {
-    assertEquals(accessFrom({ data: [sub(state, "2026-12-01T00:00:00Z")] }, NOW), {
+    assertEquals(accessFrom({ data: [sub(state, "2026-12-01T00:00:00Z")] }, false, NOW), {
       hasAccess: false,
       state,
     });
@@ -55,8 +55,24 @@ Deno.test("several subscriptions: the latest end date wins", () => {
       sub("active", "2026-12-01T00:00:00Z"),
       sub("guest", "2027-01-01T00:00:00Z"),
     ],
-  }, NOW);
+  }, false, NOW);
   assertEquals(res, { hasAccess: true, state: "guest", expiresAt: "2027-01-01T00:00:00.000Z" });
+});
+
+Deno.test("free member (newsletter list, no subscription): free access with the grace", () => {
+  assertEquals(accessFrom({ data: [] }, true, NOW), {
+    hasAccess: true,
+    state: "free",
+    expiresAt: new Date(NOW.getTime() + GRACE_MS).toISOString(),
+  });
+});
+
+Deno.test("a paying member who is also on the newsletter list counts as paid", () => {
+  assertEquals(accessFrom({ data: [sub("active", null)] }, true, NOW).state, "active");
+});
+
+Deno.test("a cancelled subscriber still on the newsletter list keeps free access", () => {
+  assertEquals(accessFrom({ data: [sub("cancelled", null)] }, true, NOW).state, "free");
 });
 
 type Applied = [string, boolean, string | null, string];
@@ -64,6 +80,7 @@ type Applied = [string, boolean, string | null, string];
 function fakes(over: Partial<Deps> = {}) {
   const applied: Applied[] = [];
   const asked: string[] = [];
+  let newsletterCalls = 0;
   const deps: Deps = {
     isServiceToken: (t) => Promise.resolve(t === SERVICE_KEY || t === OTHER_SERVICE_KEY),
     now: () => NOW,
@@ -82,13 +99,17 @@ function fakes(over: Partial<Deps> = {}) {
           : { data: [] },
       );
     },
+    newsletterEmails: () => {
+      newsletterCalls++;
+      return Promise.resolve(new Set(["free@steady.example"]));
+    },
     apply: (u, has, exp, state) => {
       applied.push([u, has, exp, state]);
       return Promise.resolve();
     },
     ...over,
   };
-  return { deps, applied, asked };
+  return { deps, applied, asked, newsletterCalls: () => newsletterCalls };
 }
 
 const post = (auth?: string) =>
@@ -105,9 +126,18 @@ Deno.test("a signed-in member: checked by their Steady identity email, access re
     linked: true,
     active: true,
     expiresAt: "2026-12-07T10:00:00.000Z",
+    tier: "paid",
   });
   assertEquals(f.asked, ["mina@steady.example"]);
   assertEquals(f.applied, [["u1", true, "2026-12-07T10:00:00.000Z", "active"]]);
+});
+
+Deno.test("a signed-in free member (case-insensitive email): free access recorded", async () => {
+  const f = fakes({ identityEmail: () => Promise.resolve("Free@Steady.Example") });
+  const res = await handle(post("Bearer user-jwt"), f.deps);
+  const graceEnd = new Date(NOW.getTime() + GRACE_MS).toISOString();
+  assertEquals(await res.json(), { linked: true, active: true, expiresAt: graceEnd, tier: "free" });
+  assertEquals(f.applied, [["u1", true, graceEnd, "free"]]);
 });
 
 Deno.test("signed in without Steady: nothing to check, nothing changed", async () => {
@@ -137,6 +167,7 @@ Deno.test("daily re-check with the service key: every Steady sign-in", async () 
   const res = await handle(post(`Bearer ${SERVICE_KEY}`), f.deps);
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { checked: 2, active: 1, failed: 0 });
+  assertEquals(f.newsletterCalls(), 1, "newsletter list fetched once, not per member");
   assertEquals(f.applied, [
     ["u1", true, "2026-12-07T10:00:00.000Z", "active"],
     ["u2", false, null, "none"],
@@ -159,6 +190,15 @@ Deno.test("daily re-check: one Steady failure skips that user only", async () =>
   const res = await handle(post(`Bearer ${SERVICE_KEY}`), f.deps);
   assertEquals(await res.json(), { checked: 2, active: 0, failed: 1 });
   assertEquals(f.applied, [["u1", false, null, "none"]]);
+});
+
+Deno.test("newsletter list unavailable: 502 and nothing changed", async () => {
+  const f = fakes({ newsletterEmails: () => Promise.reject(new Error("timeout")) });
+  assertEquals((await handle(post("Bearer user-jwt"), f.deps)).status, 502);
+  assertEquals(f.applied, []);
+  const all = fakes({ newsletterEmails: () => Promise.reject(new Error("timeout")) });
+  assertEquals((await handle(post(`Bearer ${SERVICE_KEY}`), all.deps)).status, 502);
+  assertEquals(all.applied, []);
 });
 
 Deno.test("only POST", async () => {

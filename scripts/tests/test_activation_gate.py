@@ -73,7 +73,7 @@ class ActivationsCsvTest(unittest.TestCase):
                          "mina@example.com,steady,,2026-11-07 10:00:00,"
                          "2026-12-07 10:00:00,active")
 
-    def test_rows_from_before_0051_count_as_codes(self):
+    def test_rows_from_before_0053_count_as_codes(self):
         a = Activation.from_row({"email": "x@example.com", "code": "C",
                                  "activated_at": "2026-10-01T00:00:00Z"})
         self.assertEqual((a.source, a.expires_at), ("code", ""))

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ════════════════════════════════════════════════════════════════════════════
-# Tests the activation gate (migration 0045) and Steady memberships (0051)
+# Tests the activation gate (migration 0045) and Steady memberships (0053)
 # on a throwaway Postgres: signed-out, not-activated, activated and trainer
 # users, a used-up code, a revoked code, Steady members with and without a
 # running membership, and account deletion.
@@ -52,7 +52,7 @@ create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema auth to anon, authenticated, service_role;
 -- Supabase's default: new functions are executable by anon/authenticated
--- unless revoked by name. Mirror it so the 0051 revokes are really tested.
+-- unless revoked by name. Mirror it so the 0053 revokes are really tested.
 alter default privileges in schema public
   grant execute on functions to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated;
@@ -62,7 +62,7 @@ echo "── Schema: 0001 + seed, then the migrations the gate builds on"
 psql_file "${MIG}/0001_initial_schema.sql"
 psql_file "${REPO_ROOT}/supabase/seed.sql"
 for m in 0005_movement_info 0013_profiles_and_consent 0014_session_assignment \
-         0016_invite_code_signup 0045_activation_gate 0051_steady_membership; do
+         0016_invite_code_signup 0045_activation_gate 0053_steady_membership; do
   echo "   ${m}"
   psql_file "${MIG}/${m}.sql"
 done
@@ -174,7 +174,7 @@ exception when insufficient_privilege then
 end $$;
 reset role;
 
--- ── Steady memberships (0051) ──────────────────────────────────────────
+-- ── Steady memberships (0053) ──────────────────────────────────────────
 -- Only the server (service role) may read Steady identities or set access.
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');

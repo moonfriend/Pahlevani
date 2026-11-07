@@ -27,7 +27,7 @@ abstract class ActivationRemoteDataSource {
   Future<Map<String, dynamic>?> fetchTerms();
 
   /// For an account signed in with Steady: asks the steady-sync Edge
-  /// Function to check the membership and record it (migration 0051). A
+  /// Function to check the membership and record it (migration 0053). A
   /// no-op for other accounts. Errors propagate.
   Future<void> syncSteadyMembership();
 }

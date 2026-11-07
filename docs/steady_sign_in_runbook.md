@@ -12,7 +12,7 @@ App "Sign in with Steady"
   → Supabase asks steady-userinfo (our translator) who the user is
   → session back in the app (com.pahlevani.app://login-callback / web origin)
 App, after sign-in and on "Check my membership again"
-  → steady-sync (user's token) → Steady publisher API → activations (0051)
+  → steady-sync (user's token) → Steady publisher API → activations (0053)
 Daily cron → steady-sync (service key) → re-checks every Steady sign-in
 ```
 
@@ -55,7 +55,7 @@ Tests: `docker run --rm -v "$PWD/supabase/functions/<name>":/app -w /app denolan
 
 ## 5. Database
 
-1. Apply `supabase/migrations/0051_steady_membership.sql` in the SQL Editor
+1. Apply `supabase/migrations/0053_steady_membership.sql` in the SQL Editor
    (tested by `scripts/db/test_activation_gate.sh`).
 2. Daily re-check. Enable the `pg_cron` and `pg_net` extensions (Database →
    Extensions), then store the two values in Vault and schedule the job:
@@ -80,6 +80,10 @@ $$);
 Check it ran: `select * from cron.job_run_details order by start_time desc limit 5;`
 and `select status_code, content from net._http_response order by created desc limit 5;`
 (expect `{"checked":N,"active":M,"failed":0}`).
+
+Paid vs free: a current subscription = paid (`steady_state` = Steady's state,
+e.g. `active`); on the newsletter subscriber list (the free plan) = `free`;
+neither = locked. Both get at least 5 days, renewed by the daily job.
 
 ## 6. Smoke test
 
