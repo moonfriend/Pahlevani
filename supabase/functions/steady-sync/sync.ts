@@ -124,7 +124,18 @@ async function checkOne(
   return access;
 }
 
-const json = (status: number, body: unknown) => Response.json(body, { status });
+/**
+ * The web app calls from another origin, so the browser first sends a
+ * preflight and only shows answers that carry these headers. "*" is safe
+ * here: access needs a bearer token, which a browser never adds by itself.
+ */
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const json = (status: number, body: unknown) => Response.json(body, { status, headers: CORS });
 
 async function recheckAll(deps: Deps): Promise<Response> {
   let active = 0;
@@ -151,6 +162,7 @@ async function recheckAll(deps: Deps): Promise<Response> {
 
 /** Handles one request (see the file comment for the two callers). */
 export async function handle(req: Request, deps: Deps): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return json(405, { error: "POST only" });
   const match = /^Bearer (\S+)$/.exec(req.headers.get("Authorization") ?? "");
   if (!match) return json(401, { error: "not signed in" });

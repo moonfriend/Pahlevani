@@ -201,6 +201,32 @@ Deno.test("newsletter list unavailable: 502 and nothing changed", async () => {
   assertEquals(all.applied, []);
 });
 
+Deno.test("browser preflight (web app): allowed, nothing checked", async () => {
+  const f = fakes();
+  const res = await handle(
+    new Request("https://x/functions/v1/steady-sync", {
+      method: "OPTIONS",
+      headers: { Origin: "http://localhost:5050", "Access-Control-Request-Method": "POST" },
+    }),
+    f.deps,
+  );
+  assertEquals(res.status, 204);
+  assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*");
+  const allowed = res.headers.get("Access-Control-Allow-Headers") ?? "";
+  for (const h of ["authorization", "apikey", "content-type", "x-client-info"]) {
+    assertEquals(allowed.includes(h), true, h);
+  }
+  assertEquals(f.asked, []);
+});
+
+Deno.test("answers carry the CORS header, so the browser can read them", async () => {
+  const f = fakes();
+  for (const auth of ["Bearer user-jwt", undefined]) {
+    const res = await handle(post(auth), f.deps);
+    assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*");
+  }
+});
+
 Deno.test("only POST", async () => {
   const f = fakes();
   const get = new Request("https://x/functions/v1/steady-sync", {
