@@ -20,7 +20,7 @@ const ACCESS_STATES = new Set(["active", "in_trial", "not_renewing", "guest"]);
  * Minimum access after a successful check. Covers a missing or very near
  * end date until the next daily re-check renews it.
  */
-export const GRACE_MS = 2 * 24 * 60 * 60 * 1000;
+export const GRACE_MS = 5 * 24 * 60 * 60 * 1000;
 
 export type Access =
   | { hasAccess: true; state: string; expiresAt: string }
