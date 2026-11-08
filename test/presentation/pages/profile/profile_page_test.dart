@@ -12,6 +12,8 @@ import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/settings/settings_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/profile/profile_page.dart';
+import 'package:pahlevani/presentation/pages/shell/rail_user.dart'
+    show steadyLinkedLabel;
 import 'package:pahlevani/presentation/pages/progress/calendar_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
@@ -251,6 +253,17 @@ void main() {
     await tester.tap(signOut);
     await tester.pumpAndSettle();
     expect(h.authRepo.signOutCallCount, 1);
+  });
+
+  testWidgets('Account: says when a Steady account is linked', (tester) async {
+    await _pump(tester,
+        user: const AppUser(
+            id: 'u',
+            email: 'mina@example.com',
+            consentAccepted: true,
+            termsVersion: currentTermsVersion,
+            hasSteady: true));
+    expect(find.text(steadyLinkedLabel, skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('Account: delete asks first; Cancel keeps the account',

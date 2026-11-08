@@ -89,6 +89,32 @@ FilledButton _button(WidgetTester tester, String label) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, label));
 
 void main() {
+  testWidgets('web: the join tab links to the plans page', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final auth = AuthCubit(repository: FakeAuthRepository());
+    final activation = ActivationCubit(repository: FakeActivationRepository());
+    addTearDown(auth.close);
+    addTearDown(activation.close);
+    await tester.pumpWidget(MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: auth),
+        BlocProvider.value(value: activation),
+      ],
+      child: MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: const AccountPage(showJoinLink: true),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.text(joinTabLabel));
+    await tester.pumpAndSettle();
+    expect(find.text(joinPlansLabel), findsOneWidget);
+    expect(find.text(joinFreeLabel), findsNothing);
+    expect(joinPlansUrl, 'https://steady.page/join-the-gowd');
+  });
+
   group('Sign in with Steady', () {
     testWidgets('is the main way in; email and code stay hidden',
         (tester) async {
@@ -122,6 +148,26 @@ void main() {
           tester, find.widgetWithText(FilledButton, steadySignInLabel));
       await tester.pumpAndSettle();
       expect(find.text(steadyOpenFailedMessage), findsOneWidget);
+    });
+
+    testWidgets('two tabs: "Already a member" first, then "Join the Gowd"',
+        (tester) async {
+      await _pump(tester, openOtherWays: false);
+      expect(find.text(memberTabLabel), findsOneWidget);
+      expect(find.text(joinTabLabel), findsOneWidget);
+      expect(find.text(joinIntro), findsNothing);
+
+      await tapVisible(tester, find.text(joinTabLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(joinIntro), findsOneWidget);
+      // Apps (tests run as one): only the free sign-up, never the paid
+      // plans (store payment rules).
+      expect(find.text(joinPlansLabel), findsNothing);
+      expect(find.text(joinFreeLabel), findsOneWidget);
+      expect(joinFreeUrl, isNot(joinPlansUrl));
+      // Joined already in another tab: one tap back in.
+      expect(
+          find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget);
     });
 
     testWidgets('back from Steady as a new member: terms first',

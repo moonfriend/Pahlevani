@@ -49,6 +49,12 @@ class AppShellState extends State<AppShell> {
   /// Switches to tab [index].
   void select(int index) => _select(index);
 
+  /// Switches to the tab named [label]; no-op if there is none.
+  void selectLabel(String label) {
+    final index = widget.tabs.indexWhere((tab) => tab.label == label);
+    if (index >= 0) _select(index);
+  }
+
   void _select(int index) {
     if (index != _index) widget.tabs[index].onSelected?.call();
     setState(() {

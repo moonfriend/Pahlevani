@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../shell/rail_user.dart' show steadyLinkedLabel;
+
 import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
@@ -90,7 +92,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   style: KashiTextStyles.body.copyWith(
                       fontSize: 12.5, height: 1.55, color: colors.textMuted),
                 ),
-                if (_signedInEmail case final email?) _Account(email: email),
+                if (_signedInEmail case final email?)
+                  _Account(email: email, hasSteady: _hasSteady),
                 if (_isTrainer) const _TrainerTools(),
                 if (kDebugMode) const _DesignPreviews(),
               ],
@@ -104,6 +107,11 @@ class _ProfilePageState extends State<ProfilePage> {
   String? get _signedInEmail => switch (context.watch<AuthCubit>().state) {
         AuthAuthenticated(:final user) => user.email ?? '',
         _ => null,
+      };
+
+  bool get _hasSteady => switch (context.watch<AuthCubit>().state) {
+        AuthAuthenticated(:final user) => user.hasSteady,
+        _ => false,
       };
 
   bool get _isTrainer => switch (context.watch<AuthCubit>().state) {
@@ -216,9 +224,10 @@ class _ProfilePageState extends State<ProfilePage> {
 /// The signed-in account: sign out, or delete it (with its activation and
 /// profile) after a confirmation.
 class _Account extends StatelessWidget {
-  const _Account({required this.email});
+  const _Account({required this.email, required this.hasSteady});
 
   final String email;
+  final bool hasSteady;
 
   Future<void> _confirmDelete(BuildContext context) async {
     final auth = context.read<AuthCubit>();
@@ -266,6 +275,10 @@ class _Account extends StatelessWidget {
                   style: KashiTextStyles.ui
                       .copyWith(fontSize: 13, color: colors.textMuted)),
             ),
+          if (hasSteady)
+            Text(steadyLinkedLabel,
+                style: KashiTextStyles.ui
+                    .copyWith(fontSize: 12, color: colors.textMuted)),
           entry('Sign out', () => context.read<AuthCubit>().signOut()),
           entry('Delete my account', () => _confirmDelete(context),
               color: Theme.of(context).colorScheme.error),

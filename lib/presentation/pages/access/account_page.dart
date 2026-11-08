@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,15 +13,23 @@ import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import 'access_scaffold.dart';
 
-/// The one screen after onboarding. The main way in is "Sign in with
-/// Steady" (members already have a Steady account; terms are asked on the
-/// next screen). "Other ways to sign in" opens the older email forms, kept
+/// The one screen after onboarding, in two tabs:
+///  - "Already a member": "Sign in with Steady" (terms are asked on the
+///    next screen);
+///  - "Join the Gowd": how to become a member, a link to Steady, and the
+///    same sign-in button for when they come back. Store payment rules:
+///    only the web links to the paid plans; the apps link to the free
+///    sign-up ([showJoinLink]).
+/// Under the member tab, "Other ways to sign in" opens the older email forms, kept
 /// for gifted codes, the store reviewer and existing email accounts:
 /// "Create account" takes the email, password, activation code and the
 /// safety/privacy agreement together; "I have an account" takes just the
 /// email and password. No confirmation mail is sent.
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key});
+  const AccountPage({super.key, this.showJoinLink = kIsWeb});
+
+  /// Link to the paid plans (web only); otherwise to the free sign-up.
+  final bool showJoinLink;
 
   @override
   State<AccountPage> createState() => _AccountPageState();
@@ -30,6 +39,7 @@ class _AccountPageState extends State<AccountPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+  bool _memberTab = true;
   bool _showOtherWays = false;
   bool _newAccount = true;
   bool _safety = false;
@@ -91,20 +101,50 @@ class _AccountPageState extends State<AccountPage> {
             style: KashiTextStyles.ui.copyWith(
                 fontSize: 13, color: Theme.of(context).colorScheme.error));
 
+    final steadyButton = FilledButton(
+      onPressed: submitting
+          ? null
+          : () => context.read<AuthCubit>().signInWithSteady(),
+      style: FilledButton.styleFrom(
+        backgroundColor: colors.action,
+        minimumSize: const Size.fromHeight(52),
+        shape: const RoundedRectangleBorder(),
+      ),
+      child: const Text(steadySignInLabel),
+    );
+    final tabs = KashiSegmented<bool>(
+      options: const [(true, memberTabLabel), (false, joinTabLabel)],
+      selected: _memberTab,
+      onSelected: (value) => setState(() => _memberTab = value),
+    );
+
+    if (!_memberTab) {
+      return AccessScaffold(
+        title: 'Welcome to Pahlevani Gowd',
+        children: [
+          tabs,
+          const SizedBox(height: 20),
+          _JoinTab(showPlans: widget.showJoinLink),
+          const SizedBox(height: 24),
+          Text('Joined already?',
+              style: KashiTextStyles.ui
+                  .copyWith(fontSize: 13, color: colors.textBody)),
+          const SizedBox(height: 8),
+          steadyButton,
+          if (errorText != null) ...[
+            const SizedBox(height: 12),
+            errorText,
+          ],
+        ],
+      );
+    }
+
     return AccessScaffold(
       title: 'Welcome to Pahlevani Gowd',
       children: [
-        FilledButton(
-          onPressed: submitting
-              ? null
-              : () => context.read<AuthCubit>().signInWithSteady(),
-          style: FilledButton.styleFrom(
-            backgroundColor: colors.action,
-            minimumSize: const Size.fromHeight(52),
-            shape: const RoundedRectangleBorder(),
-          ),
-          child: const Text(steadySignInLabel),
-        ),
+        tabs,
+        const SizedBox(height: 20),
+        steadyButton,
         if (!_showOtherWays && errorText != null) ...[
           const SizedBox(height: 12),
           errorText,
@@ -205,6 +245,39 @@ class _AccountPageState extends State<AccountPage> {
   }
 }
 
+/// The "Join the Gowd" tab: what membership is and where to get it.
+class _JoinTab extends StatelessWidget {
+  const _JoinTab({required this.showPlans});
+
+  final bool showPlans;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    final (label, url) = showPlans
+        ? (joinPlansLabel, joinPlansUrl)
+        : (joinFreeLabel, joinFreeUrl);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(joinIntro,
+            style: KashiTextStyles.body
+                .copyWith(fontSize: 14, height: 1.5, color: colors.textBody)),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: () =>
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            shape: const RoundedRectangleBorder(),
+          ),
+          child: Text(label),
+        ),
+      ],
+    );
+  }
+}
+
 /// "Activate and enter the Gowd": the admin-set text on how to get a code
 /// (Steady today) and its link. Only on the create tab.
 class _ActivateIntro extends StatelessWidget {
@@ -253,3 +326,23 @@ const steadySignInLabel = 'Sign in with Steady';
 
 /// Opens the email + code forms under the Steady button.
 const otherWaysLabel = 'Other ways to sign in';
+
+/// The two tabs of the account screen.
+const memberTabLabel = 'Already a member';
+const joinTabLabel = 'Join the Gowd';
+
+/// What the join tab says.
+const joinIntro = 'Pahlevani Gowd is for members of our Steady page. '
+    'Join for free or pick a plan that supports our work, then come back '
+    'and sign in with Steady.';
+
+/// Web: every plan, paid ones included.
+const joinPlansLabel = 'See the plans';
+const joinPlansUrl = 'https://steady.page/join-the-gowd';
+
+/// Apps (store payment rules): the free sign-up only.
+const joinFreeLabel = 'Join for free';
+
+/// "The Open Gowd" (€0), checked against Steady's plan list 2026-11-08.
+const joinFreeUrl =
+    'https://steady.page/en/plans/2e5a61f7-0a6f-4a8f-b026-7426d73054b5';

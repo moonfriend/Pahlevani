@@ -7,6 +7,7 @@ import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/domain/entities/tracking/session_completion_record.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
+import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
 import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
@@ -53,5 +54,85 @@ void main() {
 
     expect(find.text('sara'), findsOneWidget);
     expect(find.text('3 sessions'), findsOneWidget);
+  });
+
+  group('tapping it opens the account menu', () {
+    Future<FakeAuthRepository> pumpShell(WidgetTester tester,
+        {required AppUser user}) async {
+      tester.view.physicalSize = const Size(1300, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeAuthRepository(initialUser: user);
+      final auth = AuthCubit(repository: repo);
+      final history = TrainingHistoryCubit(
+          historyRepository: FakeTrainingHistoryRepository());
+      addTearDown(auth.close);
+      addTearDown(history.close);
+      await tester.runAsync(() async {
+        await history.load();
+        await auth.initialize();
+      });
+      await tester.pumpWidget(MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: history),
+          BlocProvider.value(value: auth),
+        ],
+        child: MaterialApp(
+          theme: PahlevaniTheme.light(),
+          home: AppShell(
+            tabs: [
+              ShellTab(label: 'Home', builder: (_) => const Text('home body')),
+              ShellTab(
+                  label: 'Profile', builder: (_) => const Text('profile body')),
+            ],
+            railFooter: const RailUser(),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(RailUser));
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    const steadyUser = AppUser(
+        id: '1',
+        email: 'mina@x.org',
+        consentAccepted: true,
+        termsVersion: currentTermsVersion,
+        hasSteady: true);
+
+    testWidgets('shows who is signed in, and that Steady is linked',
+        (tester) async {
+      await pumpShell(tester, user: steadyUser);
+      expect(find.text('Signed in as mina@x.org'), findsOneWidget);
+      expect(find.text(steadyLinkedLabel), findsOneWidget);
+    });
+
+    testWidgets('an email-only account: no Steady line', (tester) async {
+      await pumpShell(tester,
+          user: const AppUser(
+              id: '1',
+              email: 'sara@x.org',
+              consentAccepted: true,
+              termsVersion: currentTermsVersion));
+      expect(find.text('Signed in as sara@x.org'), findsOneWidget);
+      expect(find.text(steadyLinkedLabel), findsNothing);
+    });
+
+    testWidgets('Sign out signs out', (tester) async {
+      final repo = await pumpShell(tester, user: steadyUser);
+      await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      expect(repo.signOutCallCount, 1);
+    });
+
+    testWidgets('Profile opens the Profile tab', (tester) async {
+      await pumpShell(tester, user: steadyUser);
+      expect(find.text('profile body'), findsNothing);
+      await tester.tap(find.text('Profile').last);
+      await tester.pumpAndSettle();
+      expect(find.text('profile body'), findsOneWidget);
+    });
   });
 }

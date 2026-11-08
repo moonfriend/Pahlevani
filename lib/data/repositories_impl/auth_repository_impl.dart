@@ -34,7 +34,10 @@ class AuthRepositoryImpl implements AuthRepository {
     if (_cachedProfile != null && _cachedProfile!.id == authUser.id) {
       return _cachedProfile;
     }
-    return AppUser(id: authUser.id, email: authUser.email);
+    return AppUser(
+        id: authUser.id,
+        email: authUser.email,
+        hasSteady: _hasSteady(authUser));
   }
 
   @override
@@ -58,13 +61,23 @@ class AuthRepositoryImpl implements AuthRepository {
           .select()
           .eq('id', authUser.id)
           .single();
-      return _userFromRow(authUser.id, authUser.email, row);
+      return _userFromRow(authUser.id, authUser.email, row)
+          .copyWith(hasSteady: _hasSteady(authUser));
     } catch (_) {
       // The profiles row may not have landed yet (trigger lag) or the read
       // failed transiently — fall back to a minimal unconsented user rather
       // than throwing. authStateChanges/the next fetch will correct this.
-      return AppUser(id: authUser.id, email: authUser.email);
+      return AppUser(
+          id: authUser.id,
+          email: authUser.email,
+          hasSteady: _hasSteady(authUser));
     }
+  }
+
+  /// Supabase lists every linked sign-in method in app_metadata.providers.
+  static bool _hasSteady(sb.User user) {
+    final providers = user.appMetadata['providers'];
+    return providers is List && providers.contains(steadyProvider.name);
   }
 
   AppUser _userFromRow(String id, String? email, Map<String, dynamic> row) {
