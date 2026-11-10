@@ -8,7 +8,8 @@ import '../../bloc/activation/activation_cubit.dart';
 import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/access/sign_out.dart';
 import 'access_scaffold.dart';
-import 'account_page.dart' show activateTitle, joinFreeUrl, joinPlansUrl;
+import 'account_page.dart'
+    show activateTitle, joinFreeUrl, joinPlansUrl, storeSafeJoinUrl;
 import '../../usage/usage_ui.dart';
 import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
@@ -79,8 +80,8 @@ class _LockedPageState extends State<LockedPage> {
           onPressed: () {
             context.usage.track(
                 const AccessLockedScreenAction(action: LockedAction.link));
-            openExternalLink(
-                context, ExternalLink.activationInfo, text.linkUrl);
+            openExternalLink(context, ExternalLink.activationInfo,
+                storeSafeJoinUrl(text.linkUrl, showPlans: widget.showPlans));
           },
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),

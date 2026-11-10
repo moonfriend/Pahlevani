@@ -245,7 +245,7 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 20),
           if (_newAccount) ...[
-            _ActivateIntro(source: _codeSource),
+            _ActivateIntro(source: _codeSource, showPlans: widget.showJoinLink),
             const SizedBox(height: 16),
           ],
           TextField(
@@ -358,9 +358,10 @@ class _JoinTab extends StatelessWidget {
 /// "Activate and enter the Gowd": the admin-set text on how to get a code
 /// (Steady today) and its link. Only on the create tab.
 class _ActivateIntro extends StatelessWidget {
-  const _ActivateIntro({required this.source});
+  const _ActivateIntro({required this.source, required this.showPlans});
 
   final Future<LockedScreenText> source;
+  final bool showPlans;
 
   @override
   Widget build(BuildContext context) {
@@ -384,7 +385,9 @@ class _ActivateIntro extends StatelessWidget {
             TextButton(
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               onPressed: () => openExternalLink(
-                  context, ExternalLink.activationInfo, text.linkUrl),
+                  context,
+                  ExternalLink.activationInfo,
+                  storeSafeJoinUrl(text.linkUrl, showPlans: showPlans)),
               child: Text(text.linkLabel),
             ),
           ],
@@ -426,3 +429,9 @@ const joinFreeLabel = 'Join for free';
 /// "The Open Gowd" (€0), checked against Steady's plan list 2026-11-08.
 const joinFreeUrl =
     'https://steady.page/en/plans/2e5a61f7-0a6f-4a8f-b026-7426d73054b5';
+
+/// The admin's join link (locked-screen text) may point at paid plans. The
+/// apps must not link to outside payments (store rules), so there it always
+/// opens the free plan; web keeps the admin's link.
+String storeSafeJoinUrl(String adminUrl, {required bool showPlans}) =>
+    showPlans ? adminUrl : joinFreeUrl;
