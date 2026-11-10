@@ -407,6 +407,53 @@ void main() {
     expect(find.text('THE APP'), findsOneWidget);
   });
 
+  group('signed in with Steady, not joined yet', () {
+    const steadyUser = AppUser(
+        id: 'u1',
+        email: 'mina@example.com',
+        consentAccepted: true,
+        termsVersion: currentTermsVersion,
+        hasSteady: true);
+
+    testWidgets('says who is signed in and what to do; code hidden',
+        (tester) async {
+      await _pump(tester, user: steadyUser);
+      expect(find.text(notJoinedTitle), findsOneWidget);
+      expect(find.text(notJoinedMessage('mina@example.com')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, chooseMembershipLabel),
+          findsOneWidget);
+      expect(find.text(recheckMembershipLabel), findsOneWidget);
+      // The admin's code text and the code field are the exception.
+      expect(find.text('Join us on Steady to get your code.'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Activation code'), findsNothing);
+      expect(find.text(haveCodeLabel), findsOneWidget);
+    });
+
+    testWidgets('"Have a member code?" shows the code field', (tester) async {
+      await _pump(tester, user: steadyUser);
+      await tapVisible(tester, find.text(haveCodeLabel));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'Activation code'), findsOneWidget);
+    });
+
+    testWidgets('still not a member after the re-check: says so',
+        (tester) async {
+      await _pump(tester, user: steadyUser);
+      await tapVisible(tester, find.text(recheckMembershipLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(ActivationCubit.noMembershipMessage), findsOneWidget);
+    });
+
+    testWidgets('joined in the meantime: the re-check lets them in',
+        (tester) async {
+      final h = await _pump(tester, user: steadyUser);
+      h.activation.activated.add('u1');
+      await tapVisible(tester, find.text(recheckMembershipLabel));
+      await tester.pumpAndSettle();
+      expect(find.text('THE APP'), findsOneWidget);
+    });
+  });
+
   testWidgets('the locked screen can sign out', (tester) async {
     final h = await _pump(tester, user: _accepted);
     expect(find.text('Join us on Steady to get your code.'), findsOneWidget);

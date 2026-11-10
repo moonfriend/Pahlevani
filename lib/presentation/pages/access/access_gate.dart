@@ -87,7 +87,8 @@ class _ActivationScopeState extends State<_ActivationScope> {
           ActivationChecking() => const _Blank(),
           ActivationLocked() => TrackedSurface(
               name: AppRoutes.locked,
-              child: LockedPage(email: widget.user.email)),
+              child: LockedPage(
+                  email: widget.user.email, hasSteady: widget.user.hasSteady)),
           ActivationActive() => widget.child,
         },
       );

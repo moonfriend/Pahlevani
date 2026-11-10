@@ -66,7 +66,7 @@ class ActivationCubit extends Cubit<ActivationState> {
       'That code isn’t valid or has been used up. Check it, or ask us '
       'on Steady.';
   static const noMembershipMessage =
-      'No running Steady membership found for this account yet. If you '
+      'We couldn’t find a Gowd membership for this account yet. If you '
       'just joined, wait a minute and check again.';
   static const offlineMessage =
       'Couldn’t check the code. Try again with an internet connection.';
