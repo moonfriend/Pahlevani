@@ -115,6 +115,74 @@ void main() {
     expect(joinPlansUrl, 'https://steady.page/join-the-gowd');
   });
 
+  group('back from the join page', () {
+    Future<(FakeAuthRepository, List<String>)> pumpJoin(
+        WidgetTester tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeAuthRepository();
+      final auth = AuthCubit(repository: repo);
+      final activation =
+          ActivationCubit(repository: FakeActivationRepository());
+      addTearDown(auth.close);
+      addTearDown(activation.close);
+      final opened = <String>[];
+      await tester.pumpWidget(MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: auth),
+          BlocProvider.value(value: activation),
+        ],
+        child: MaterialApp(
+          theme: PahlevaniTheme.light(),
+          home: AccountPage(openUrl: (url) async => opened.add(url)),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.text(joinTabLabel));
+      await tester.pumpAndSettle();
+      return (repo, opened);
+    }
+
+    Future<void> leaveAndComeBack(WidgetTester tester) async {
+      for (final s in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('after opening the join page: sign-in starts by itself',
+        (tester) async {
+      final (repo, opened) = await pumpJoin(tester);
+      await tapVisible(tester, find.text(joinFreeLabel));
+      await tester.pumpAndSettle();
+      expect(opened, [joinFreeUrl]);
+      expect(repo.signInWithSteadyCallCount, 0);
+
+      await leaveAndComeBack(tester);
+      expect(find.text(welcomeBackMessage), findsOneWidget);
+      expect(repo.signInWithSteadyCallCount, 1);
+
+      // Only once per visit to the join page.
+      await leaveAndComeBack(tester);
+      expect(repo.signInWithSteadyCallCount, 1);
+    });
+
+    testWidgets('just switching away and back: nothing starts', (tester) async {
+      final (repo, _) = await pumpJoin(tester);
+      await leaveAndComeBack(tester);
+      expect(repo.signInWithSteadyCallCount, 0);
+      expect(find.text(welcomeBackMessage), findsNothing);
+    });
+  });
+
   group('Sign in with Steady', () {
     testWidgets('is the main way in; email and code stay hidden',
         (tester) async {

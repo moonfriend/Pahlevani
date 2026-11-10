@@ -9,6 +9,7 @@ import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/shell/app_shell.dart';
 import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
+import 'package:pahlevani/presentation/widgets/access/sign_out.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_training_history_repository.dart';
@@ -120,11 +121,30 @@ void main() {
       expect(find.text(steadyLinkedLabel), findsNothing);
     });
 
-    testWidgets('Sign out signs out', (tester) async {
+    testWidgets('Sign out signs out, then says Steady is still signed in',
+        (tester) async {
       final repo = await pumpShell(tester, user: steadyUser);
       await tester.tap(find.text('Sign out'));
       await tester.pumpAndSettle();
       expect(repo.signOutCallCount, 1);
+      expect(find.text(steadyStillSignedInTitle), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text(steadyStillSignedInTitle), findsNothing);
+    });
+
+    testWidgets('an email-only account signs out without the Steady note',
+        (tester) async {
+      final repo = await pumpShell(tester,
+          user: const AppUser(
+              id: '1',
+              email: 'sara@x.org',
+              consentAccepted: true,
+              termsVersion: currentTermsVersion));
+      await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      expect(repo.signOutCallCount, 1);
+      expect(find.text(steadyStillSignedInTitle), findsNothing);
     });
 
     testWidgets('Profile opens the Profile tab', (tester) async {

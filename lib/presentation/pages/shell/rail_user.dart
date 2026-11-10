@@ -8,6 +8,7 @@ import '../../bloc/auth/auth_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../widgets/kashi/kashi_tab_bar.dart';
 import '../../widgets/kashi/khatam_window.dart';
+import '../../widgets/access/sign_out.dart';
 import 'app_shell.dart';
 
 /// Under the email in the account menu and on Profile.
@@ -29,7 +30,7 @@ class RailUser extends StatelessWidget {
       position: PopupMenuPosition.over,
       onSelected: (action) => switch (action) {
         _MenuAction.profile => AppShell.of(context).selectLabel('Profile'),
-        _MenuAction.signOut => context.read<AuthCubit>().signOut(),
+        _MenuAction.signOut => signOutWithSteadyNote(context),
       },
       itemBuilder: (_) => [
         if (user?.email case final email?)

@@ -26,10 +26,21 @@ import 'access_scaffold.dart';
 /// safety/privacy agreement together; "I have an account" takes just the
 /// email and password. No confirmation mail is sent.
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key, this.showJoinLink = kIsWeb});
+  const AccountPage({
+    super.key,
+    this.showJoinLink = kIsWeb,
+    this.openUrl = _openExternally,
+  });
 
   /// Link to the paid plans (web only); otherwise to the free sign-up.
   final bool showJoinLink;
+
+  /// Opens a Steady page outside the app (replaced in tests).
+  final Future<void> Function(String url) openUrl;
+
+  static Future<void> _openExternally(String url) async {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
 
   @override
   State<AccountPage> createState() => _AccountPageState();
@@ -41,6 +52,13 @@ class _AccountPageState extends State<AccountPage> {
   final _code = TextEditingController();
   bool _memberTab = true;
   bool _showOtherWays = false;
+
+  /// The join page was opened: coming back to the app starts sign-in
+  /// (once), so a new member doesn't have to find the button.
+  bool _awaitingJoin = false;
+  bool _welcomeBack = false;
+  late final AppLifecycleListener _lifecycle =
+      AppLifecycleListener(onResume: _onResume);
   bool _newAccount = true;
   bool _safety = false;
   bool _privacy = false;
@@ -61,7 +79,26 @@ class _AccountPageState extends State<AccountPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _lifecycle; // start listening
+  }
+
+  Future<void> _openJoinPage(String url) async {
+    _awaitingJoin = true;
+    await widget.openUrl(url);
+  }
+
+  void _onResume() {
+    if (!_awaitingJoin || !mounted) return;
+    _awaitingJoin = false;
+    setState(() => _welcomeBack = true);
+    context.read<AuthCubit>().signInWithSteady();
+  }
+
+  @override
   void dispose() {
+    _lifecycle.dispose();
     _email.dispose();
     _password.dispose();
     _code.dispose();
@@ -124,7 +161,15 @@ class _AccountPageState extends State<AccountPage> {
         children: [
           tabs,
           const SizedBox(height: 20),
-          _JoinTab(showPlans: widget.showJoinLink),
+          _JoinTab(showPlans: widget.showJoinLink, onOpen: _openJoinPage),
+          if (_welcomeBack) ...[
+            const SizedBox(height: 16),
+            Text(welcomeBackMessage,
+                style: KashiTextStyles.ui.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary)),
+          ],
           const SizedBox(height: 24),
           Text('Joined already?',
               style: KashiTextStyles.ui
@@ -247,9 +292,10 @@ class _AccountPageState extends State<AccountPage> {
 
 /// The "Join the Gowd" tab: what membership is and where to get it.
 class _JoinTab extends StatelessWidget {
-  const _JoinTab({required this.showPlans});
+  const _JoinTab({required this.showPlans, required this.onOpen});
 
   final bool showPlans;
+  final void Function(String url) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -265,8 +311,7 @@ class _JoinTab extends StatelessWidget {
                 .copyWith(fontSize: 14, height: 1.5, color: colors.textBody)),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: () =>
-              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          onPressed: () => onOpen(url),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(48),
             shape: const RoundedRectangleBorder(),
@@ -333,8 +378,11 @@ const joinTabLabel = 'Join the Gowd';
 
 /// What the join tab says.
 const joinIntro = 'Pahlevani Gowd is for members of our Steady page. '
-    'Join for free or pick a plan that supports our work, then come back '
-    'and sign in with Steady.';
+    'Join for free or pick a plan that supports our work. When you come '
+    'back here, we finish signing you in.';
+
+/// Shown when the app starts sign-in after the join page.
+const welcomeBackMessage = 'Welcome back! Finishing your sign-in…';
 
 /// Web: every plan, paid ones included.
 const joinPlansLabel = 'See the plans';

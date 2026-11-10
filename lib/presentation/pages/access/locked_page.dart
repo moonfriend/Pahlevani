@@ -5,8 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../bloc/activation/activation_cubit.dart';
-import '../../bloc/auth/auth_cubit.dart';
 import '../../widgets/access/retry_countdown.dart';
+import '../../widgets/access/sign_out.dart';
 import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
 
@@ -106,7 +106,7 @@ class _LockedPageState extends State<LockedPage> {
         TextButton(
           onPressed: () {
             context.read<ActivationCubit>().reset();
-            context.read<AuthCubit>().signOut();
+            signOutWithSteadyNote(context);
           },
           child: const Text('Sign out'),
         ),

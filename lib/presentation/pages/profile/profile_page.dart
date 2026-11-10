@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../widgets/access/sign_out.dart';
 import '../shell/rail_user.dart' show steadyLinkedLabel;
 
 import '../../../core/theme/kashi/kashi_assets.dart';
@@ -279,7 +280,7 @@ class _Account extends StatelessWidget {
             Text(steadyLinkedLabel,
                 style: KashiTextStyles.ui
                     .copyWith(fontSize: 12, color: colors.textMuted)),
-          entry('Sign out', () => context.read<AuthCubit>().signOut()),
+          entry('Sign out', () => signOutWithSteadyNote(context)),
           entry('Delete my account', () => _confirmDelete(context),
               color: Theme.of(context).colorScheme.error),
         ],
