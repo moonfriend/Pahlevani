@@ -111,7 +111,10 @@ On the day:
       (Verify JWT **on**), secret `STEADY_API_KEY`.
 - [ ] Auth provider `custom:steady` (step 3, prod URLs).
 - [ ] Redirect URLs: app scheme + `https://gowd.rahaavi.com/` only — **no localhost**.
-- [ ] pg_cron + pg_net + Vault secrets + schedule (step 5); check the first run.
+- [ ] **Soon after go-live** (not needed for access): pg_cron + pg_net + Vault
+      secrets + schedule (step 5); check the first run. Without it, labels in
+      admin only update when the member opens the app; access still ends
+      by itself ≤5 days after the last check.
 - [ ] Smoke test on web: Steady member → content; not joined → "One step left";
       email account with code still works; sign-out pop-up.
 - [ ] Release web first (no store review), then Android (and later iOS).
