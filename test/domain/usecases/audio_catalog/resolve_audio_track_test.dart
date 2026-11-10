@@ -81,4 +81,69 @@ void main() {
       expect(result, onlyOption);
     });
   });
+
+  group('resolveAudioTracks', () {
+    test('returns every recording the chosen Morshed has for the type', () {
+      final first = _track(id: 1, movementTypeId: _sarnavazi, morshedId: 7);
+      final second = _track(id: 3, movementTypeId: _sarnavazi, morshedId: 7);
+      final result = resolveAudioTracks(
+        movementTypeId: _sarnavazi,
+        chosenMorshedId: 7,
+        availableTracks: [
+          first,
+          _track(id: 2, movementTypeId: _sarnavazi, morshedId: 5),
+          _track(id: 4, movementTypeId: _aram, morshedId: 7),
+          second,
+        ],
+      );
+      expect(result, [first, second]);
+    });
+
+    test(
+        'falls back to all recordings of the first Morshed found for the type '
+        '— never a mix of Morsheds', () {
+      final a = _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5);
+      final b = _track(id: 2, movementTypeId: _sarnavazi, morshedId: 6);
+      final c = _track(id: 3, movementTypeId: _sarnavazi, morshedId: 5);
+      final result = resolveAudioTracks(
+        movementTypeId: _sarnavazi,
+        chosenMorshedId: 999,
+        availableTracks: [a, b, c],
+      );
+      expect(result, [a, c]);
+    });
+
+    test('is empty when the movement has no type or no recording', () {
+      expect(
+          resolveAudioTracks(
+              movementTypeId: null,
+              chosenMorshedId: 5,
+              availableTracks: [
+                _track(id: 1, movementTypeId: _sarnavazi, morshedId: 5)
+              ]),
+          isEmpty);
+      expect(
+          resolveAudioTracks(
+              movementTypeId: _sarnavazi,
+              chosenMorshedId: 5,
+              availableTracks: [
+                _track(id: 1, movementTypeId: _aram, morshedId: 5)
+              ]),
+          isEmpty);
+    });
+
+    test('resolveAudioTrack is the first of them (the main recording)', () {
+      final tracks = [
+        _track(id: 2, movementTypeId: _sarnavazi, morshedId: 5),
+        _track(id: 1, movementTypeId: _sarnavazi, morshedId: 7),
+        _track(id: 3, movementTypeId: _sarnavazi, morshedId: 7),
+      ];
+      expect(
+          resolveAudioTrack(
+              movementTypeId: _sarnavazi,
+              chosenMorshedId: 7,
+              availableTracks: tracks),
+          tracks[1]);
+    });
+  });
 }

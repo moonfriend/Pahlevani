@@ -287,7 +287,7 @@ void main() {
         'no learning video yet: the still carries a "coming soon" label '
         'asking for support', (tester) async {
       await open(tester, shena);
-      expect(find.text('Training video coming soon'), findsOneWidget);
+      expect(find.text('Learning video coming soon'), findsOneWidget);
       expect(
           find.text('Support us so we can make more, faster.'), findsOneWidget);
     });
@@ -301,7 +301,7 @@ void main() {
               id: 1,
               name: 'Shena',
               videoUrl: 'https://example.com/learning/1-shena.mp4'));
-      expect(find.text('Training video coming soon'), findsNothing);
+      expect(find.text('Learning video coming soon'), findsNothing);
     });
 
     testWidgets('no video or photo: the female pahlevan illustration',
@@ -354,7 +354,7 @@ void main() {
       await openWide(tester);
       final media =
           tester.getRect(find.byKey(const ValueKey('learning-card-media')));
-      final label = tester.getRect(find.text('Training video coming soon'));
+      final label = tester.getRect(find.text('Learning video coming soon'));
       expect(media.contains(label.center), isTrue);
     });
 

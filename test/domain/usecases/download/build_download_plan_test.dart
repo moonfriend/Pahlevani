@@ -117,6 +117,24 @@ void main() {
       });
     });
 
+    test('a fallback Morshed with several recordings → all of them', () {
+      final withVariant = [
+        ...tracks,
+        const MovementAudioTrack(
+            id: 6,
+            movementTypeId: 6,
+            morshedId: 1,
+            audioUrl: 'https://cdn/m1-t6-avaz.mp3'),
+      ];
+      final plan = buildSessionDownloadPlan(
+          items: items,
+          tracks: withVariant,
+          morshedId: 2,
+          tier: DownloadTier.audio);
+      expect(urls(plan, DownloadFileKind.audio),
+          containsAll(['https://cdn/m1-t6.mp3', 'https://cdn/m1-t6-avaz.mp3']));
+    });
+
     test(
         "no recording for the movement → the exercise's own audio, exactly "
         'like the player falls back to it', () {

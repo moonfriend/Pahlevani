@@ -1,6 +1,15 @@
-/// Web pages the app links to that aren't set in admin.
+/// Pages on our website the app links to. They live on the site so their
+/// content can change without an app release.
 abstract final class AppLinks {
-  /// How to make, order or pre-order meel. A stable address: the page's
-  /// content (and later its video) changes on rahaavi.com, not here.
   static const meelGuide = 'https://rahaavi.com/meel/';
+
+  /// Who we are.
+  static const rahavi = 'https://rahaavi.com/';
+
+  /// Legal pages. German law wants the Impressum and the privacy notice
+  /// reachable from anywhere in the app, not only at sign-up — see
+  /// RahaviMenuButton.
+  static const privacy = 'https://rahaavi.com/privacy';
+  static const impressum = 'https://rahaavi.com/impressum';
+  static const terms = 'https://rahaavi.com/terms';
 }

@@ -1,18 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
 
 TrainingItemWithAudio track({
   String id = '1',
   String title = 'title',
-  String audioFilePath = '/audio.mp3',
+  List<AudioClip> recordings = const [AudioClip(path: '/audio.mp3')],
   int? defaultRepetitions,
   int? userRepetitions,
 }) =>
     TrainingItemWithAudio(
       id: id,
       title: title,
-      audioFilePath: audioFilePath,
+      recordings: recordings,
       defaultRepetitions: defaultRepetitions,
       userRepetitions: userRepetitions,
     );
@@ -100,8 +101,10 @@ void main() {
 
   group('equality', () {
     test('two tracks with same fields are equal', () {
-      final a = track(id: '1', title: 'a', audioFilePath: '/x.mp3');
-      final b = track(id: '1', title: 'a', audioFilePath: '/x.mp3');
+      final a = track(
+          id: '1', title: 'a', recordings: const [AudioClip(path: '/x.mp3')]);
+      final b = track(
+          id: '1', title: 'a', recordings: const [AudioClip(path: '/x.mp3')]);
       expect(a, b);
     });
 
@@ -111,9 +114,9 @@ void main() {
       expect(a, isNot(b));
     });
 
-    test('tracks with different audioFilePath are not equal', () {
-      final a = track(audioFilePath: '/a.mp3');
-      final b = track(audioFilePath: '/b.mp3');
+    test('tracks with different recordings are not equal', () {
+      final a = track(recordings: const [AudioClip(path: '/a.mp3')]);
+      final b = track(recordings: const [AudioClip(path: '/b.mp3')]);
       expect(a, isNot(b));
     });
   });

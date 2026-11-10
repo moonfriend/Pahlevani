@@ -11,6 +11,7 @@ import '../../bloc/training_session/training_session_cubit.dart';
 import '../../widgets/download/media_download_dialog.dart';
 import '../player/training_session_player_page.dart';
 import '../training_session/download_status.dart';
+import '../../usage/app_routes.dart';
 
 const _downloadQuestion =
     'Are you ready to download all the data of this training session?';
@@ -39,6 +40,7 @@ Future<void> startSession(
   await Navigator.push(
     context,
     MaterialPageRoute(
+      settings: AppRoutes.settings(AppRoutes.player),
       builder: (_) => AudioPlayerPage(trainingSession: session, mode: mode),
     ),
   );
@@ -51,6 +53,7 @@ Future<void> showSessionPlayMenu(
     BuildContext context, TrainingSession session) async {
   final zoorkhaneh = await showDialog<bool>(
     context: context,
+    routeSettings: AppRoutes.settings(AppRoutes.zoorkhanehConfirm),
     builder: (dialogContext) => AlertDialog(
       title: const Text('Start in Zoorkhaneh mode?'),
       content: Text('${session.title}: each move loops until you go on, '

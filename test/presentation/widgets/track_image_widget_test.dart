@@ -12,7 +12,6 @@ TrainingItemWithAudio _track({ExerciseMedia media = ExerciseMedia.none}) =>
     TrainingItemWithAudio(
       id: '1',
       title: 'Shena',
-      audioFilePath: '',
       media: media,
     );
 

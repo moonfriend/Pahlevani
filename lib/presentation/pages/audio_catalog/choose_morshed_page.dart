@@ -4,6 +4,7 @@ import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/presentation/bloc/audio_catalog/audio_catalog_cubit.dart';
 import 'package:pahlevani/presentation/pages/audio_catalog/choose_morshed_flow.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 /// Lets the athlete pick one Morshed whose recordings play for every
 /// movement, everywhere — a total override, not a per-movement choice.
@@ -88,7 +89,7 @@ class _MorshedTile extends StatelessWidget {
       title: Text(morshed.name),
       trailing:
           selected ? Icon(Icons.check_circle_rounded, color: cs.primary) : null,
-      onTap: () => chooseMorshed(context, morshed),
+      onTap: () => chooseMorshed(context, morshed, from: MorshedSource.other),
     );
   }
 }

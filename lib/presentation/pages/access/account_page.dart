@@ -12,6 +12,9 @@ import '../../widgets/access/consent_checks.dart';
 import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/kashi/kashi_segmented.dart';
 import 'access_scaffold.dart';
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// The one screen after onboarding, in two tabs:
 ///  - "Already a member": "Sign in with Steady" (terms are asked on the
@@ -68,6 +71,27 @@ class _AccountPageState extends State<AccountPage> {
   /// Supabase's minimum.
   static const _minPasswordLength = 6;
 
+  // For the usage study: time on screen, corrections, attempts — never
+  // what was typed.
+  final DateTime _openedAt = DateTime.now();
+  final Map<String, int> _lengths = {};
+  int _corrections = 0;
+  int _attempts = 0;
+
+  /// A field changed: counts it as a correction when it got shorter.
+  void _edited(String field, String text) {
+    if (text.length < (_lengths[field] ?? 0)) _corrections++;
+    _lengths[field] = text.length;
+    setState(() {});
+  }
+
+  void _setMode(bool newAccount) {
+    if (newAccount == _newAccount) return;
+    context.usage.track(AuthScreenMode(
+        mode: newAccount ? AuthMode.createAccount : AuthMode.signIn));
+    setState(() => _newAccount = newAccount);
+  }
+
   bool get _canSubmit {
     final emailAndPassword = _email.text.trim().contains('@') &&
         _password.text.length >= (_newAccount ? _minPasswordLength : 1);
@@ -107,6 +131,14 @@ class _AccountPageState extends State<AccountPage> {
 
   void _submit() {
     if (!_canSubmit) return;
+    context.usage.track(AuthSubmit(
+      mode: _newAccount ? AuthMode.createAccount : AuthMode.signIn,
+      secondsOnScreen:
+          DateTime.now().difference(_openedAt).inMilliseconds / 1000,
+      corrections: _corrections,
+      attempt: ++_attempts,
+    ));
+    _corrections = 0;
     final auth = context.read<AuthCubit>();
     final email = _email.text.trim();
     if (_newAccount) {
@@ -209,7 +241,7 @@ class _AccountPageState extends State<AccountPage> {
               (false, 'I have an account')
             ],
             selected: _newAccount,
-            onSelected: (value) => setState(() => _newAccount = value),
+            onSelected: _setMode,
           ),
           const SizedBox(height: 20),
           if (_newAccount) ...[
@@ -222,7 +254,7 @@ class _AccountPageState extends State<AccountPage> {
             autocorrect: false,
             autofillHints: const [AutofillHints.email],
             decoration: const InputDecoration(labelText: 'Email'),
-            onChanged: (_) => setState(() {}),
+            onChanged: (v) => _edited('email', v),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -235,7 +267,7 @@ class _AccountPageState extends State<AccountPage> {
               labelText: 'Password',
               helperText: _newAccount ? 'At least 6 characters' : null,
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (v) => _edited('password', v),
             onSubmitted: (_) => _submit(),
           ),
           if (_newAccount) ...[
@@ -249,7 +281,7 @@ class _AccountPageState extends State<AccountPage> {
                 errorText: codeError,
                 errorMaxLines: 3,
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (v) => _edited('code', v),
             ),
             const SizedBox(height: 16),
             ConsentChecks(
@@ -351,8 +383,8 @@ class _ActivateIntro extends StatelessWidget {
                     fontSize: 14, height: 1.5, color: colors.textBody)),
             TextButton(
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
-              onPressed: () => launchUrl(Uri.parse(text.linkUrl),
-                  mode: LaunchMode.externalApplication),
+              onPressed: () => openExternalLink(
+                  context, ExternalLink.activationInfo, text.linkUrl),
               child: Text(text.linkLabel),
             ),
           ],

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
@@ -9,6 +8,11 @@ import '../../widgets/access/retry_countdown.dart';
 import '../../widgets/access/sign_out.dart';
 import 'access_scaffold.dart';
 import 'account_page.dart' show activateTitle;
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Signed in, not activated: the admin's message and Steady link, a field
 /// for an activation code, and "Check my membership again" for members
@@ -44,14 +48,20 @@ class _LockedPageState extends State<LockedPage> {
     return AccessScaffold(
       title: activateTitle,
       children: [
-        Text(text.message,
-            textAlign: TextAlign.center,
-            style: KashiTextStyles.body
-                .copyWith(fontSize: 15, height: 1.5, color: colors.textBody)),
+        TapProbe(
+            id: TapProbeIds.lockedText,
+            child: Text(text.message,
+                textAlign: TextAlign.center,
+                style: KashiTextStyles.body.copyWith(
+                    fontSize: 15, height: 1.5, color: colors.textBody))),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: () => launchUrl(Uri.parse(text.linkUrl),
-              mode: LaunchMode.externalApplication),
+          onPressed: () {
+            context.usage.track(
+                const AccessLockedScreenAction(action: LockedAction.link));
+            openExternalLink(
+                context, ExternalLink.activationInfo, text.linkUrl);
+          },
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),
             shape: const RoundedRectangleBorder(),
@@ -105,6 +115,8 @@ class _LockedPageState extends State<LockedPage> {
                   .copyWith(fontSize: 12.5, color: colors.textMuted)),
         TextButton(
           onPressed: () {
+            context.usage.track(
+                const AccessLockedScreenAction(action: LockedAction.signOut));
             context.read<ActivationCubit>().reset();
             signOutWithSteadyNote(context);
           },

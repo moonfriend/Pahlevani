@@ -34,6 +34,14 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pahlevani/presentation/bloc/tracking/training_history_cubit.dart';
 import 'package:pahlevani/presentation/pages/shell/rail_user.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_scope.dart';
+import 'package:pahlevani/presentation/usage/usage_root.dart';
+import 'package:pahlevani/presentation/usage/screen_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_navigator_observer.dart';
+import 'package:pahlevani/data/services/usage/device_context_reader.dart';
+import 'package:pahlevani/presentation/usage/back_signals.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -120,16 +128,46 @@ Future<void> main() async {
     currentBuildNumber = 999999; // fail open: never block on a read failure
   }
 
+  // The usage study's screen tracker. Its system-Back probe must be
+  // registered before runApp so it hears Back before the app handles it.
+  final screens = ScreenTracker(tracker: getIt<UsageTracker>());
+  getIt.registerSingleton<ScreenTracker>(screens);
+  WidgetsBinding.instance.addObserver(SystemBackProbe(screens.back));
+
   runApp(PahlevaniApp(currentBuildNumber: currentBuildNumber));
 }
 
-class PahlevaniApp extends StatelessWidget {
+class PahlevaniApp extends StatefulWidget {
   const PahlevaniApp({super.key, required this.currentBuildNumber});
 
   final int currentBuildNumber;
 
   @override
+  State<PahlevaniApp> createState() => _PahlevaniAppState();
+}
+
+class _PahlevaniAppState extends State<PahlevaniApp> {
+  final UsageTracker _usage = getIt<UsageTracker>();
+  // Created in main() (see SystemBackProbe); integration tests that pump
+  // the app directly get their own.
+  late final ScreenTracker _screens = getIt.isRegistered<ScreenTracker>()
+      ? getIt<ScreenTracker>()
+      : ScreenTracker(tracker: _usage);
+  late final UsageNavigatorObserver _navigationUsage =
+      UsageNavigatorObserver(_screens, _usage);
+
+  int get currentBuildNumber => widget.currentBuildNumber;
+
+  @override
   Widget build(BuildContext context) {
+    return UsageScope(
+      tracker: _usage,
+      screens: _screens,
+      child: _providers(),
+    );
+  }
+
+  Widget _providers() {
     return MultiBlocProvider(
       providers: [
         BlocProvider<SettingsCubit>(
@@ -160,13 +198,14 @@ class PahlevaniApp extends StatelessWidget {
           create: (_) => AuthCubit(
             repository: getIt<AuthRepository>(),
             activation: getIt<ActivationRepository>(),
+            usage: _usage,
           )..initialize(),
           lazy: false,
         ),
         // Release 1's activation gate (Steady supporters, migration 0045).
         BlocProvider<ActivationCubit>(
-          create: (_) =>
-              ActivationCubit(repository: getIt<ActivationRepository>()),
+          create: (_) => ActivationCubit(
+              repository: getIt<ActivationRepository>(), usage: _usage),
         ),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
@@ -176,6 +215,11 @@ class PahlevaniApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: PahlevaniTheme.light(),
           darkTheme: PahlevaniTheme.dark(),
+          navigatorObservers: [_navigationUsage],
+          builder: (context, child) => UsageRoot(
+              device: readDeviceContext,
+              openSession: getIt<OpenSessionStore>(),
+              child: child!),
           // Version gate stays outermost: an outdated app is blocked before
           // the first-open splash.
           home: VersionGate(

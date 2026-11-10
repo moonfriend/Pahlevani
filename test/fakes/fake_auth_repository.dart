@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 class FakeAuthRepository implements AuthRepository {
@@ -177,4 +178,10 @@ class FakeAuthRepository implements AuthRepository {
     _controller.close();
     _googleEventsController.close();
   }
+
+  /// What [classifyError] answers.
+  AuthErrorKind errorKind = AuthErrorKind.other;
+
+  @override
+  AuthErrorKind classifyError(Object error) => errorKind;
 }

@@ -14,6 +14,10 @@ import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/domain/usecases/download/build_download_plan.dart';
 import 'package:pahlevani/domain/usecases/download/estimate_download.dart';
 import 'package:pahlevani/presentation/bloc/download/media_download_state.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:dio/dio.dart' show DioException;
+import 'dart:io' show FileSystemException, SocketException;
 
 export 'media_download_state.dart';
 
@@ -30,7 +34,9 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
     required MediaSizeRepository mediaSizeRepository,
     required DownloadRepository downloadRepository,
     required DownloadPreferencesRepository preferences,
-  })  : _sessions = sessionRepository,
+    UsageTracker usage = const NoOpUsageTracker(),
+  })  : _usage = usage,
+        _sessions = sessionRepository,
         _catalog = audioCatalogRepository,
         _sizes = mediaSizeRepository,
         _downloads = downloadRepository,
@@ -43,6 +49,10 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
   final MediaSizeRepository _sizes;
   final DownloadRepository _downloads;
   final DownloadPreferencesRepository _prefs;
+  final UsageTracker _usage;
+
+  /// The running download, for the study: tier, size, start.
+  ({DownloadTier tier, int bytes, DateTime at})? _running;
 
   /// Suggested when the athlete hasn't chosen a tier yet.
   static const suggestedTier = DownloadTier.followAlong;
@@ -105,10 +115,32 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
     }
   }
 
+  /// "Not now": the athlete didn't want to download.
+  void decline() {
+    final (kind, id) = _targetIds;
+    _usage.track(DownloadDeclined(target: kind, id: id));
+  }
+
+  (DownloadTargetKind, int) get _targetIds => switch (target) {
+        SessionDownloadTarget(:final sessionId) => (
+            DownloadTargetKind.session,
+            sessionId
+          ),
+        MorshedPackDownloadTarget(:final morshedId) => (
+            DownloadTargetKind.morshedPack,
+            morshedId
+          ),
+      };
+
   Future<void> start() async {
     final s = state;
     if (s is! MediaDownloadReady) return;
     final tier = s.selectedTier;
+    final (kind, id) = _targetIds;
+    final bytes = s.selectedEstimate.knownBytes;
+    _running = (tier: tier, bytes: bytes, at: DateTime.now());
+    _usage.track(
+        DownloadStarted(target: kind, id: id, tier: tier.wire, bytes: bytes));
     if (target is SessionDownloadTarget) await _prefs.setPreferredTier(tier);
     emit(MediaDownloadInProgress(
         tier,
@@ -123,6 +155,13 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
       (p) => emit(MediaDownloadInProgress(tier, p)),
       onError: (Object e) {
         AppLogger.w('Download failed', error: e);
+        final (kind, id) = _targetIds;
+        _usage.track(DownloadFailed(
+            target: kind,
+            id: id,
+            tier: _running?.tier.wire,
+            error: downloadErrorKindOf(e)));
+        _running = null;
         emit(MediaDownloadFailed('$e'));
       },
       onDone: _finish,
@@ -132,6 +171,18 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
 
   Future<void> _finish() async {
     if (state is! MediaDownloadInProgress) return;
+    final running = _running;
+    if (running != null) {
+      final (kind, id) = _targetIds;
+      _usage.track(DownloadFinished(
+        target: kind,
+        id: id,
+        tier: running.tier.wire,
+        bytes: running.bytes,
+        seconds: DateTime.now().difference(running.at).inMilliseconds / 1000,
+      ));
+      _running = null;
+    }
     await _markDone();
     emit(const MediaDownloadDone());
   }
@@ -187,3 +238,10 @@ class MediaDownloadCubit extends Cubit<MediaDownloadState> {
     return super.close();
   }
 }
+
+/// A download failure's class for the usage study.
+DownloadErrorKind downloadErrorKindOf(Object error) => switch (error) {
+      FileSystemException() => DownloadErrorKind.storage,
+      SocketException() || DioException() => DownloadErrorKind.network,
+      _ => DownloadErrorKind.other,
+    };

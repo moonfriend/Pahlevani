@@ -22,6 +22,11 @@ import '../../widgets/kashi/kashi_month_calendar.dart';
 import '../../widgets/kashi/kashi_info_tile.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../widgets/kashi/swipe_scroll_behavior.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
+import '../../widgets/kashi/rahavi_menu_button.dart';
 
 /// A session as the Today card shows it.
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
@@ -117,13 +122,28 @@ class HomePage extends StatelessWidget {
     final gap = layout.bentoGap;
     final trainedDays = {for (final r in records) r.completedAt};
 
+    // Slot 0 is the Today card, then the small cards in order.
+    void open(TrainingSession s, int slot, HomeCardTarget target) {
+      context.usage.track(
+          HomeSessionCardTapped(slot: slot, sessionId: s.id, target: target));
+      onOpenSession(s);
+    }
+
+    final sessionMenu = onSessionMenu;
+    final ValueChanged<TrainingSession>? menu = sessionMenu == null
+        ? null
+        : (s) {
+            context.usage.track(HomeSessionMenuOpened(sessionId: s.id));
+            sessionMenu(s);
+          };
+
     final mainCard = KeyedSubtree(
       key: const ValueKey('home-today'),
       child: _TodayCard(
         sessions: [if (lineup.main case final main?) main],
         tag: lineup.mainFromTrainer ? 'FROM YOUR TRAINER' : 'TODAY',
-        onOpen: onOpenSession,
-        onMenu: onSessionMenu,
+        onOpen: (s, target) => open(s, 0, target),
+        onMenu: menu,
       ),
     );
     final smallCards = KeyedSubtree(
@@ -131,8 +151,8 @@ class HomePage extends StatelessWidget {
       child: _SmallSessions(
         sessions: lineup.small,
         axis: layout.isPhone ? Axis.horizontal : Axis.vertical,
-        onOpen: onOpenSession,
-        onMenu: onSessionMenu,
+        onOpen: (s, i, target) => open(s, i + 1, target),
+        onMenu: menu,
       ),
     );
     final monthStrip = KeyedSubtree(
@@ -280,23 +300,23 @@ class _Header extends StatelessWidget {
                 Text(homeDateLabel(date),
                     style: KashiTextStyles.ui.copyWith(
                         fontSize: phone ? 12 : 13, color: colors.textMuted)),
-                Text('Salam, $name',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: KashiTextStyles.title.copyWith(
-                        fontSize: switch (layout) {
-                          KashiLayout.phone => 23,
-                          KashiLayout.tablet => 32,
-                          KashiLayout.web => 34,
-                        },
-                        color: colors.textPrimary)),
+                TapProbe(
+                    id: TapProbeIds.homeGreeting,
+                    child: Text('Salam, $name',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: KashiTextStyles.title.copyWith(
+                            fontSize: switch (layout) {
+                              KashiLayout.phone => 23,
+                              KashiLayout.tablet => 32,
+                              KashiLayout.web => 34,
+                            },
+                            color: colors.textPrimary))),
               ],
             ),
           ),
           // On the web layout the mark lives in the side rail.
-          if (!layout.isWide)
-            Image.asset(KashiAssets.rahaviMark,
-                width: phone ? 34 : 44, semanticLabel: 'Rahavi'),
+          if (!layout.isWide) RahaviMenuButton(width: phone ? 34 : 44),
         ],
       ),
     );
@@ -315,7 +335,7 @@ class _TodayCard extends StatefulWidget {
 
   /// The first page's label.
   final String tag;
-  final ValueChanged<TrainingSession> onOpen;
+  final void Function(TrainingSession, HomeCardTarget) onOpen;
   final ValueChanged<TrainingSession>? onMenu;
 
   @override
@@ -325,6 +345,16 @@ class _TodayCard extends StatefulWidget {
 class _TodayCardState extends State<_TodayCard> {
   final _pages = PageController();
   int _index = 0;
+
+  /// The next page change comes from a dot, not a swipe (for the study).
+  bool _byDot = false;
+
+  void _pageChanged(int i) {
+    context.usage.track(HomeTodayPageChanged(
+        index: i, via: _byDot ? TodayPageVia.dot : TodayPageVia.swipe));
+    _byDot = false;
+    setState(() => _index = i);
+  }
 
   /// The session picked per launch, as the design does; the alternate
   /// figure on every other page. Placeholders — sessions have no images.
@@ -355,14 +385,17 @@ class _TodayCardState extends State<_TodayCard> {
                     scrollBehavior: const SwipeScrollBehavior(),
                     controller: _pages,
                     itemCount: sessions.length,
-                    onPageChanged: (i) => setState(() => _index = i),
+                    onPageChanged: _pageChanged,
                     itemBuilder: (context, i) => _TodayPage(
                       session: sessions[i],
                       tag: i == 0
                           ? widget.tag
                           : 'SESSION ${i + 1} OF ${sessions.length}',
                       figure: _figureFor(i),
-                      onOpen: () => widget.onOpen(sessions[i].session),
+                      onOpen: () => widget.onOpen(
+                          sessions[i].session, HomeCardTarget.card),
+                      onStart: () => widget.onOpen(
+                          sessions[i].session, HomeCardTarget.startButton),
                       onMenu: widget.onMenu == null
                           ? null
                           : () => widget.onMenu!(sessions[i].session),
@@ -384,10 +417,13 @@ class _TodayCardState extends State<_TodayCard> {
                                 if (i > 0) const SizedBox(width: 4),
                                 GestureDetector(
                                   key: ValueKey('today-dot-$i'),
-                                  onTap: () => _pages.animateToPage(i,
-                                      duration:
-                                          const Duration(milliseconds: 280),
-                                      curve: Curves.easeOut),
+                                  onTap: () {
+                                    _byDot = true;
+                                    _pages.animateToPage(i,
+                                        duration:
+                                            const Duration(milliseconds: 280),
+                                        curve: Curves.easeOut);
+                                  },
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
                                     width: i == _index ? 16 : 6,
@@ -416,6 +452,7 @@ class _TodayPage extends StatelessWidget {
     required this.tag,
     required this.figure,
     required this.onOpen,
+    required this.onStart,
     this.onMenu,
   });
 
@@ -423,6 +460,7 @@ class _TodayPage extends StatelessWidget {
   final String tag;
   final String figure;
   final VoidCallback onOpen;
+  final VoidCallback onStart;
   final VoidCallback? onMenu;
 
   @override
@@ -519,7 +557,7 @@ class _TodayPage extends StatelessWidget {
                             SizedBox(
                               height: wide ? 48 : 40,
                               child: FilledButton.icon(
-                                onPressed: onOpen,
+                                onPressed: onStart,
                                 icon: const Icon(Icons.play_arrow_rounded,
                                     size: 18),
                                 label: const Text('Start'),
@@ -656,7 +694,7 @@ class _SmallSessions extends StatelessWidget {
 
   final List<HomeSession> sessions;
   final Axis axis;
-  final ValueChanged<TrainingSession> onOpen;
+  final void Function(TrainingSession, int index, HomeCardTarget) onOpen;
   final ValueChanged<TrainingSession>? onMenu;
 
   @override
@@ -672,7 +710,8 @@ class _SmallSessions extends StatelessWidget {
             child: SessionCard(
               session: s,
               compact: true,
-              onOpen: () => onOpen(s.session),
+              onOpen: () => onOpen(s.session, i, HomeCardTarget.card),
+              onPlay: () => onOpen(s.session, i, HomeCardTarget.startButton),
               onMenu: onMenu == null ? null : () => onMenu!(s.session),
             ),
           ),

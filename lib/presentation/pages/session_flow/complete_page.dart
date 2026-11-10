@@ -8,6 +8,8 @@ import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../widgets/kashi/kashi_action_button.dart';
 import '../../widgets/kashi/shamseh.dart';
 import '_fill_scroll.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// A quiet moment under the dome: lajvard night with faint stars (the same
 /// in both themes), "خسته نباشید", today's tile flying into the shamseh, and
@@ -80,14 +82,16 @@ class _CompletePageState extends State<CompletePage>
                 child: FillScroll(
                   padding: const EdgeInsets.fromLTRB(22, 34, 22, 24),
                   children: [
-                    const Text('خسته نباشید',
-                        textAlign: TextAlign.center,
-                        textDirection: TextDirection.rtl,
-                        style: TextStyle(
-                            fontFamily: KashiFonts.farsi,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 32,
-                            color: KashiPalette.yellow400)),
+                    const TapProbe(
+                        id: TapProbeIds.completeTitle,
+                        child: Text('خسته نباشید',
+                            textAlign: TextAlign.center,
+                            textDirection: TextDirection.rtl,
+                            style: TextStyle(
+                                fontFamily: KashiFonts.farsi,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 32,
+                                color: KashiPalette.yellow400))),
                     const SizedBox(height: 6),
                     Text(
                         widget.showShamseh
@@ -155,11 +159,16 @@ class _RepCards extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _RepCard(rep: reps[i])),
+                Expanded(
+                    child: TapProbe(
+                        id: TapProbeIds.completeRepCard,
+                        child: _RepCard(rep: reps[i]))),
                 const SizedBox(width: 6),
                 Expanded(
                   child: i + 1 < reps.length
-                      ? _RepCard(rep: reps[i + 1])
+                      ? TapProbe(
+                          id: TapProbeIds.completeRepCard,
+                          child: _RepCard(rep: reps[i + 1]))
                       : const SizedBox.shrink(),
                 ),
               ],

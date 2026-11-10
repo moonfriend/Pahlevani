@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/player/move_timeline.dart';
 import 'package:pahlevani/presentation/bloc/player/move_progress_cubit.dart';
 
@@ -19,7 +20,8 @@ void main() {
 
   tearDown(() => timeline.close());
 
-  const move = MoveSpec(audioPath: '/a', clipReps: 10, targetReps: 10);
+  const move =
+      MoveSpec(clips: [AudioClip(path: '/a', reps: 10)], targetReps: 10);
 
   test('starts from where the move already is (joining mid-move)', () async {
     await timeline.load(move, play: true);

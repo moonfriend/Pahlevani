@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:pahlevani/core/release_features.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:pahlevani/presentation/widgets/download/media_download_dialog.dart';
@@ -43,13 +42,23 @@ import 'package:pahlevani/domain/usecases/audio_catalog/effective_morshed.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_action_button.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/move_placeholder.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/move_list_drawer.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
 import 'package:pahlevani/domain/entities/audio/training_item_with_audio.dart';
 import 'package:pahlevani/presentation/widgets/player/fullscreen_mode.dart';
+import 'package:pahlevani/presentation/widgets/player/passive_video.dart';
 import 'package:pahlevani/presentation/widgets/player/video_follower.dart';
 import 'package:pahlevani/presentation/layout/kashi_layout.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/back_signals.dart';
+import '../../usage/usage_ui.dart';
+import '../../usage/usage_scope.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/usage/open_session.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -104,7 +113,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     }
   }
 
-  void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
+  void _toggleFullscreen() {
+    context.usage.track(PlayerFullscreen(on: !_fullscreen));
+    setState(() => _fullscreen = !_fullscreen);
+  }
 
   /// The effective Morshed's name for the top bar; null until known (or
   /// when there is no roster), and then the label is simply left out.
@@ -160,6 +172,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         learntExercisesRepository: getIt<LearntExercisesRepository>(),
         notificationService: getIt<PlayerNotificationService>(),
         repLogging: widget.repLogging,
+        usage: context.usage,
+        openSession: getIt.isRegistered<OpenSessionStore>()
+            ? getIt<OpenSessionStore>()
+            : null,
       );
 
   /// Edit from the player: pause first (audio and demo video stop while
@@ -174,6 +190,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
+          settings: AppRoutes.settings(AppRoutes.editSession),
           builder: (_) => EditTrainingSessionPage(
                 trainingSession: _session,
                 items: detail?.items ?? const [],
@@ -188,8 +205,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final saved = sessionCubit.getSessionDetail(updated.id);
     final messenger = ScaffoldMessenger.of(context);
     if (saved == null) {
-      messenger.showSnackBar(
-          SnackBar(content: Text("Couldn't save ${updated.title}")));
+      showUsageSnackBar(context, "Couldn't save ${updated.title}",
+          key: 'session_save_failed');
       return;
     }
     await _restartPlayer(saved.session);
@@ -258,6 +275,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   Future<void> _openHowTo(BuildContext context, int index) async {
     final exercise = _cubit.exerciseAt(index);
     if (exercise == null) return;
+    context.usage
+      ..track(PlayerHowToOpened(index: index, movementId: exercise.id))
+      ..track(
+          LearningCardOpened(movementId: exercise.id, from: CardSource.player));
     _cubit.pause();
     final move = await _learningMove(index, exercise);
     if (!context.mounted) return;
@@ -265,7 +286,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   }
 
   /// The learning card for track [index]: the track's already-resolved
-  /// still, and the move's learning video where it can play.
+  /// still and follow-along video, and the move's learning video where it
+  /// can play.
   Future<LearningMove> _learningMove(int index, Exercise exercise) async {
     final track = _cubit.state.tracks[index];
     final learningVideo = await ResolveLearningVideo(
@@ -274,6 +296,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       exercise,
       media: track.media,
       learningVideoSrc: learningVideo,
+      followAlongReady: track.videoReady,
       target: _cubit.isCounted(index) ? track.effectiveRepetitions : null,
     );
   }
@@ -286,6 +309,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     final reps = await Navigator.push<int>(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.repLog),
         builder: (routeContext) => RepLogPage(
           moveName: move.displayName,
           moveNumber: state.playingIndex + 1,
@@ -329,8 +353,8 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       AppLogger.e('Could not record the finished session',
           error: e, stackTrace: st);
       if (!mounted || !context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Couldn't save this session to your history.")));
+      showUsageSnackBar(context, "Couldn't save this session to your history.",
+          key: 'history_save_failed');
       return;
     }
     // Home and Progress read the shared history cubit.
@@ -342,6 +366,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     unawaited(Navigator.pushReplacement(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.complete),
         builder: (completeContext) => CompletePage(
           tileNumber: tileNumber,
           loggedReps: [
@@ -364,122 +389,175 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         BlocProvider.value(value: _cubit),
         BlocProvider.value(value: _progress),
       ],
-      child: Scaffold(
-        // The player is a lajvard scene, the same in both themes.
-        backgroundColor: KashiPalette.lajvard900,
-        body: BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
-          // A restart (see _restartPlayer) rebuilds the whole player subtree.
-          key: ValueKey(_playerGeneration),
-          listenWhen: (prev, cur) =>
-              prev.playingIndex != cur.playingIndex ||
-              (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
-              (prev is! PlayerFinished && cur is PlayerFinished) ||
-              (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
-          listener: (context, state) {
-            if (state is PlayerLoggingReps) {
-              unawaited(_showRepLog(context, state));
-              return;
-            }
-            if (state is PlayerFinished) {
-              unawaited(_handleSessionFinished(context));
-            }
-            if (state.tracks.isNotEmpty &&
-                state is! PlayerFinished &&
-                _cubit.shouldPromptLearningMode) {
-              final exercise = _cubit.exerciseAt(state.playingIndex);
-              if (exercise != null) {
-                unawaited(
-                    _promptLearningMode(context, state.playingIndex, exercise));
-              }
-            }
-            // Precache each image URL at most once per player session.
-            // Previously this looped all tracks on every index change, causing
-            // repeated Supabase egress when the in-memory cache was full.
-            for (final track in state.tracks) {
-              final src = track.media.src;
-              if (track.media.type == 'photo' &&
-                  src != null &&
-                  src.isNotEmpty &&
-                  !src.startsWith('/') &&
-                  _precachedUrls.add(src)) {
-                precacheImage(ExerciseImageProvider(src), context,
-                    onError: (_, __) {});
-              }
-            }
-          },
-          builder: (context, state) {
-            if (state is PlayerLoading) {
-              return const Center(
-                  child: CircularProgressIndicator(color: _Scene.accent));
-            }
-            if (state is PlayerNeedsDownload) {
-              return _NeedsDownload(
-                topBar: _TopBar(
-                  state: state,
-                  morshedName: _morshedName,
-                  onSelectMove: null,
-                  onEdit: () => _openEdit(context),
-                ),
-                onDownload: () => _download(context),
-              );
-            }
-            if (state is PlayerFailed && state.tracks.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(state.message,
-                      textAlign: TextAlign.center,
-                      style: KashiTextStyles.body.copyWith(color: _Scene.text)),
-                ),
-              );
-            }
-            final index = state.playingIndex;
-            final exercise = _cubit.exerciseAt(index);
-            final layout = KashiLayout.of(context);
-            final hasVideo = _showsVideo(state.currentTrack);
-            final fullscreen = _fullscreen && hasVideo;
-            final stage = _Stage(
-              key: _stageKey,
+      // The move list depends on which move plays and on full screen; the
+      // player below rebuilds on its own.
+      child: BlocBuilder<SessionPlayerCubit, SessionPlayerState>(
+        bloc: _cubit,
+        buildWhen: (prev, cur) =>
+            prev.runtimeType != cur.runtimeType ||
+            prev.playingIndex != cur.playingIndex ||
+            prev.tracks != cur.tracks,
+        builder: (context, state) {
+          final listsMoves = state is PlayerReady &&
+              state.tracks.isNotEmpty &&
+              !(_fullscreen && _showsVideo(state.currentTrack));
+          return Scaffold(
+            // The player is a lajvard scene, the same in both themes.
+            backgroundColor: KashiPalette.lajvard900,
+            // Swipe left from the right edge (or the edge arrow): every
+            // move, to jump straight to one. Not in full screen.
+            endDrawer: listsMoves
+                ? MoveListDrawer(
+                    moves: _moveEntries(state),
+                    onSelect: _cubit.setIndexAndPlay)
+                : null,
+            drawerEdgeDragWidth: _moveListEdgeWidth,
+            body: Stack(fit: StackFit.expand, children: [
+              _player(),
+              if (listsMoves)
+                const Positioned(
+                    right: 0, top: 0, bottom: 0, child: _MoveListTab()),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The right-edge strip a swipe left starts from to open the move list.
+  static const double _moveListEdgeWidth = 32;
+
+  /// The move list's rows, from the session's moves.
+  List<MoveListEntry> _moveEntries(SessionPlayerState state) => [
+        for (final (i, track) in state.tracks.indexed)
+          MoveListEntry(
+            name: track.title,
+            nameFa: _cubit.exerciseAt(i)?.titleFa,
+            reps: track.effectiveRepetitions,
+            imageSrc: track.media.type == 'photo'
+                ? track.media.src
+                : track.media.poster,
+            isCurrent: i == state.playingIndex,
+            isDone: i < state.playingIndex,
+          ),
+      ];
+
+  Widget _player() {
+    return BlocConsumer<SessionPlayerCubit, SessionPlayerState>(
+      // A restart (see _restartPlayer) rebuilds the whole player subtree.
+      key: ValueKey(_playerGeneration),
+      listenWhen: (prev, cur) =>
+          prev.playingIndex != cur.playingIndex ||
+          (prev.tracks.isEmpty && cur.tracks.isNotEmpty) ||
+          (prev is! PlayerFinished && cur is PlayerFinished) ||
+          (prev is! PlayerLoggingReps && cur is PlayerLoggingReps),
+      listener: (context, state) {
+        if (state is PlayerLoggingReps) {
+          unawaited(_showRepLog(context, state));
+          return;
+        }
+        if (state is PlayerFinished) {
+          unawaited(_handleSessionFinished(context));
+        }
+        if (state.tracks.isNotEmpty &&
+            state is! PlayerFinished &&
+            _cubit.shouldPromptLearningMode) {
+          final exercise = _cubit.exerciseAt(state.playingIndex);
+          if (exercise != null) {
+            unawaited(
+                _promptLearningMode(context, state.playingIndex, exercise));
+          }
+        }
+        // Precache each image URL at most once per player session.
+        // Previously this looped all tracks on every index change, causing
+        // repeated Supabase egress when the in-memory cache was full.
+        for (final track in state.tracks) {
+          final src = track.media.src;
+          if (track.media.type == 'photo' &&
+              src != null &&
+              src.isNotEmpty &&
+              !src.startsWith('/') &&
+              _precachedUrls.add(src)) {
+            precacheImage(ExerciseImageProvider(src), context,
+                onError: (_, __) {});
+          }
+        }
+      },
+      builder: (context, state) {
+        if (state is PlayerLoading) {
+          return const Center(
+              child: CircularProgressIndicator(color: _Scene.accent));
+        }
+        if (state is PlayerNeedsDownload) {
+          return _NeedsDownload(
+            topBar: _TopBar(
               state: state,
-              cubit: _cubit,
-              fullscreen: fullscreen,
-              onToggleFullscreen: hasVideo ? _toggleFullscreen : null,
-            );
-            if (fullscreen) {
-              // Back leaves full screen, not the session.
-              return PopScope(
-                canPop: false,
-                onPopInvokedWithResult: (didPop, _) {
-                  if (!didPop) setState(() => _fullscreen = false);
-                },
-                child: FullscreenScope(
-                  key: const ValueKey('player-fullscreen'),
-                  child: Center(child: stage),
-                ),
-              );
-            }
-            return _KashiPlayerView(
-              topBar: _TopBar(
-                state: state,
-                morshedName: _morshedName,
-                onSelectMove: _cubit.setIndexAndPlay,
-                onEdit: () => _openEdit(context),
-              ),
-              stage: stage,
-              title: _MoveTitle(
-                name: state.currentTrack?.title ?? '',
-                nameFa: exercise?.titleFa,
-                onHowTo:
-                    exercise == null ? null : () => _openHowTo(context, index),
-                fontSize: switch (layout) {
-                  KashiLayout.phone => 24,
-                  KashiLayout.tablet => 30,
-                  KashiLayout.web => 36,
-                },
-              ),
-              cues: exercise?.cues ?? const [],
-              counter: _Counter(
+              morshedName: _morshedName,
+              onSelectMove: null,
+              onEdit: () => _openEdit(context),
+            ),
+            onDownload: () => _download(context),
+          );
+        }
+        if (state is PlayerFailed && state.tracks.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(state.message,
+                  textAlign: TextAlign.center,
+                  style: KashiTextStyles.body.copyWith(color: _Scene.text)),
+            ),
+          );
+        }
+        final index = state.playingIndex;
+        final exercise = _cubit.exerciseAt(index);
+        final layout = KashiLayout.of(context);
+        final hasVideo = _showsVideo(state.currentTrack);
+        final fullscreen = _fullscreen && hasVideo;
+        final stage = _Stage(
+          key: _stageKey,
+          state: state,
+          cubit: _cubit,
+          fullscreen: fullscreen,
+          onToggleFullscreen: hasVideo ? _toggleFullscreen : null,
+        );
+        if (fullscreen) {
+          // Back leaves full screen, not the session.
+          return PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) setState(() => _fullscreen = false);
+            },
+            child: FullscreenScope(
+              key: const ValueKey('player-fullscreen'),
+              child: Center(child: stage),
+            ),
+          );
+        }
+        return _KashiPlayerView(
+          topBar: _TopBar(
+            state: state,
+            morshedName: _morshedName,
+            onSelectMove: _cubit.setIndexAndPlay,
+            onEdit: () => _openEdit(context),
+          ),
+          stage: stage,
+          title: _MoveTitle(
+            name: state.currentTrack?.title ?? '',
+            nameFa: exercise?.titleFa,
+            onHowTo: exercise == null ? null : () => _openHowTo(context, index),
+            fontSize: switch (layout) {
+              KashiLayout.phone => 24,
+              KashiLayout.tablet => 30,
+              KashiLayout.web => 36,
+            },
+          ),
+          cues: exercise?.cues ?? const [],
+          counter: TapProbe(
+              id: TapProbeIds.playerRepCounter,
+              child: _Counter(
                 counted: _cubit.isCounted(index),
+                confirmsAfter: _cubit.logsReps(index),
                 target: state.currentTrack?.effectiveRepetitions ?? 0,
                 loopsForever: widget.mode == PlayerMode.zoorkhaneh,
                 size: switch (layout) {
@@ -487,12 +565,43 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                   KashiLayout.tablet => 260,
                   KashiLayout.web => 300,
                 },
+              )),
+          transport:
+              _Transport(state: state, cubit: _cubit, stacked: layout.isTablet),
+          layout: layout,
+        );
+      },
+    );
+  }
+}
+
+/// The slim arrow on the player's right edge that opens the move list.
+class _MoveListTab extends StatelessWidget {
+  const _MoveListTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Tooltip(
+        message: 'All moves',
+        child: InkWell(
+          onTap: () => Scaffold.of(context).openEndDrawer(),
+          child: const SizedBox(
+            width: 28,
+            height: 72,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Color(0x662A3A78)),
+                child: SizedBox(
+                  width: 18,
+                  height: 56,
+                  child:
+                      Icon(Icons.chevron_left, size: 18, color: _Scene.muted),
+                ),
               ),
-              transport: _Transport(
-                  state: state, cubit: _cubit, stacked: layout.isTablet),
-              layout: layout,
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
@@ -566,6 +675,7 @@ class _StageState extends State<_Stage> {
   static const _progressVisibleFor = Duration(seconds: 3);
 
   void _toggleProgress() {
+    context.usage.track(PlayerProgressToggled(visible: !_showProgress));
     if (_showProgress) {
       _hideProgress?.cancel();
       setState(() => _showProgress = false);
@@ -661,7 +771,6 @@ class _StageState extends State<_Stage> {
                     path: track.media.src!,
                     posterSrc: track.media.poster,
                     isPlaying: state.isPlaying,
-                    startOffsetMs: track.videoStartOffsetMs,
                   )
                 else if (hasPhoto || hasVideoPoster)
                   buildMediaImage(
@@ -669,18 +778,6 @@ class _StageState extends State<_Stage> {
                 else
                   // No video or photo for this move yet.
                   const MovePlaceholder(),
-                // On the web the video is a browser <video> element that
-                // takes every click over it, so the tap that shows the
-                // controls (and the controls themselves) never reached
-                // Flutter. This invisible layer stops clicks there; the
-                // controls are painted above it. Elsewhere the video is
-                // drawn by Flutter and this is a plain pass-through.
-                Positioned.fill(
-                  child: PointerInterceptor(
-                    intercepting: kIsWeb,
-                    child: const SizedBox.expand(),
-                  ),
-                ),
                 // Controls: a tap on the video shows them for a while;
                 // while paused they stay up.
                 if (controlsVisible)
@@ -742,6 +839,8 @@ class _StageState extends State<_Stage> {
                       ),
                     ),
                   ),
+                // The video waits at frame 0 for the morshed's beat.
+                if (hasVideo) _GetReady(timeline: cubit.timeline),
                 if (state.isPlaying || state.isMuted)
                   PositionedDirectional(
                     start: 10,
@@ -766,6 +865,46 @@ class _StageState extends State<_Stage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Get ready" over the video while it waits more than a second at frame 0
+/// for the audio's main beat (see [showsGetReady]). Its own builder, so
+/// audio-speed progress rebuilds only this label, and only when it flips.
+class _GetReady extends StatelessWidget {
+  const _GetReady({required this.timeline});
+
+  final MoveTimeline timeline;
+
+  bool _shows(MoveProgress progress) => showsGetReady(
+        moveMs: progress.position.inMilliseconds,
+        offsetMs: timeline.clipAt(progress.clipIndex)?.videoOffsetMs,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<MoveProgressCubit, MoveProgress>(
+      buildWhen: (a, b) => _shows(a) != _shows(b),
+      builder: (context, progress) => !_shows(progress)
+          ? const SizedBox.shrink()
+          : Align(
+              alignment: const Alignment(0, -0.6),
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(color: Color(0xCC0B1638)),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Text('Get ready',
+                        style: KashiTextStyles.ui.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: KashiPalette.yellow400)),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -798,7 +937,6 @@ class _ExerciseVideo extends StatefulWidget {
     required this.path,
     required this.isPlaying,
     this.posterSrc,
-    this.startOffsetMs,
   });
   final MoveTimeline timeline;
   final String path;
@@ -809,9 +947,6 @@ class _ExerciseVideo extends StatefulWidget {
   /// would otherwise be showing one layer up, so mounting hands off from
   /// poster to live video with no blank/static frame in between.
   final String? posterSrc;
-
-  /// Video anchor − audio anchor, see [videoAlignment].
-  final int? startOffsetMs;
 
   @override
   State<_ExerciseVideo> createState() => _ExerciseVideoState();
@@ -825,8 +960,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
   @override
   void initState() {
     super.initState();
-    _follower = VideoFollower(
-        timeline: widget.timeline, startOffsetMs: widget.startOffsetMs)
+    _follower = VideoFollower(timeline: widget.timeline)
       ..setPlaying(widget.isPlaying);
     // dart:io's File doesn't exist on web — video_player_web only supports
     // networkUrl()/asset(). widget.path is the remote R2 URL there (the
@@ -895,7 +1029,7 @@ class _ExerciseVideoState extends State<_ExerciseVideo> {
       child: SizedBox(
         width: size.width,
         height: size.height,
-        child: VideoPlayer(_controller),
+        child: PassiveVideo(_controller),
       ),
     );
   }
@@ -1016,7 +1150,7 @@ class _KashiPlayerView extends StatelessWidget {
               title,
               if (cues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                _Cues(cues: cues),
+                TapProbe(id: TapProbeIds.playerCues, child: _Cues(cues: cues)),
               ],
               const SizedBox(height: 10),
               counter,
@@ -1036,7 +1170,7 @@ class _KashiPlayerView extends StatelessWidget {
               title,
               if (cues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                _Cues(cues: cues),
+                TapProbe(id: TapProbeIds.playerCues, child: _Cues(cues: cues)),
               ],
               const SizedBox(height: 24),
               Row(
@@ -1065,7 +1199,9 @@ class _KashiPlayerView extends StatelessWidget {
                   title,
                   if (cues.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _Cues(cues: cues, inRow: true),
+                    TapProbe(
+                        id: TapProbeIds.playerCues,
+                        child: _Cues(cues: cues, inRow: true)),
                   ],
                 ],
               ),
@@ -1113,7 +1249,7 @@ class _TopBar extends StatelessWidget {
         Tooltip(
           message: 'Close player',
           child: InkWell(
-            onTap: () => Navigator.maybePop(context),
+            onTap: () => popWithAppBarBack(context),
             child: SizedBox(
               height: 44,
               child: Row(children: [
@@ -1265,12 +1401,16 @@ class _Cues extends StatelessWidget {
 class _Counter extends StatelessWidget {
   const _Counter({
     required this.counted,
+    required this.confirmsAfter,
     required this.target,
     required this.loopsForever,
     this.size = RepStar.phoneSize,
   });
 
   final bool counted;
+
+  /// The Rep log follows this move, where the user confirms the count.
+  final bool confirmsAfter;
   final int target;
   final bool loopsForever;
   final double size;
@@ -1296,7 +1436,7 @@ class _Counter extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-            counted
+            confirmsAfter
                 ? 'The morshed counts; you confirm after'
                 : 'Follow the morshed’s count',
             textAlign: TextAlign.center,

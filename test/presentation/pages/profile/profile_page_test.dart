@@ -24,6 +24,9 @@ import '../../../fakes/fake_audio_catalog_repository.dart';
 import '../../../fakes/fake_download_dialog_deps.dart';
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_training_history_repository.dart';
+import '../../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'package:pahlevani/presentation/usage/usage_scope.dart';
 
 const _morsheds = [
   Morshed(id: 1, name: 'Ali'),
@@ -32,7 +35,9 @@ const _morsheds = [
 ];
 
 class _Harness {
-  _Harness(this.settings, this.catalog, this.catalogRepo, this.authRepo);
+  _Harness(
+      this.settings, this.catalog, this.catalogRepo, this.authRepo, this.usage);
+  final FakeUsageTracker usage;
   final SettingsCubit settings;
   final FakeAuthRepository authRepo;
   final AudioCatalogCubit catalog;
@@ -76,22 +81,59 @@ Future<_Harness> _pump(
     await auth.initialize();
   });
 
-  await tester.pumpWidget(MultiBlocProvider(
-    providers: [
-      BlocProvider.value(value: history),
-      BlocProvider.value(value: catalog),
-      BlocProvider.value(value: auth),
-      BlocProvider.value(value: settings),
-    ],
-    child: MaterialApp(
-      theme: PahlevaniTheme.light(),
-      home: const ProfilePage(),
+  final usage = FakeUsageTracker();
+  await tester.pumpWidget(UsageScope(
+    tracker: usage,
+    child: MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: history),
+        BlocProvider.value(value: catalog),
+        BlocProvider.value(value: auth),
+        BlocProvider.value(value: settings),
+      ],
+      child: MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: const ProfilePage(),
+      ),
     ),
   ));
-  return _Harness(settings, catalog, catalogRepo, authRepo);
+  return _Harness(settings, catalog, catalogRepo, authRepo, usage);
 }
 
 void main() {
+  testWidgets('Profile choices are logged for the usage study', (tester) async {
+    final h = await _pump(tester,
+        size: const Size(360, 1400),
+        user: const AppUser(
+            id: 'u',
+            email: 'sara@example.com',
+            consentAccepted: true,
+            termsVersion: currentTermsVersion));
+    await tester.tap(find.text('فارسی'));
+    await tester.tap(find.text('Light'));
+    await tester.pump();
+    await tester.tap(find.text('Sign out'));
+    await tester.pump();
+    expect(h.usage.of<ProfileEntryTapped>().map((e) => e.entry),
+        [ProfileEntry.languageFa, ProfileEntry.signOut]);
+    expect(h.usage.of<SettingsThemeChanged>().single.mode, 'light');
+  });
+
+  testWidgets('Share usage data is on by default and can be turned off',
+      (tester) async {
+    final h = await _pump(tester, size: const Size(360, 1400));
+    final toggle = find.widgetWithText(SwitchListTile, 'Share usage data');
+    expect(toggle, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+
+    await tester.tap(toggle);
+    await tester.pump();
+
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    expect(h.usage.enabled, isFalse);
+    expect(h.usage.of<ProfileTrackingToggled>().single.on, isFalse);
+  });
+
   testWidgets('star avatar, a placeholder name, and the session count',
       (tester) async {
     await _pump(tester, sessions: 11);
@@ -139,6 +181,8 @@ void main() {
     await tester.tap(find.text('Reza'));
     await tester.pumpAndSettle();
     expect(h.catalogRepo.selectedMorshedId, 3);
+    final chosen = h.usage.of<MorshedChosen>().single;
+    expect([chosen.morshedId, chosen.from], [3, MorshedSource.profile]);
 
     // Same steps as the morshed picker: their recordings, then the
     // video-sync heads-up (Reza isn't the videos' reference morshed).
@@ -190,6 +234,8 @@ void main() {
     Future<void> open(WidgetTester tester, String label) async {
       await tester.scrollUntilVisible(find.text(label), 80,
           scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.text(label));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(label));
       await tester.pumpAndSettle();
     }

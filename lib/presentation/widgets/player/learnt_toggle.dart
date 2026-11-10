@@ -5,6 +5,8 @@ import 'package:pahlevani/core/di/dependency_injection.dart';
 import 'package:pahlevani/core/theme/pahlevani_colors.dart';
 import 'package:pahlevani/core/theme/pahlevani_theme.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// "Learnt" switch shown on both the ⓘ info page and Learning Mode's
 /// pre-track prompt for the same move — marking a move learnt here makes
@@ -38,6 +40,8 @@ class _LearntToggleState extends State<LearntToggle> {
   }
 
   Future<void> _toggle(bool value) async {
+    context.usage.track(LearningCardLearntToggled(
+        movementId: widget.exerciseId, learnt: value));
     setState(() => _learnt = value);
     await getIt<LearntExercisesRepository>()
         .setExerciseLearnt(widget.exerciseId, value);

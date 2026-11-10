@@ -23,6 +23,13 @@ import '../progress/calendar_page.dart';
 import '../session_flow/complete_page.dart';
 import '../session_flow/rep_log_page.dart';
 import '../training_session/training_sessions_page.dart';
+import '../../bloc/usage/usage_sharing_cubit.dart';
+import '../../usage/usage_scope.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Language, appearance and morshed voice.
 ///
@@ -42,9 +49,8 @@ class _ProfilePageState extends State<ProfilePage> {
       ? KashiAssets.pahlevanMale
       : KashiAssets.pahlevanFemale;
 
-  void _comingSoon(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _comingSoon(String message, {required String key}) =>
+      showUsageSnackBar(context, message, key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +75,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     dimmed: const {'fa'},
                     onSelected: (value) {
                       if (value == 'fa') {
-                        _comingSoon('فارسی arrives with the translations.');
+                        context.usage.track(const ProfileEntryTapped(
+                            entry: ProfileEntry.languageFa));
+                        _comingSoon('فارسی arrives with the translations.',
+                            key: 'farsi_coming_soon');
                       }
                     },
                   ),
@@ -83,16 +92,25 @@ class _ProfilePageState extends State<ProfilePage> {
                       (ThemeMode.dark, 'Dark'),
                     ],
                     selected: context.watch<SettingsCubit>().state.themeMode,
-                    onSelected: context.read<SettingsCubit>().setThemeMode,
+                    onSelected: (mode) {
+                      context.usage
+                          .track(SettingsThemeChanged(mode: mode.name));
+                      context.read<SettingsCubit>().setThemeMode(mode);
+                    },
                   ),
                 ),
                 _section('Morshed voice', _morshedPicker(colors)),
+                _section('Usage data', const _ShareUsage()),
                 const SizedBox(height: 22),
-                Text(
-                  'Your trainers choose which moves are counted.',
-                  style: KashiTextStyles.body.copyWith(
-                      fontSize: 12.5, height: 1.55, color: colors.textMuted),
-                ),
+                TapProbe(
+                    id: TapProbeIds.profileCountedNote,
+                    child: Text(
+                      'Your trainers choose which moves are counted.',
+                      style: KashiTextStyles.body.copyWith(
+                          fontSize: 12.5,
+                          height: 1.55,
+                          color: colors.textMuted),
+                    )),
                 if (_signedInEmail case final email?)
                   _Account(email: email, hasSteady: _hasSteady),
                 if (_isTrainer) const _TrainerTools(),
@@ -138,33 +156,37 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Row(
       children: [
-        KhatamWindow(
-          size: 72,
-          frameWidth: 5,
-          frameColor: colors.reward,
-          background: colors.tile,
-          child: Transform.scale(
-            scale: 1.25,
-            child: Image.asset(_figure, fit: BoxFit.cover),
-          ),
-        ),
+        TapProbe(
+            id: TapProbeIds.profileAvatar,
+            child: KhatamWindow(
+              size: 72,
+              frameWidth: 5,
+              frameColor: colors.reward,
+              background: colors.tile,
+              child: Transform.scale(
+                scale: 1.25,
+                child: Image.asset(_figure, fit: BoxFit.cover),
+              ),
+            )),
         const SizedBox(width: 14),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: KashiTextStyles.title
-                      .copyWith(fontSize: 22, color: colors.textPrimary)),
-              Text(subtitle,
-                  style: KashiTextStyles.ui.copyWith(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                      color: colors.textMuted)),
-            ],
-          ),
+          child: TapProbe(
+              id: TapProbeIds.profileName,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: KashiTextStyles.title
+                          .copyWith(fontSize: 22, color: colors.textPrimary)),
+                  Text(subtitle,
+                      style: KashiTextStyles.ui.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: colors.textMuted)),
+                ],
+              )),
         ),
       ],
     );
@@ -197,8 +219,9 @@ class _ProfilePageState extends State<ProfilePage> {
         KashiSegmented<int>(
           options: [for (final m in morsheds) (m.id, m.name)],
           selected: selectedMorshedId,
-          onSelected: (id) =>
-              chooseMorshed(context, morsheds.firstWhere((m) => m.id == id)),
+          onSelected: (id) => chooseMorshed(
+              context, morsheds.firstWhere((m) => m.id == id),
+              from: MorshedSource.profile),
         ),
       AudioCatalogLoaded(:final morsheds, :final selectedMorshedId) => Column(
           children: [
@@ -209,7 +232,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   options: [(m.id, m.name)],
                   selected: selectedMorshedId,
                   onSelected: (id) => chooseMorshed(
-                      context, morsheds.firstWhere((m) => m.id == id)),
+                      context, morsheds.firstWhere((m) => m.id == id),
+                      from: MorshedSource.profile),
                 ),
               ),
           ],
@@ -234,6 +258,7 @@ class _Account extends StatelessWidget {
     final auth = context.read<AuthCubit>();
     final delete = await showDialog<bool>(
       context: context,
+      routeSettings: AppRoutes.settings(AppRoutes.deleteAccountConfirm),
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete your account?'),
         content: const Text(
@@ -280,9 +305,16 @@ class _Account extends StatelessWidget {
             Text(steadyLinkedLabel,
                 style: KashiTextStyles.ui
                     .copyWith(fontSize: 12, color: colors.textMuted)),
-          entry('Sign out', () => signOutWithSteadyNote(context)),
-          entry('Delete my account', () => _confirmDelete(context),
-              color: Theme.of(context).colorScheme.error),
+          entry('Sign out', () {
+            context.usage
+                .track(const ProfileEntryTapped(entry: ProfileEntry.signOut));
+            signOutWithSteadyNote(context);
+          }),
+          entry('Delete my account', () {
+            context.usage.track(
+                const ProfileEntryTapped(entry: ProfileEntry.deleteAccount));
+            _confirmDelete(context);
+          }, color: Theme.of(context).colorScheme.error),
         ],
       ),
     );
@@ -309,15 +341,20 @@ class _TrainerTools extends StatelessWidget {
             title: Text('Sessions and assignments',
                 style: KashiTextStyles.ui.copyWith(color: colors.textPrimary)),
             trailing: Icon(Icons.chevron_right, color: colors.textMuted),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: const Text('Trainer tools')),
-                  body: const TrainingSessionPage(),
+            onTap: () {
+              context.usage.track(
+                  const ProfileEntryTapped(entry: ProfileEntry.trainerTools));
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  settings: AppRoutes.settings(AppRoutes.trainerTools),
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Trainer tools')),
+                    body: const TrainingSessionPage(),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -339,8 +376,11 @@ class _DesignPreviews extends StatelessWidget {
     final sessions =
         state is TrainingHistoryLoaded ? state.completions.length : 0;
 
-    void push(Widget page) =>
-        Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    void push(Widget page) => Navigator.push(
+        context,
+        MaterialPageRoute(
+            settings: AppRoutes.settings(AppRoutes.designPreview),
+            builder: (_) => page));
 
     Widget entry(String label, VoidCallback onTap) => ListTile(
           contentPadding: EdgeInsets.zero,
@@ -386,6 +426,32 @@ class _DesignPreviews extends StatelessWidget {
                 value: history, child: const CalendarPage())),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The usage study's opt-out (on by default: testers agreed to it).
+class _ShareUsage extends StatelessWidget {
+  const _ShareUsage();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<KashiColors>()!;
+    return BlocProvider(
+      create: (context) => UsageSharingCubit(context.usage),
+      child: BlocBuilder<UsageSharingCubit, bool>(
+        builder: (context, on) => SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text('Share usage data',
+              style: KashiTextStyles.ui
+                  .copyWith(fontSize: 15, color: colors.textPrimary)),
+          subtitle: Text('How you move through the app, for our study.',
+              style: KashiTextStyles.body
+                  .copyWith(fontSize: 12.5, color: colors.textMuted)),
+          value: on,
+          onChanged: context.read<UsageSharingCubit>().set,
+        ),
       ),
     );
   }

@@ -8,8 +8,6 @@ import 'package:pahlevani/data/media_cache/media_cache_paths.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/core/utils/image_transform.dart';
 import 'package:pahlevani/data/datasources/training_session/training_session_local_datasource.dart';
-import 'package:pahlevani/domain/entities/training_session/exercise.dart';
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -153,10 +151,12 @@ class DownloadRepositoryImpl implements DownloadRepository {
   }
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async {
+  Future<String?> getLocalAudioPath(String audioUrl) async {
+    if (audioUrl.isEmpty) return null;
     try {
       final dir = await localDataSource.getMediaCacheDirectoryPath();
-      final path = '$dir/${_audioFile(item.exercise)}';
+      final path =
+          '$dir/${mediaCacheFileName(audioUrl, DownloadFileKind.audio)}';
       return await File(path).exists().then((e) => e ? path : null);
     } catch (_) {
       // e.g. path_provider unavailable (Flutter Web has no local filesystem).
@@ -206,9 +206,4 @@ class DownloadRepositoryImpl implements DownloadRepository {
       if (changed) await localDataSource.saveDownloadedTrainingSessionIds(list);
     } catch (_) {}
   }
-
-  /// The exercise's (resolved) recording in the cache — keyed by URL only,
-  /// so exercises sharing a recording share the file.
-  String _audioFile(Exercise exercise) =>
-      mediaCacheFileName(exercise.audioFileUrl ?? '', DownloadFileKind.audio);
 }
