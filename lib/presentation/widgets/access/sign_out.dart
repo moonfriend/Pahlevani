@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../bloc/auth/auth_cubit.dart';
 
@@ -9,8 +10,12 @@ const steadyStillSignedInTitle = 'Still signed in to Steady';
 /// Body of that note.
 const steadyStillSignedInBody =
     'You are signed out of Pahlevani Gowd, but your browser may still be '
-    'signed in to Steady. To use another Steady account, log out at '
-    'steady.page first.';
+    'signed in to Steady. To use another Steady account, sign out of '
+    'Steady first.';
+
+/// Button in that note, and Steady's own sign-out page it opens.
+const steadySignOutLabel = 'Sign out of Steady';
+const steadySignOutUrl = 'https://steady.page/en/sign_out';
 
 /// Signs out; afterwards, for an account with Steady linked, explains that
 /// Steady itself keeps its own login (apps can't log anyone out of Steady).
@@ -32,6 +37,14 @@ Future<void> signOutWithSteadyNote(BuildContext context) async {
       title: const Text(steadyStillSignedInTitle),
       content: const Text(steadyStillSignedInBody),
       actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(dialogContext);
+            launchUrl(Uri.parse(steadySignOutUrl),
+                mode: LaunchMode.externalApplication);
+          },
+          child: const Text(steadySignOutLabel),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
           child: const Text('OK'),

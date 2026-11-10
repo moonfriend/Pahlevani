@@ -128,6 +128,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.signOutCallCount, 1);
       expect(find.text(steadyStillSignedInTitle), findsOneWidget);
+      expect(find.text(steadySignOutLabel), findsOneWidget);
+      expect(steadySignOutUrl, 'https://steady.page/en/sign_out');
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
       expect(find.text(steadyStillSignedInTitle), findsNothing);
