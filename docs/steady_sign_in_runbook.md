@@ -91,3 +91,27 @@ neither = locked. Both get at least 5 days, renewed by the daily job.
   the locked screen (not a member). Checklist section "Sign in with Steady"
   in `pahlevani-reports/manual_test_checklist.html`.
 - Admin → Activations shows source `steady` and the end date.
+
+## 7. Production checklist (do on go-live day, after staging is fully tested)
+
+Prepare beforehand:
+- [ ] Staging: daily cron set up and one run checked (`{"checked":N,"active":M,"failed":0}`).
+- [ ] Security list reviewed together (memory `project_steady_signin_security_checks`).
+- [ ] Existing prod accounts checked by hand: no account sits under someone
+      else's email (a Steady login joins an account with the same email).
+- [ ] Decide: turn off open email sign-up on prod?
+- [ ] Prod service key format: the cron needs the legacy JWT key
+      (`eyJ…`). If prod only has `sb_secret_…` keys, revisit steady-sync first.
+
+On the day:
+- [ ] Steady: a **second OAuth app** for prod (redirect = prod's Supabase
+      callback URL). Client ID/Secret into `pahlevani-admin-creds/production.env`.
+- [ ] Migrations in order: 0050, 0051, 0052 (from release/staging), then 0053.
+- [ ] Edge Functions: `steady-userinfo` (Verify JWT **off**), `steady-sync`
+      (Verify JWT **on**), secret `STEADY_API_KEY`.
+- [ ] Auth provider `custom:steady` (step 3, prod URLs).
+- [ ] Redirect URLs: app scheme + `https://gowd.rahaavi.com/` only — **no localhost**.
+- [ ] pg_cron + pg_net + Vault secrets + schedule (step 5); check the first run.
+- [ ] Smoke test on web: Steady member → content; not joined → "One step left";
+      email account with code still works; sign-out pop-up.
+- [ ] Release web first (no store review), then Android (and later iOS).
