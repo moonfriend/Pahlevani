@@ -26,6 +26,7 @@ import '../../../domain/entities/usage/usage_event.dart';
 import '../../usage/usage_scope.dart';
 import '../../widgets/usage/tap_probe.dart';
 import '../../widgets/usage/tap_probe_ids.dart';
+import '../../widgets/kashi/rahavi_menu_button.dart';
 
 /// A session as the Today card shows it.
 typedef HomeSession = ({TrainingSession session, int moves, int? minutes});
@@ -315,11 +316,7 @@ class _Header extends StatelessWidget {
             ),
           ),
           // On the web layout the mark lives in the side rail.
-          if (!layout.isWide)
-            TapProbe(
-                id: TapProbeIds.homeHeaderLogo,
-                child: Image.asset(KashiAssets.rahaviMark,
-                    width: phone ? 34 : 44, semanticLabel: 'Rahavi')),
+          if (!layout.isWide) RahaviMenuButton(width: phone ? 34 : 44),
         ],
       ),
     );

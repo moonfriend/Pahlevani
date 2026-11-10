@@ -5,7 +5,6 @@ abstract final class TapProbeIds {
   static const splashLogo = 'splash.logo';
   static const onboardingCardImage = 'onboarding.card_image';
   static const onboardingCardTitle = 'onboarding.card_title';
-  static const homeHeaderLogo = 'home.header_logo';
   static const homeGreeting = 'home.greeting';
   static const libraryTitle = 'library.title';
   static const librarySectionLabel = 'library.section_label';
@@ -33,7 +32,6 @@ abstract final class TapProbeIds {
     splashLogo,
     onboardingCardImage,
     onboardingCardTitle,
-    homeHeaderLogo,
     homeGreeting,
     libraryTitle,
     librarySectionLabel,

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/kashi/kashi_assets.dart';
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
+import '../../widgets/kashi/rahavi_menu_button.dart';
 
 /// The frame the gate's screens share: the Rahavi mark, a title, and a
 /// narrow centred column that scrolls on short windows.
@@ -32,8 +32,7 @@ class AccessScaffold extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Image.asset(KashiAssets.rahaviMark,
-                      height: 44, semanticLabel: 'Rahavi'),
+                  const Center(child: RahaviMenuButton(height: 44)),
                   const SizedBox(height: 20),
                   Text(title,
                       textAlign: TextAlign.center,

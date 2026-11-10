@@ -1,3 +1,5 @@
+import '../../../core/app_links.dart';
+
 // Short summaries of the terms and privacy policy published on rahaavi.com
 // (both "last updated 25 October 2026"); the safety points follow the terms'
 // section 3, "Training at your own risk". When the website's texts change,
@@ -28,6 +30,6 @@ abstract final class ConsentTexts {
   static const privacyCheckbox = 'I accept the privacy policy.';
 
   /// The full texts on our website.
-  static const termsUrl = 'https://rahaavi.com/terms';
-  static const privacyUrl = 'https://rahaavi.com/privacy';
+  static const termsUrl = AppLinks.terms;
+  static const privacyUrl = AppLinks.privacy;
 }

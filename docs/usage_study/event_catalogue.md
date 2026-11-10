@@ -140,9 +140,9 @@ Look-alike elements tagged in code (`lib/presentation/widgets/usage/tap_probe_id
 2026-11-06). Any other dead tap is logged by grid cell only.
 
 - `splash.logo`
+  (the Home header logo was dropped 2026-11-10: it now opens the about/legal menu, so it is no longer a dead element)
 - `onboarding.card_image`
 - `onboarding.card_title`
-- `home.header_logo`
 - `home.greeting`
 - `library.title`
 - `library.section_label`
