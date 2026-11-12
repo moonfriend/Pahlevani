@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show SocketException;
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:pahlevani/core/config.dart';
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 /// [AuthRepository] backed by Supabase auth + the `profiles` table
@@ -34,7 +36,10 @@ class AuthRepositoryImpl implements AuthRepository {
     if (_cachedProfile != null && _cachedProfile!.id == authUser.id) {
       return _cachedProfile;
     }
-    return AppUser(id: authUser.id, email: authUser.email);
+    return AppUser(
+        id: authUser.id,
+        email: authUser.email,
+        hasSteady: _hasSteady(authUser));
   }
 
   @override
@@ -58,13 +63,23 @@ class AuthRepositoryImpl implements AuthRepository {
           .select()
           .eq('id', authUser.id)
           .single();
-      return _userFromRow(authUser.id, authUser.email, row);
+      return _userFromRow(authUser.id, authUser.email, row)
+          .copyWith(hasSteady: _hasSteady(authUser));
     } catch (_) {
       // The profiles row may not have landed yet (trigger lag) or the read
       // failed transiently — fall back to a minimal unconsented user rather
       // than throwing. authStateChanges/the next fetch will correct this.
-      return AppUser(id: authUser.id, email: authUser.email);
+      return AppUser(
+          id: authUser.id,
+          email: authUser.email,
+          hasSteady: _hasSteady(authUser));
     }
+  }
+
+  /// Supabase lists every linked sign-in method in app_metadata.providers.
+  static bool _hasSteady(sb.User user) {
+    final providers = user.appMetadata['providers'];
+    return providers is List && providers.contains(steadyProvider.name);
   }
 
   AppUser _userFromRow(String id, String? email, Map<String, dynamic> row) {
@@ -244,6 +259,28 @@ class AuthRepositoryImpl implements AuthRepository {
     return _completeGoogleSignIn(googleUser);
   }
 
+  /// Supabase's name for the Steady provider (Dashboard → Auth → Providers).
+  static const steadyProvider = sb.OAuthProvider('custom:steady');
+
+  /// Where Steady → Supabase sends a phone back. Must match the intent
+  /// filter in AndroidManifest.xml, CFBundleURLTypes in Info.plist, and the
+  /// Supabase "Redirect URLs" allowlist.
+  static const steadyMobileRedirect = 'com.pahlevani.app://login-callback';
+
+  @override
+  Future<void> signInWithSteady() async {
+    // Web returns to the page it started on (localhost while developing,
+    // gowd.rahaavi.com live), which must also be in the allowlist.
+    final opened = await _client.auth.signInWithOAuth(
+      steadyProvider,
+      redirectTo: kIsWeb ? '${Uri.base.origin}/' : steadyMobileRedirect,
+      authScreenLaunchMode: kIsWeb
+          ? sb.LaunchMode.platformDefault
+          : sb.LaunchMode.externalApplication,
+    );
+    if (!opened) throw Exception('Could not open the Steady sign-in page');
+  }
+
   Future<AppUser> _completeGoogleSignIn(GoogleSignInAccount googleUser) async {
     final idToken = googleUser.authentication.idToken;
     if (idToken == null) throw Exception('Google sign-in returned no ID token');
@@ -350,4 +387,31 @@ class AuthRepositoryImpl implements AuthRepository {
       (_) => _nonceCharset[random.nextInt(_nonceCharset.length)],
     ).join();
   }
+
+  @override
+  AuthErrorKind classifyError(Object error) => classifyAuthError(error);
+}
+
+/// Maps Supabase auth failures to the study's error classes, by GoTrue's
+/// error codes (https://supabase.com/docs/guides/auth/debugging/error-codes).
+AuthErrorKind classifyAuthError(Object error) {
+  if (error is sb.AuthRetryableFetchException ||
+      error is SocketException ||
+      error is TimeoutException) {
+    return AuthErrorKind.network;
+  }
+  if (error is sb.AuthWeakPasswordException) return AuthErrorKind.weakPassword;
+  if (error is sb.AuthException) {
+    return switch (error.code) {
+      'invalid_credentials' => AuthErrorKind.wrongCredentials,
+      'user_already_exists' || 'email_exists' => AuthErrorKind.emailTaken,
+      'weak_password' => AuthErrorKind.weakPassword,
+      'over_request_rate_limit' ||
+      'over_email_send_rate_limit' =>
+        AuthErrorKind.rateLimited,
+      _ when error.statusCode == '429' => AuthErrorKind.rateLimited,
+      _ => AuthErrorKind.other,
+    };
+  }
+  return AuthErrorKind.other;
 }

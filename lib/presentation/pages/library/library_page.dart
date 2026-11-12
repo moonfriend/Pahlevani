@@ -14,6 +14,10 @@ import '../home/session_card.dart';
 import '../../widgets/kashi/khatam.dart';
 import '../../layout/kashi_layout.dart';
 import 'open_move_card.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Every move in the catalogue (those with a learning video first), then
 /// every session at the bottom (so ones not on Home, like Advanced Sang and
@@ -85,22 +89,24 @@ class LibraryPage extends StatelessWidget {
                         ? const EdgeInsets.fromLTRB(18, 22, 18, 14)
                         : EdgeInsets.fromLTRB(side, 40, side, 24),
                     sliver: SliverToBoxAdapter(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Expanded(
-                            child: Text('Library',
-                                style: KashiTextStyles.title.copyWith(
-                                    fontSize: phone ? null : 34,
-                                    color: colors.textPrimary)),
-                          ),
-                          Text('${moves.length} moves',
-                              style: KashiTextStyles.ui.copyWith(
-                                  fontSize: phone ? 12 : 14,
-                                  color: colors.textMuted)),
-                        ],
-                      ),
+                      child: TapProbe(
+                          id: TapProbeIds.libraryTitle,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Expanded(
+                                child: Text('Library',
+                                    style: KashiTextStyles.title.copyWith(
+                                        fontSize: phone ? null : 34,
+                                        color: colors.textPrimary)),
+                              ),
+                              Text('${moves.length} moves',
+                                  style: KashiTextStyles.ui.copyWith(
+                                      fontSize: phone ? 12 : 14,
+                                      color: colors.textMuted)),
+                            ],
+                          )),
                     ),
                   ),
                   if (sessions.isNotEmpty) _sectionLabel('Moves', side),
@@ -127,6 +133,7 @@ class LibraryPage extends StatelessWidget {
                       itemCount: moves.length,
                       itemBuilder: (context, i) => _MoveTile(
                           move: moves[i],
+                          position: i,
                           thumbHeight: thumb,
                           // The star window spans the thumbnail's width (the
                           // design's 150px on the phone), so only the
@@ -151,7 +158,11 @@ class LibraryPage extends StatelessWidget {
                           return SessionCard(
                             session: s,
                             compact: true,
-                            onOpen: () => onOpenSession?.call(s.session),
+                            onOpen: () {
+                              context.usage.track(LibrarySessionOpened(
+                                  sessionId: s.session.id, position: i));
+                              onOpenSession?.call(s.session);
+                            },
                             onMenu: onSessionMenu == null
                                 ? null
                                 : () => onSessionMenu!(s.session),
@@ -171,7 +182,10 @@ class LibraryPage extends StatelessWidget {
 
   Widget _sectionLabel(String text, double side) => SliverPadding(
         padding: EdgeInsets.fromLTRB(side, 4, side, 10),
-        sliver: SliverToBoxAdapter(child: KashiSectionLabel(text)),
+        sliver: SliverToBoxAdapter(
+            child: TapProbe(
+                id: TapProbeIds.librarySectionLabel,
+                child: KashiSectionLabel(text))),
       );
 
   /// Beyond this the grid stops growing and centres.
@@ -180,9 +194,13 @@ class LibraryPage extends StatelessWidget {
 
 class _MoveTile extends StatelessWidget {
   const _MoveTile(
-      {required this.move, required this.thumbHeight, required this.starSize});
+      {required this.move,
+      required this.position,
+      required this.thumbHeight,
+      required this.starSize});
 
   final Exercise move;
+  final int position;
 
   /// 108 on phones, taller on wider tiles.
   final double thumbHeight;
@@ -194,7 +212,11 @@ class _MoveTile extends StatelessWidget {
     return Material(
       color: colors.raised,
       child: InkWell(
-        onTap: () => openMoveCard(context, move),
+        onTap: () {
+          context.usage.track(
+              LibraryMoveOpened(movementId: move.id, position: position));
+          openMoveCard(context, move, from: CardSource.library);
+        },
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(

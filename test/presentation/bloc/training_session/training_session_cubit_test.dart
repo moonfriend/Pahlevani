@@ -106,7 +106,7 @@ class _DownloadRepoSessionOneDownloaded implements DownloadRepository {
       {1: DownloadStatus.downloaded};
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(String audioUrl) async => null;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;
@@ -135,7 +135,7 @@ class _FakeDownloadRepository implements DownloadRepository {
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(String audioUrl) async => null;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;

@@ -112,7 +112,7 @@ class _StubDownloadRepository implements DownloadRepository {
       statuses;
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => null;
+  Future<String?> getLocalAudioPath(String audioUrl) async => null;
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;

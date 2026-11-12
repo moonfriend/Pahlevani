@@ -76,4 +76,31 @@ void main() {
     await cubit.redeem('ABC-123');
     expect(cubit.state, isA<ActivationActive>());
   });
+
+  group('recheckMembership()', () {
+    test('a membership that started meanwhile unlocks', () async {
+      await cubit.check('u1');
+      repo.activated.add('u1');
+      await cubit.recheckMembership();
+      expect(cubit.state, isA<ActivationActive>());
+    });
+
+    test('still nothing: stays locked and says so', () async {
+      await cubit.check('u1');
+      final states = <ActivationState>[];
+      final sub = cubit.stream.listen(states.add);
+      await cubit.recheckMembership();
+      await sub.cancel();
+      expect((states.first as ActivationLocked).submitting, isTrue,
+          reason: 'the button shows it is checking');
+      final s = cubit.state as ActivationLocked;
+      expect(s.submitting, isFalse);
+      expect(s.error, ActivationCubit.noMembershipMessage);
+    });
+
+    test('only on the locked screen', () async {
+      await cubit.recheckMembership();
+      expect(cubit.state, isA<ActivationChecking>());
+    });
+  });
 }

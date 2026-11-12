@@ -7,6 +7,9 @@ import '../../../domain/usecases/audio_catalog/effective_morshed.dart';
 import '../../bloc/audio_catalog/audio_catalog_cubit.dart';
 import '../../bloc/download/media_download_cubit.dart';
 import '../../widgets/download/media_download_dialog.dart';
+import '../../usage/app_routes.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Exercise-demonstration videos are timed (their "sarzarb"/beat anchors)
 /// against this specific performer's recordings — hardcoded on purpose
@@ -21,7 +24,9 @@ const kVideoReferenceMorshedName = 'Sirvan Norouzi';
 /// When the choice actually changes: offers their recordings for download
 /// (sessions never stream; not on web), then warns that the exercise videos
 /// may drift if they aren't the videos' reference morshed.
-Future<void> chooseMorshed(BuildContext context, Morshed morshed) async {
+Future<void> chooseMorshed(BuildContext context, Morshed morshed,
+    {required MorshedSource from}) async {
+  context.usage.track(MorshedChosen(morshedId: morshed.id, from: from));
   final catalog = context.read<AudioCatalogCubit>();
   final state = catalog.state;
   final current = state is AudioCatalogLoaded
@@ -48,6 +53,7 @@ Future<void> chooseMorshed(BuildContext context, Morshed morshed) async {
 Future<void> _showVideoSyncWarning(BuildContext context, Morshed morshed) =>
     showDialog<void>(
       context: context,
+      routeSettings: AppRoutes.settings(AppRoutes.morshedSyncWarning),
       builder: (ctx) => AlertDialog(
         title: const Text('Video sync heads-up'),
         content: Text(

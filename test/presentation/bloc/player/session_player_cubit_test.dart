@@ -1,3 +1,4 @@
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/download/download_progress.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
@@ -20,9 +21,14 @@ import 'package:pahlevani/presentation/bloc/player/session_player_cubit.dart';
 import 'package:pahlevani/presentation/bloc/player/player_mode.dart';
 import 'package:pahlevani/domain/services/player_notification_service.dart';
 import '../../../fakes/fake_audio_catalog_repository.dart';
+import '../../../fakes/fake_download_repository.dart' show cachedAudioPath;
 import '../../../fakes/fake_audio_player_service.dart';
 import '../../../fakes/fake_learnt_exercises_repository.dart';
 import '../../../fakes/fake_player_notification_service.dart';
+import '../../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
@@ -86,12 +92,11 @@ class _FakeDownloadRepo implements DownloadRepository {
   Future<Map<int, DownloadStatus>> getInitialDownloadStatuses() async => {};
   // Sessions are downloaded before they play, so by default every track's
   // audio is on the device; tests about missing media override this.
-  String? Function(ItemDetail item) localAudioPathBuilder =
-      (item) => '/cached/${item.item.id}.mp3';
+  String? Function(String audioUrl) localAudioPathBuilder = cachedAudioPath;
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async =>
-      localAudioPathBuilder(item);
+  Future<String?> getLocalAudioPath(String audioUrl) async =>
+      localAudioPathBuilder(audioUrl);
   String? Function(String url)? localImagePathBuilder;
   String? Function(String url)? localVideoPathBuilder;
 
@@ -112,14 +117,14 @@ TrainingSession _session(int id) =>
 // Every test move has a learning video, so Learning mode prompts for it
 // unless it is learnt.
 Exercise _exercise(int id,
-        {String url = 'https://audio.mp3',
+        {String? url,
         int reps = 3,
         String? description = 'How',
         String? videoUrl = 'https://x/learn.mp4'}) =>
     Exercise(
         id: id,
         name: 'Ex $id',
-        audioFileUrl: url,
+        audioFileUrl: url ?? 'https://audio/$id.mp3',
         repetitionsDefault: reps,
         description: description,
         videoUrl: videoUrl);
@@ -157,9 +162,16 @@ SessionPlayerCubit _makeCubit(
   PlayerMode mode = PlayerMode.athlete,
   // Most tests here cover the Rep log itself; release 1 switches it off.
   bool repLogging = true,
+  UsageTracker? usage,
+  DateTime Function()? clock,
+  FakePlayerNotificationService? notification,
+  OpenSessionStore? openSession,
 }) {
   final session = snapshot.sessionsById.values.first;
   return SessionPlayerCubit(
+    usage: usage ?? const NoOpUsageTracker(),
+    clock: clock,
+    openSession: openSession,
     trainingSession: session,
     mode: mode,
     audioPlayerService: audioService ?? FakeAudioPlayerService(),
@@ -168,7 +180,7 @@ SessionPlayerCubit _makeCubit(
     audioCatalogRepository: audioCatalogRepo ?? FakeAudioCatalogRepository(),
     learntExercisesRepository:
         learntExercisesRepo ?? FakeLearntExercisesRepository(),
-    notificationService: FakePlayerNotificationService(),
+    notificationService: notification ?? FakePlayerNotificationService(),
     repLogging: repLogging,
   );
 }
@@ -190,9 +202,12 @@ void main() {
 
   group('SessionPlayerState getters', () {
     final tracks = [
-      const TrainingItemWithAudio(id: '1', title: 'A', audioFilePath: '/a.mp3'),
-      const TrainingItemWithAudio(id: '2', title: 'B', audioFilePath: '/b.mp3'),
-      const TrainingItemWithAudio(id: '3', title: 'C', audioFilePath: '/c.mp3'),
+      const TrainingItemWithAudio(
+          id: '1', title: 'A', recordings: [AudioClip(path: '/a.mp3')]),
+      const TrainingItemWithAudio(
+          id: '2', title: 'B', recordings: [AudioClip(path: '/b.mp3')]),
+      const TrainingItemWithAudio(
+          id: '3', title: 'C', recordings: [AudioClip(path: '/c.mp3')]),
     ];
 
     test('currentTrack returns track at playingIndex', () {
@@ -278,7 +293,7 @@ void main() {
       expect(cubit.state.playingIndex, 0);
       expect(cubit.state, isNot(isA<PlayerLoading>()));
       // Resolved (cached) path, not the raw remote URL — see "egress" group below.
-      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(audioService.lastPlayedPath, '/cached/10.mp3');
     });
 
     test('uses exercise name as track title', () async {
@@ -345,10 +360,8 @@ void main() {
       // Only the default Morshed's recording is on the device: playing it
       // proves that's the one resolved.
       final downloads = _FakeDownloadRepo()
-        ..localAudioPathBuilder = (item) =>
-            item.exercise.audioFileUrl == 'https://cdn/default.mp3'
-                ? '/local/default.mp3'
-                : null;
+        ..localAudioPathBuilder = (url) =>
+            url == 'https://cdn/default.mp3' ? '/local/default.mp3' : null;
       final cubit =
           _makeCubit(snap, audioCatalogRepo: catalog, downloadRepo: downloads);
       addTearDown(cubit.close);
@@ -356,7 +369,8 @@ void main() {
       await cubit.loadTracks();
 
       expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
-      expect(cubit.state.tracks.single.audioFilePath, '/local/default.mp3');
+      expect(cubit.state.tracks.single.recordings.single.path,
+          '/local/default.mp3');
     });
 
     group('media resolution', () {
@@ -464,7 +478,7 @@ void main() {
         final cubit = _makeCubit(snap);
         addTearDown(cubit.close);
         await cubit.loadTracks();
-        return cubit.state.tracks[0].videoStartOffsetMs;
+        return cubit.state.tracks[0].recordings.single.videoOffsetMs;
       }
 
       test('both anchors present: offset is video - audio (positive)',
@@ -1129,7 +1143,7 @@ void main() {
 
       await cubit.loadTracks();
 
-      expect(audioService.lastPlayedPath, '/cached/10000.mp3');
+      expect(audioService.lastPlayedPath, '/cached/10.mp3');
       expect(cubit.state, isNot(isA<PlayerNeedsDownload>()));
     });
 
@@ -1142,7 +1156,7 @@ void main() {
       cubit.setIndexAndPlay(1);
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(audioService.lastPlayedPath, '/cached/10001.mp3');
+      expect(audioService.lastPlayedPath, '/cached/11.mp3');
     });
 
     test('audio not on the device → needs download; nothing plays or streams',
@@ -1150,7 +1164,7 @@ void main() {
       final audioService = FakeAudioPlayerService();
       final downloadRepo = _FakeDownloadRepo()
         ..localAudioPathBuilder =
-            (item) => item.item.id == 10001 ? null : '/cached/10000.mp3';
+            (url) => url.endsWith('/11.mp3') ? null : cachedAudioPath(url);
       final cubit = _makeCubit(twoTracks(),
           audioService: audioService, downloadRepo: downloadRepo);
       addTearDown(cubit.close);
@@ -1858,7 +1872,7 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      audio.playGates['/cached/10001.mp3'] = slowMove2; // move 2 starts slowly
+      audio.playGates['/cached/11.mp3'] = slowMove2; // move 2 starts slowly
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);
@@ -1868,13 +1882,13 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       cubit.next(); // move 3: loads and plays
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(audio.lastPlayedPath, '/cached/10002.mp3');
+      expect(audio.lastPlayedPath, '/cached/12.mp3');
 
       slowMove2.complete(); // move 2's start finally returns
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(cubit.state.playingIndex, 2);
-      expect(audio.lastPlayedPath, '/cached/10002.mp3',
+      expect(audio.lastPlayedPath, '/cached/12.mp3',
           reason: 'the overtaken load for move 2 must not start playing');
     });
 
@@ -1891,7 +1905,7 @@ void main() {
       final audio = FakeAudioPlayerService();
       final downloads = _FakeDownloadRepo();
       final slowMove2 = Completer<void>();
-      audio.playGates['/cached/10001.mp3'] = slowMove2;
+      audio.playGates['/cached/11.mp3'] = slowMove2;
       final cubit =
           _makeCubit(snap, audioService: audio, downloadRepo: downloads);
       addTearDown(cubit.close);
@@ -2148,4 +2162,252 @@ void main() {
       expect(cubit.state.isMuted, isFalse);
     });
   });
+
+  // ---------- usage study ----------
+  group('usage study', () {
+    late FakeUsageTracker usage;
+    late DateTime now;
+
+    setUp(() {
+      usage = FakeUsageTracker();
+      now = DateTime(2026, 11, 6, 10);
+    });
+
+    void wait(int seconds) => now = now.add(Duration(seconds: seconds));
+
+    DomainSnapshot three({int reps = 2, int clipReps = 4}) =>
+        _snapshotWithItems(
+          _session(7),
+          [
+            for (var i = 0; i < 3; i++)
+              _item(sessionId: 7, exerciseId: 10 + i, position: i, reps: reps),
+          ],
+          [for (var i = 0; i < 3; i++) _exercise(10 + i, reps: clipReps)],
+        );
+
+    SessionPlayerCubit cubit(DomainSnapshot snap,
+        {FakeAudioPlayerService? audio,
+        PlayerMode mode = PlayerMode.athlete,
+        FakePlayerNotificationService? notification,
+        FakeLearntExercisesRepository? learnt}) {
+      final c = _makeCubit(snap,
+          audioService: audio,
+          mode: mode,
+          usage: usage,
+          clock: () => now,
+          notification: notification,
+          learntExercisesRepo: learnt);
+      addTearDown(c.close);
+      return c;
+    }
+
+    List<String> ended() => [
+          for (final e in usage.of<PlayerMoveEnded>())
+            '${e.index}:${e.how.wire}'
+        ];
+
+    test('the start: session.started and the first move reached', () async {
+      final c = cubit(three());
+      await c.loadTracks();
+      final started = usage.of<SessionStarted>().single;
+      expect(
+          [started.sessionId, started.mode, started.moves, started.downloaded],
+          [7, UsageSessionMode.athlete, 3, isTrue]);
+      final reached = usage.of<PlayerMoveReached>().single;
+      expect([reached.index, reached.movementId], [0, 10]);
+    });
+
+    test('Next: the move ends by next, with its playing time', () async {
+      final c = cubit(three());
+      await c.loadTracks();
+      wait(8);
+      c.next();
+      await Future<void>.delayed(Duration.zero);
+      final next = usage.of<PlayerNext>().single;
+      expect([next.from, next.to, next.source], [0, 1, CommandSource.screen]);
+      final e = usage.of<PlayerMoveEnded>().single;
+      expect([e.index, e.how, e.playedSeconds], [0, MoveEndReason.next, 8]);
+      expect(usage.of<PlayerMoveReached>().last.index, 1);
+    });
+
+    test('a move that plays its reps ends as played to the end', () async {
+      final audio = FakeAudioPlayerService();
+      final c = cubit(three(), audio: audio);
+      await c.loadTracks();
+      audio.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _feedPositions(audio, [4000, 5100]); // 2 of 4 reps → 5 s
+      expect(c.state.playingIndex, 1);
+      expect(ended(), ['0:played_to_end']);
+      expect(usage.of<PlayerNext>(), isEmpty, reason: 'nobody pressed Next');
+      final e = usage.of<PlayerMoveEnded>().single;
+      expect(e.plannedSeconds, 5);
+      expect(e.reachedPct, greaterThanOrEqualTo(100));
+    });
+
+    test('pause and resume, from the screen and the lock screen', () async {
+      final notification = FakePlayerNotificationService();
+      final c = cubit(three(), notification: notification);
+      await c.loadTracks();
+      c.pause();
+      notification.emit(NotificationCommand.play);
+      await Future<void>.delayed(Duration.zero);
+      expect(usage.of<PlayerPaused>().single.source, CommandSource.screen);
+      expect(
+          usage.of<PlayerResumed>().single.source, CommandSource.mediaSession);
+      notification.emit(NotificationCommand.skipNext);
+      await Future<void>.delayed(Duration.zero);
+      expect(usage.of<PlayerNext>().single.source, CommandSource.mediaSession);
+    });
+
+    test('prev near the start goes back; the move ends by prev', () async {
+      final c = cubit(three());
+      await c.loadTracks();
+      c.next();
+      await Future<void>.delayed(Duration.zero);
+      await c.prev();
+      await Future<void>.delayed(Duration.zero);
+      expect(ended(), ['0:next', '1:prev']);
+      final prev = usage.of<PlayerPrev>().single;
+      expect([prev.from, prev.to], [1, 0]);
+    });
+
+    test('a jump in the move list, and seeking, are logged', () async {
+      final audio = FakeAudioPlayerService();
+      final c = cubit(three(), audio: audio);
+      await c.loadTracks();
+      audio.emitDuration(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await c.seekTo(const Duration(seconds: 2));
+      c.setIndex(2);
+      await Future<void>.delayed(Duration.zero);
+      expect(usage.of<PlayerSeek>().single.toSeconds, 2);
+      final jump = usage.of<PlayerMoveListJump>().single;
+      expect([jump.from, jump.to], [0, 2]);
+      final e = usage.of<PlayerMoveEnded>().single;
+      expect([e.how, e.seeks], [MoveEndReason.listJump, 1]);
+    });
+
+    test('the last move done: session.completed with totals', () async {
+      final c = cubit(three());
+      await c.loadTracks();
+      for (var i = 0; i < 3; i++) {
+        wait(10);
+        c.next();
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(c.state, isA<PlayerFinished>());
+      expect(ended(), ['0:next', '1:next', '2:next']);
+      final done = usage.of<SessionCompleted>().single;
+      expect([done.sessionId, done.playedSeconds], [7, 30]);
+      expect(usage.of<SessionAbandoned>(), isEmpty);
+    });
+
+    test('replay after the end starts over', () async {
+      final c = cubit(three());
+      await c.loadTracks();
+      for (var i = 0; i < 3; i++) {
+        c.next();
+        await Future<void>.delayed(Duration.zero);
+      }
+      c.replay();
+      await Future<void>.delayed(Duration.zero);
+      expect(usage.of<PlayerReplay>().single.fromIndex, 2);
+      expect(usage.of<PlayerMoveReached>().last.index, 0);
+    });
+
+    test('leaving mid-session: left_session and session.abandoned', () async {
+      final c = _makeCubit(three(), usage: usage, clock: () => now);
+      await c.loadTracks();
+      wait(12);
+      await c.close();
+      expect(ended(), ['0:left_session']);
+      final gone = usage.of<SessionAbandoned>().single;
+      expect([gone.lastIndex, gone.playedSeconds, gone.how],
+          [0, 12, AbandonHow.back]);
+    });
+
+    test('mute and the rep log are logged', () async {
+      final snap = _snapshotWithItems(
+          _session(7),
+          [_item(sessionId: 7, exerciseId: 10, position: 0, isTracked: true)],
+          [_exercise(10)]);
+      final c = cubit(snap);
+      await c.loadTracks();
+      await c.toggleMute();
+      c.next(); // a counted move opens the rep log
+      c.logReps(9);
+      expect(usage.of<PlayerMuted>().single.on, isTrue);
+      final logged = usage.of<PlayerRepLogged>().single;
+      expect([logged.index, logged.reps], [0, 9]);
+    });
+
+    test('learning mode: the wait before Go is logged', () async {
+      final c = cubit(three(), mode: PlayerMode.learning);
+      await c.loadTracks();
+      expect(usage.of<PlayerMoveReached>().single.waitingForGo, isTrue);
+      wait(6);
+      await c.startCurrentTrack();
+      expect(usage.of<PlayerGoTapped>().single.waitedSeconds, 6);
+      wait(4);
+      c.next();
+      await Future<void>.delayed(Duration.zero);
+      expect(usage.of<PlayerMoveEnded>().single.playedSeconds, 4,
+          reason: 'the wait for Go is not playing time');
+    });
+
+    test('a session that fails to load shows an error', () async {
+      final snap = _snapshotWithItems(_session(7), const [], const []);
+      final c = cubit(snap);
+      await c.loadTracks();
+      expect(usage.of<UiErrorShown>().single.messageKey, 'session_empty');
+    });
+
+    test('keeps an open-session marker while playing, cleared at the end',
+        () async {
+      final store = _MemoryOpenSession();
+      final c = _makeCubit(three(),
+          usage: usage, clock: () => now, openSession: store);
+      await c.loadTracks();
+      await Future<void>.delayed(Duration.zero);
+      expect(store.saved?.index, 0);
+      wait(5);
+      c.next();
+      await Future<void>.delayed(Duration.zero);
+      expect([store.saved?.index, store.saved?.sessionId], [1, 7]);
+      expect(store.saved?.sessionPlayedSeconds, 5);
+      await c.close();
+      expect(store.saved, isNull, reason: 'a closed player is not killed');
+    });
+
+    test('a finished session clears the marker', () async {
+      final store = _MemoryOpenSession();
+      final c = _makeCubit(three(),
+          usage: usage, clock: () => now, openSession: store);
+      addTearDown(c.close);
+      await c.loadTracks();
+      for (var i = 0; i < 3; i++) {
+        c.next();
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(store.saved, isNull);
+    });
+  });
+}
+
+class _MemoryOpenSession implements OpenSessionStore {
+  OpenSession? saved;
+
+  @override
+  Future<void> save(OpenSession marker) async => saved = marker;
+
+  @override
+  Future<OpenSession?> take() async {
+    final m = saved;
+    saved = null;
+    return m;
+  }
+
+  @override
+  Future<void> clear() async => saved = null;
 }

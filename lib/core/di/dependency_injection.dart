@@ -3,6 +3,15 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../data/datasources/usage/usage_event_queue.dart';
+import '../../data/datasources/usage/usage_remote_datasource.dart';
+import '../../data/services/usage/recording_usage_tracker.dart';
+import '../../domain/services/usage_tracker.dart';
+import '../utils/app_logger.dart';
 
 import '../../data/repositories_impl/download_preferences_repository_impl.dart';
 import '../../domain/repositories/download_preferences_repository.dart';
@@ -59,6 +68,8 @@ import '../../presentation/bloc/path/path_cubit.dart';
 import '../../presentation/bloc/training_session/training_session_cubit.dart';
 import '../../presentation/bloc/tracking/training_history_cubit.dart';
 import '../../features/fitness_test/fitness_test_module.dart';
+import '../../data/repositories_impl/open_session_store_impl.dart';
+import '../../domain/usage/open_session.dart';
 
 final getIt = GetIt.instance;
 
@@ -76,6 +87,11 @@ class DependencyInjection {
     await TrainingHistoryLocalDatabase.init();
     await PathProgressLocalDatabase.init();
     await PathLocalDatabase.init();
+
+    // The usage study (docs/usage_study/event_catalogue.md). Needs Hive,
+    // so it comes after the local databases.
+    getIt.registerSingleton<UsageTracker>(await _createUsageTracker());
+    getIt.registerLazySingleton<OpenSessionStore>(() => OpenSessionStoreImpl());
 
     getIt.registerLazySingleton<Dio>(() => Dio());
 
@@ -228,6 +244,32 @@ class DependencyInjection {
     // Self-contained feature module — see fitness_test_module.dart for why
     // its registrations live there instead of inline here.
     await registerFitnessTestDependencies(getIt);
+  }
+
+  /// The study's tracker, or a no-op one if it can't start — tracking must
+  /// never keep the app from running.
+  static Future<UsageTracker> _createUsageTracker() async {
+    var version = 'unknown';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      version = '${info.version}+${info.buildNumber}';
+    } catch (error) {
+      AppLogger.w('Usage study: app version unknown', error: error);
+    }
+    try {
+      return await RecordingUsageTracker.create(
+        queue: UsageEventQueue(),
+        remote: SupabaseUsageRemoteDataSource(),
+        prefs: SharedPreferences.getInstance(),
+        currentUserId: () => Supabase.instance.client.auth.currentUser?.id,
+        appVersion: version,
+        platform: kIsWeb ? 'web' : Platform.operatingSystem,
+      );
+    } catch (error, stack) {
+      AppLogger.e('Usage study tracker unavailable — tracking off',
+          error: error, stackTrace: stack);
+      return const NoOpUsageTracker();
+    }
   }
 
   Future<void> ensureInitialized() async {

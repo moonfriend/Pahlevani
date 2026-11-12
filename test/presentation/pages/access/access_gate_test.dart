@@ -7,6 +7,8 @@ import 'package:pahlevani/domain/entities/auth/consent.dart';
 import 'package:pahlevani/presentation/bloc/activation/activation_cubit.dart';
 import 'package:pahlevani/presentation/bloc/auth/auth_cubit.dart';
 import 'package:pahlevani/presentation/pages/access/access_gate.dart';
+import 'package:pahlevani/presentation/pages/access/account_page.dart';
+import 'package:pahlevani/presentation/pages/access/locked_page.dart';
 import 'package:pahlevani/presentation/pages/access/consent_texts.dart';
 
 import '../../../fakes/fake_activation_repository.dart';
@@ -29,6 +31,7 @@ Future<_Harness> _pump(
   WidgetTester tester, {
   AppUser? user,
   void Function(FakeAuthRepository, FakeActivationRepository)? setUp,
+  bool openOtherWays = true,
 }) async {
   tester.view.physicalSize = const Size(400, 900);
   tester.view.devicePixelRatio = 1;
@@ -57,6 +60,12 @@ Future<_Harness> _pump(
     ),
   ));
   await tester.pumpAndSettle();
+  // Email + code sits behind "Other ways to sign in"; most tests need it.
+  final otherWays = find.text(otherWaysLabel);
+  if (openOtherWays && otherWays.evaluate().isNotEmpty) {
+    await tapVisible(tester, otherWays);
+    await tester.pumpAndSettle();
+  }
   return _Harness(authRepo, activationRepo, resyncs);
 }
 
@@ -80,6 +89,165 @@ FilledButton _button(WidgetTester tester, String label) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, label));
 
 void main() {
+  testWidgets('web: the join tab links to the plans page', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final auth = AuthCubit(repository: FakeAuthRepository());
+    final activation = ActivationCubit(repository: FakeActivationRepository());
+    addTearDown(auth.close);
+    addTearDown(activation.close);
+    await tester.pumpWidget(MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: auth),
+        BlocProvider.value(value: activation),
+      ],
+      child: MaterialApp(
+        theme: PahlevaniTheme.light(),
+        home: const AccountPage(showJoinLink: true),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.text(joinTabLabel));
+    await tester.pumpAndSettle();
+    expect(find.text(joinPlansLabel), findsOneWidget);
+    expect(find.text(joinFreeLabel), findsNothing);
+    expect(joinPlansUrl, 'https://steady.page/join-the-gowd');
+  });
+
+  group('back from the join page', () {
+    Future<(FakeAuthRepository, List<String>)> pumpJoin(
+        WidgetTester tester) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = FakeAuthRepository();
+      final auth = AuthCubit(repository: repo);
+      final activation =
+          ActivationCubit(repository: FakeActivationRepository());
+      addTearDown(auth.close);
+      addTearDown(activation.close);
+      final opened = <String>[];
+      await tester.pumpWidget(MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: auth),
+          BlocProvider.value(value: activation),
+        ],
+        child: MaterialApp(
+          theme: PahlevaniTheme.light(),
+          home: AccountPage(openUrl: (url) async => opened.add(url)),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.text(joinTabLabel));
+      await tester.pumpAndSettle();
+      return (repo, opened);
+    }
+
+    Future<void> leaveAndComeBack(WidgetTester tester) async {
+      for (final s in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('after opening the join page: sign-in starts by itself',
+        (tester) async {
+      final (repo, opened) = await pumpJoin(tester);
+      await tapVisible(tester, find.text(joinFreeLabel));
+      await tester.pumpAndSettle();
+      expect(opened, [joinFreeUrl]);
+      expect(repo.signInWithSteadyCallCount, 0);
+
+      await leaveAndComeBack(tester);
+      expect(find.text(welcomeBackMessage), findsOneWidget);
+      expect(repo.signInWithSteadyCallCount, 1);
+
+      // Only once per visit to the join page.
+      await leaveAndComeBack(tester);
+      expect(repo.signInWithSteadyCallCount, 1);
+    });
+
+    testWidgets('just switching away and back: nothing starts', (tester) async {
+      final (repo, _) = await pumpJoin(tester);
+      await leaveAndComeBack(tester);
+      expect(repo.signInWithSteadyCallCount, 0);
+      expect(find.text(welcomeBackMessage), findsNothing);
+    });
+  });
+
+  group('Sign in with Steady', () {
+    testWidgets('is the main way in; email and code stay hidden',
+        (tester) async {
+      final h = await _pump(tester, openOtherWays: false);
+      expect(find.text('THE APP'), findsNothing);
+      expect(
+          find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Email'), findsNothing);
+
+      await tapVisible(
+          tester, find.widgetWithText(FilledButton, steadySignInLabel));
+      await tester.pump();
+      expect(h.auth.signInWithSteadyCallCount, 1);
+    });
+
+    testWidgets('"Other ways to sign in" shows email, password and code',
+        (tester) async {
+      await _pump(tester, openOtherWays: false);
+      await tapVisible(tester, find.text(otherWaysLabel));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
+      expect(find.text('I have an account'), findsOneWidget);
+    });
+
+    testWidgets('Steady could not be opened: says so on the screen',
+        (tester) async {
+      await _pump(tester,
+          openOtherWays: false,
+          setUp: (auth, _) => auth.throwOnSteadySignIn = true);
+      await tapVisible(
+          tester, find.widgetWithText(FilledButton, steadySignInLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(steadyOpenFailedMessage), findsOneWidget);
+    });
+
+    testWidgets('two tabs: "Already a member" first, then "Join the Gowd"',
+        (tester) async {
+      await _pump(tester, openOtherWays: false);
+      expect(find.text(memberTabLabel), findsOneWidget);
+      expect(find.text(joinTabLabel), findsOneWidget);
+      expect(find.text(joinIntro), findsNothing);
+
+      await tapVisible(tester, find.text(joinTabLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(joinIntro), findsOneWidget);
+      // Apps (tests run as one): only the free sign-up, never the paid
+      // plans (store payment rules).
+      expect(find.text(joinPlansLabel), findsNothing);
+      expect(find.text(joinFreeLabel), findsOneWidget);
+      expect(joinFreeUrl, isNot(joinPlansUrl));
+      // Joined already in another tab: one tap back in.
+      expect(
+          find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget);
+    });
+
+    testWidgets('back from Steady as a new member: terms first',
+        (tester) async {
+      final h = await _pump(tester, openOtherWays: false);
+      h.auth.emitUser(const AppUser(id: 's1', email: 'ali@example.com'));
+      await tester.pumpAndSettle();
+      expect(
+          find.textContaining(ConsentTexts.safetyPoints.first), findsOneWidget);
+    });
+  });
+
   testWidgets('signed out: the account screen, not the app', (tester) async {
     await _pump(tester);
     expect(find.text('THE APP'), findsNothing);
@@ -230,13 +398,70 @@ void main() {
     expect(_button(tester, 'Activate').onPressed, isNotNull);
   });
 
+  testWidgets('the locked screen re-checks the membership', (tester) async {
+    final h = await _pump(tester, user: _accepted);
+    expect(find.text('THE APP'), findsNothing);
+    h.activation.activated.add('u1');
+    await tapVisible(tester, find.text(recheckMembershipLabel));
+    await tester.pumpAndSettle();
+    expect(find.text('THE APP'), findsOneWidget);
+  });
+
+  group('signed in with Steady, not joined yet', () {
+    const steadyUser = AppUser(
+        id: 'u1',
+        email: 'mina@example.com',
+        consentAccepted: true,
+        termsVersion: currentTermsVersion,
+        hasSteady: true);
+
+    testWidgets('says who is signed in and what to do; code hidden',
+        (tester) async {
+      await _pump(tester, user: steadyUser);
+      expect(find.text(notJoinedTitle), findsOneWidget);
+      expect(find.text(notJoinedMessage('mina@example.com')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, chooseMembershipLabel),
+          findsOneWidget);
+      expect(find.text(recheckMembershipLabel), findsOneWidget);
+      // The admin's code text and the code field are the exception.
+      expect(find.text('Join us on Steady to get your code.'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Activation code'), findsNothing);
+      expect(find.text(haveCodeLabel), findsOneWidget);
+    });
+
+    testWidgets('"Have a member code?" shows the code field', (tester) async {
+      await _pump(tester, user: steadyUser);
+      await tapVisible(tester, find.text(haveCodeLabel));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'Activation code'), findsOneWidget);
+    });
+
+    testWidgets('still not a member after the re-check: says so',
+        (tester) async {
+      await _pump(tester, user: steadyUser);
+      await tapVisible(tester, find.text(recheckMembershipLabel));
+      await tester.pumpAndSettle();
+      expect(find.text(ActivationCubit.noMembershipMessage), findsOneWidget);
+    });
+
+    testWidgets('joined in the meantime: the re-check lets them in',
+        (tester) async {
+      final h = await _pump(tester, user: steadyUser);
+      h.activation.activated.add('u1');
+      await tapVisible(tester, find.text(recheckMembershipLabel));
+      await tester.pumpAndSettle();
+      expect(find.text('THE APP'), findsOneWidget);
+    });
+  });
+
   testWidgets('the locked screen can sign out', (tester) async {
     final h = await _pump(tester, user: _accepted);
     expect(find.text('Join us on Steady to get your code.'), findsOneWidget);
     await tapVisible(tester, find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(h.auth.signOutCallCount, 1);
-    expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, steadySignInLabel), findsOneWidget,
+        reason: 'back on the account screen');
   });
 
   testWidgets('a wrong password says so, and pauses the next try',

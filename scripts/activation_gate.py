@@ -4,7 +4,7 @@ activations export for the monthly Steady check.
 
 Kept apart from the Streamlit UI so it can be unit-tested
 (scripts/tests/test_activation_gate.py). Mirrors
-supabase/migrations/0045_activation_gate.sql.
+supabase/migrations/0045_activation_gate.sql and 0053_steady_membership.sql.
 """
 
 from __future__ import annotations
@@ -82,26 +82,43 @@ class TermsSetting:
                 "terms_updated_on": self.updated_on.isoformat()}
 
 
+def _when(value: Any) -> str:
+    """Timestamp as 'YYYY-MM-DD HH:MM:SS' (empty when missing)."""
+    return (value or "")[:19].replace("T", " ")
+
+
 @dataclass(frozen=True)
 class Activation:
+    """One account's access (migrations 0045 + 0053): from a code (no end
+    date) or a Steady membership (ends unless the daily check renews it)."""
+
     email: str
     code: str
     activated_at: str
+    source: str = "code"
+    expires_at: str = ""
+    steady_state: str = ""
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "Activation":
         return cls(
             email=row.get("email") or "",
             code=row.get("code") or "",
-            activated_at=(row.get("activated_at") or "")[:19].replace("T", " "),
+            activated_at=_when(row.get("activated_at")),
+            source=row.get("source") or "code",
+            expires_at=_when(row.get("expires_at")),
+            steady_state=row.get("steady_state") or "",
         )
 
 
+CSV_COLUMNS = ["email", "source", "code", "activated_at", "expires_at", "steady_state"]
+
+
 def activations_csv(activations: list[Activation]) -> str:
-    """email,code,activated_at — for comparing against Steady's members."""
+    """One line per account — for comparing against Steady's members."""
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["email", "code", "activated_at"])
+    writer.writerow(CSV_COLUMNS)
     for a in activations:
-        writer.writerow([a.email, a.code, a.activated_at])
+        writer.writerow([getattr(a, c) for c in CSV_COLUMNS])
     return out.getvalue()

@@ -15,6 +15,7 @@ import 'package:pahlevani/presentation/bloc/training_session/training_session_cu
 import 'package:pahlevani/presentation/bloc/training_session/training_sessions_ui_model.dart';
 import 'package:pahlevani/presentation/pages/home/home_page.dart';
 import 'package:pahlevani/presentation/widgets/kashi/kashi_day_tile.dart';
+import 'package:pahlevani/presentation/widgets/kashi/rahavi_menu_button.dart';
 
 import '../../../fakes/fake_auth_repository.dart';
 import '../../../fakes/fake_training_history_repository.dart';
@@ -125,6 +126,11 @@ void main() {
               consentAccepted: true,
               termsVersion: currentTermsVersion));
       expect(find.text('Salam, sara'), findsOneWidget);
+    });
+
+    testWidgets('the Rahavi mark opens the about/legal menu', (tester) async {
+      await _pump(tester);
+      expect(find.byType(RahaviMenuButton), findsOneWidget);
     });
   });
 

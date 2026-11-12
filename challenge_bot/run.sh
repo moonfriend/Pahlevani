@@ -15,7 +15,8 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 CREDS_SCRIPT="$DIR/../scripts/with_admin_creds.sh"
 
 if [[ "${1:-}" == "--admin" ]]; then
-  exec bash "$CREDS_SCRIPT" uv run --project "$DIR" streamlit run "$DIR/bot_admin.py"
+  # Localhost only — see scripts/run_admin.sh.
+  exec bash "$CREDS_SCRIPT" uv run --project "$DIR" streamlit run --server.address 127.0.0.1 "$DIR/bot_admin.py"
 fi
 
 exec bash "$CREDS_SCRIPT" uv run --project "$DIR" python "$DIR/main.py"

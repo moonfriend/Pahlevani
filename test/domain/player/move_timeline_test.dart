@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/player/move_timeline.dart';
 
 import '../../fakes/fake_audio_player_service.dart';
@@ -10,10 +11,16 @@ Duration ms(int v) => Duration(milliseconds: v);
 /// A 10 s clip that holds 10 reps, prescribed ×[reps].
 MoveSpec move({int reps = 10, bool loopForever = false, String path = '/a'}) =>
     MoveSpec(
-        audioPath: path,
-        clipReps: 10,
+        clips: [AudioClip(path: path, reps: 10)],
         targetReps: reps,
         loopForever: loopForever);
+
+/// A Morshed's two variants: A is 10 s holding 10 reps (1 s each), B is 6 s
+/// holding 4 reps (1.5 s each; its length unknown until the engine plays it).
+const clipA = AudioClip(path: '/a', reps: 10, videoOffsetMs: 100);
+const clipB = AudioClip(path: '/b', reps: 4, videoOffsetMs: -200);
+MoveSpec variants({int reps = 12, bool loopForever = false}) => MoveSpec(
+    clips: const [clipA, clipB], targetReps: reps, loopForever: loopForever);
 
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 5));
 
@@ -208,6 +215,120 @@ void main() {
 
       expect(await timeline.seek(ms(1000)), isNull);
       expect(engine.seekedTo, isNull);
+    });
+  });
+
+  group('several recordings (variants)', () {
+    /// Plays A to its end and moves the engine on to B.
+    Future<void> intoClipB(MoveSpec spec, {required int bPositionMs}) async {
+      await timeline.load(spec, play: true);
+      engine.emitDuration(ms(10000), index: 0);
+      await settle();
+      engine.emitPosition(ms(9950), index: 0);
+      await settle();
+      engine.emitDuration(ms(6000), index: 1);
+      engine.emitPosition(Duration.zero, index: 1);
+      await settle();
+      engine.emitPosition(ms(bPositionMs), index: 1);
+      await settle();
+    }
+
+    test('the whole sequence goes to the engine as one queue', () async {
+      await timeline.load(variants(), play: true);
+      expect(engine.lastPlayedQueue, ['/a', '/b']);
+
+      await timeline.load(variants(), play: false);
+      expect(engine.lastSetQueue, ['/a', '/b']);
+    });
+
+    test('a clip without a path throws', () async {
+      await expectLater(
+          timeline.load(
+              const MoveSpec(
+                  clips: [clipA, AudioClip(path: '')], targetReps: 3),
+              play: true),
+          throwsStateError);
+    });
+
+    test('length: estimated for clips not heard yet, then exact', () async {
+      await timeline.load(variants(), play: true);
+      engine.emitDuration(ms(10000), index: 0);
+      await settle();
+      // B scaled from A's rep length: 2 reps × 1 s.
+      expect(timeline.current.length, ms(12000));
+
+      engine.emitDuration(ms(6000), index: 1);
+      await settle();
+      expect(timeline.current.length, ms(13000), reason: '10 s + 2 × 1.5 s');
+    });
+
+    test('time and reps continue into the next recording at its own tempo',
+        () async {
+      await intoClipB(variants(reps: 14), bPositionMs: 1500);
+
+      expect(timeline.current.position, ms(11500));
+      expect(timeline.current.clipPosition, ms(1500));
+      expect(timeline.current.clipIndex, 1);
+      expect(timeline.current.rep, 12, reason: '10 reps of A + 1 of B done');
+    });
+
+    test('starting the next recording is announced (the video realigns)',
+        () async {
+      await intoClipB(variants(reps: 14), bPositionMs: 500);
+      expect(events.whereType<MoveLooped>(), hasLength(1));
+    });
+
+    test('the move ends at the exact rep, inside the last recording', () async {
+      await intoClipB(variants(reps: 12), bPositionMs: 2900);
+      expect(events.whereType<MoveTargetReached>(), isEmpty);
+
+      engine.emitPosition(ms(3000), index: 1); // 2 reps of B = 3 s
+      await settle();
+      expect(events.whereType<MoveTargetReached>(), hasLength(1));
+    });
+
+    test('loop forever: the sequence starts over and reps keep climbing',
+        () async {
+      await intoClipB(variants(reps: 12, loopForever: true), bPositionMs: 5950);
+      engine.emitPosition(ms(1000), index: 0);
+      await settle();
+
+      expect(timeline.current.position, ms(17000));
+      expect(timeline.current.rep, 16);
+      expect(events.whereType<MoveTargetReached>(), isEmpty);
+    });
+
+    test('a seek lands in the right recording', () async {
+      await intoClipB(variants(reps: 14), bPositionMs: 100);
+
+      final clipPosition = await timeline.seek(ms(4000));
+      await settle();
+      expect(clipPosition, ms(4000));
+      expect(engine.seekedIndex, 0);
+      expect(timeline.current.position, ms(4000));
+      expect(timeline.current.clipIndex, 0);
+
+      await timeline.seek(ms(13000));
+      await settle();
+      expect(engine.seekedTo, ms(3000));
+      expect(engine.seekedIndex, 1);
+      expect(timeline.current.rep, 13);
+    });
+
+    test('readings for a queue index beyond this move are ignored', () async {
+      await timeline.load(variants(), play: true);
+      engine.emitDuration(ms(10000), index: 0);
+      await settle();
+      engine.emitPosition(ms(2000), index: 5);
+      await settle();
+
+      expect(timeline.current.position, Duration.zero);
+    });
+
+    test('clipAt gives the recording behind a progress clip index', () {
+      unawaited(timeline.load(variants(), play: true));
+      expect(timeline.clipAt(1), clipB);
+      expect(timeline.clipAt(2), isNull);
     });
   });
 

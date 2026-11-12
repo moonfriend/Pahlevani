@@ -45,9 +45,10 @@ from movement_learning_content import (
     text_from_lines,
     variations_from_rows,
 )
-from morshed_admin import default_recording, set_default_morshed
+from morshed_admin import audio_track_r2_key, default_recording, set_default_morshed
 from activation_gate import Activation, LockedScreen, TermsSetting, activations_csv
 from home_announcement import HomeAnnouncement
+from usage_study import RQ_VIEWS, first_use_steps, group_visits, timeline_lines
 from onboarding_cards import (
     links_text,
     parse_links,
@@ -2423,12 +2424,19 @@ def tab_audio_tracks():
         st.caption(f"Movement types with at least one recording: **{covered} / {len(types_df)}**")
 
     if not tracks.empty:
+        # Variants (several recordings of one type by one Morshed) sit next
+        # to each other; the app plays them in random order.
+        tracks = tracks.sort_values(
+            [c for c in ["type_name", "morshed_name", "id"] if c in tracks.columns]
+        ).reset_index(drop=True)
         show = [c for c in ["id", "type_name", "morshed_name", "audio_url",
                              "repetitions_default", "duration_seconds", "audio_anchor_ms"]
                 if c in tracks.columns]
         st.caption(
             "Select exactly one row to preview and edit it below. Select "
-            "more than one to delete them together."
+            "more than one to delete them together. A Morshed may have "
+            "several recordings of one type: the app plays them in random "
+            "order, so they must hold the same movement."
         )
         event = st.dataframe(
             tracks[show],
@@ -2481,11 +2489,7 @@ def tab_audio_tracks():
                             "audio_anchor_ms": new_anchor,
                         }])
                     except Exception as e:
-                        st.error(
-                            "Save failed — if you changed the type, this "
-                            "Morshed may already have a recording for it "
-                            f"(type+Morshed must be unique): {e}"
-                        )
+                        st.error(f"Save failed: {e}")
                     else:
                         st.success("Saved.")
                         bust_cache()
@@ -2631,8 +2635,8 @@ def tab_audio_tracks():
             type_id = type_id_by_label[row["type_label"]]
             data = file_map.get(fname, b"")
             try:
-                slug = slugify(row["type_label"])
-                r2_key = f"{R2_AUDIO_TRACK_PREFIX}{type_id}-{morshed_id}-{slug}.mp3"
+                r2_key = audio_track_r2_key(
+                    R2_AUDIO_TRACK_PREFIX, type_id, morshed_id, fname)
                 url = upload_bytes_to_r2(data, r2_key, "audio/mpeg")
                 get_client().table("movement_audio_track").insert({
                     "movement_type_id": type_id,
@@ -3629,11 +3633,13 @@ def tab_activation():
 
     st.divider()
     st.subheader(f"Activations ({len(activations)})")
-    st.caption("Who activated with which code — compare the emails with Steady's "
-               "members each month.")
+    st.caption("Who has access, from a code (never ends) or a Steady membership "
+               "(re-checked daily; ends unless renewed).")
     if activations:
         st.dataframe(
-            [{"email": a.email, "code": a.code, "activated": a.activated_at}
+            [{"email": a.email, "source": a.source, "code": a.code,
+              "activated": a.activated_at,
+              "ends": a.expires_at or "never", "steady": a.steady_state}
              for a in activations],
             hide_index=True, use_container_width=True)
         st.download_button("⬇️ Download CSV", activations_csv(activations),
@@ -3678,6 +3684,76 @@ def tab_home_card():
         st.success("Saved. Apps pick it up on their next start or within 3 hours.")
 
 
+def _usage_rows(view: str, user_id: str | None = None, limit: int = 5000) -> list[dict]:
+    query = get_client().table(view).select("*")
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    return query.limit(limit).execute().data
+
+
+def tab_usage_study():
+    st.header("Usage study")
+    st.caption(
+        "What testers do in the app (they agreed to it). Pick a tester for their diary, "
+        "or open a research question's table. Events and their meaning: "
+        "`docs/usage_study/event_catalogue.md`. Needs migrations 0051 + 0052."
+    )
+    if st.button("↺ Reload", key="usage_reload"):
+        load_profiles.clear()
+
+    diary, *rq_tabs = st.tabs(["📔 Tester diary"] + [label for label, _, _ in RQ_VIEWS])
+
+    with diary:
+        try:
+            profiles = load_profiles()
+        except Exception as exc:  # postgrest raises when a table is missing
+            st.error("Couldn't read the testers.")
+            st.caption(f"{type(exc).__name__}: {exc}")
+            return
+        by_email = {p.get("email") or p["id"]: p["id"] for p in profiles}
+        email = st.selectbox("Tester", list(by_email), key="usage_user")
+        if email is None:
+            return
+        user_id = by_email[email]
+        try:
+            rows = _usage_rows("usage_timeline", user_id)
+            first_use = _usage_rows("usage_rq3_first_use", user_id)
+        except Exception as exc:
+            st.error("Couldn't read the usage views. Are 0051 and 0052 applied?")
+            st.caption(f"{type(exc).__name__}: {exc}")
+            return
+        if not rows:
+            st.info("No usage events from this tester yet.")
+            return
+
+        if first_use:
+            st.subheader("First use")
+            st.dataframe(
+                [{"Step": step.label,
+                  "When (UTC)": step.at.strftime("%Y-%m-%d %H:%M:%S") if step.at else "—",
+                  "Seconds after the previous step": step.seconds_after_previous}
+                 for step in first_use_steps(first_use[0])],
+                hide_index=True, use_container_width=True)
+
+        visits = group_visits(rows)
+        st.subheader(f"{len(visits)} visits")
+        for visit in reversed(visits):
+            title = (f"{visit.started:%a %d %b %H:%M} · {visit.seconds // 60} min "
+                     f"{visit.seconds % 60} s · {len(visit.events)} events")
+            with st.expander(title, expanded=visit is visits[-1]):
+                st.code("\n".join(timeline_lines(visit)), language=None)
+
+    for tab, (label, view, caption) in zip(rq_tabs, RQ_VIEWS):
+        with tab:
+            st.caption(caption)
+            if st.button(f"Load {label}", key=f"usage_load_{view}"):
+                try:
+                    st.dataframe(_usage_rows(view), use_container_width=True)
+                except Exception as exc:
+                    st.error(f"Couldn't read `{view}`.")
+                    st.caption(f"{type(exc).__name__}: {exc}")
+
+
 def main():
     st.set_page_config(page_title="Pahlevani Admin", page_icon="🏛️", layout="wide")
     # Default tab strip is a single scrollable row — wrap onto multiple rows
@@ -3697,7 +3773,7 @@ def main():
     project_id = SUPABASE_URL.split("//")[-1].split(".")[0]
     st.caption(f"Supabase · `{project_id}`")
 
-    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16 = st.tabs([
         "🤸  Movements",
         "📋  Sessions",
         "🗺️  Path",
@@ -3713,6 +3789,7 @@ def main():
         "👋  Onboarding",
         "📣  Home card",
         "🔓  Activation",
+        "🔬  Usage study",
     ])
     with t1: tab_movements()
     with t2: tab_sessions()
@@ -3729,6 +3806,7 @@ def main():
     with t13: tab_onboarding()
     with t14: tab_home_card()
     with t15: tab_activation()
+    with t16: tab_usage_study()
 
 
 if __name__ == "__main__":

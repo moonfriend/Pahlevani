@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
 import '../../../core/theme/kashi/kashi_typography.dart';
 import '../../pages/access/consent_texts.dart';
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../usage/tap_probe.dart';
+import '../usage/tap_probe_ids.dart';
 
 /// Safety and privacy, each a short summary with a link to the full text and
 /// a required box. Shown when creating an account, and again when the terms
@@ -15,6 +18,7 @@ class ConsentChecks extends StatelessWidget {
     required this.privacy,
     required this.onSafetyChanged,
     required this.onPrivacyChanged,
+    this.onLinkOpened,
   });
 
   final bool safety;
@@ -22,11 +26,16 @@ class ConsentChecks extends StatelessWidget {
   final ValueChanged<bool> onSafetyChanged;
   final ValueChanged<bool> onPrivacyChanged;
 
+  /// Told when the full terms or privacy policy is opened.
+  final ValueChanged<ExternalLink>? onLinkOpened;
+
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _Summary(
+          _Summary(
+            link: ExternalLink.terms,
+            onOpened: onLinkOpened,
             title: ConsentTexts.safetyTitle,
             points: ConsentTexts.safetyPoints,
             fullTextUrl: ConsentTexts.termsUrl,
@@ -39,7 +48,9 @@ class ConsentChecks extends StatelessWidget {
             onChanged: onSafetyChanged,
           ),
           const SizedBox(height: 16),
-          const _Summary(
+          _Summary(
+            link: ExternalLink.privacy,
+            onOpened: onLinkOpened,
             title: ConsentTexts.privacyTitle,
             points: ConsentTexts.privacyPoints,
             fullTextUrl: ConsentTexts.privacyUrl,
@@ -57,12 +68,16 @@ class ConsentChecks extends StatelessWidget {
 
 class _Summary extends StatelessWidget {
   const _Summary({
+    required this.link,
+    required this.onOpened,
     required this.title,
     required this.points,
     required this.fullTextUrl,
     required this.fullTextLabel,
   });
 
+  final ExternalLink link;
+  final ValueChanged<ExternalLink>? onOpened;
   final String title;
   final List<String> points;
   final String fullTextUrl;
@@ -82,11 +97,16 @@ class _Summary extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 color: colors.textPrimary)),
         const SizedBox(height: 6),
-        for (final point in points) Text('• $point', style: body),
+        for (final point in points)
+          TapProbe(
+              id: TapProbeIds.consentText,
+              child: Text('• $point', style: body)),
         TextButton(
           style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          onPressed: () => launchUrl(Uri.parse(fullTextUrl),
-              mode: LaunchMode.externalApplication),
+          onPressed: () {
+            onOpened?.call(link);
+            openExternalLink(context, link, fullTextUrl);
+          },
           child: Text(fullTextLabel),
         ),
       ],

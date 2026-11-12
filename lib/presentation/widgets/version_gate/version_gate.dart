@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:pahlevani/presentation/bloc/version_gate/version_gate_cubit.dart';
 import 'package:pahlevani/presentation/widgets/version_gate/version_gate_screen.dart';
+import 'package:pahlevani/presentation/usage/app_routes.dart';
+import 'package:pahlevani/presentation/usage/tracked_surface.dart';
 
 /// Wraps the app: runs the release-gate check on startup AND every time the
 /// app returns to the foreground, shows [VersionGateScreen] if this install
@@ -51,7 +53,10 @@ class _VersionGateState extends State<VersionGate> with WidgetsBindingObserver {
     return BlocBuilder<VersionGateCubit, VersionGateState>(
       builder: (context, state) {
         if (state is VersionGateBlocked) {
-          return VersionGateScreen(message: state.message);
+          return TrackedSurface(
+            name: AppRoutes.versionGate,
+            child: VersionGateScreen(message: state.message),
+          );
         }
         return widget.child;
       },

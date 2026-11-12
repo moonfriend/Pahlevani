@@ -8,6 +8,8 @@ import '../../bloc/auth/auth_cubit.dart';
 import 'account_page.dart';
 import 'consent_page.dart';
 import 'locked_page.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/tracked_surface.dart';
 
 /// The release-1 gate in front of the app: an account, the safety and
 /// privacy consent, and an activation code (members only).
@@ -38,14 +40,16 @@ class AccessGate extends StatelessWidget {
         buildWhen: (a, b) => _settled(a) != _settled(b),
         builder: (context, state) => switch (_settled(state)) {
           AuthChecking() => const _Blank(),
-          AuthNeedsConsent() => const ConsentPage(),
+          AuthNeedsConsent() =>
+            const TrackedSurface(name: AppRoutes.consent, child: ConsentPage()),
           AuthAuthenticated(:final user) => _ActivationScope(
               key: ValueKey(user.id),
               user: user,
               onActivated: onActivated,
               child: child,
             ),
-          _ => const AccountPage(),
+          _ =>
+            const TrackedSurface(name: AppRoutes.account, child: AccountPage()),
         },
       );
 }
@@ -81,7 +85,10 @@ class _ActivationScopeState extends State<_ActivationScope> {
         listener: (_, __) => widget.onActivated(),
         builder: (context, state) => switch (state) {
           ActivationChecking() => const _Blank(),
-          ActivationLocked() => LockedPage(email: widget.user.email),
+          ActivationLocked() => TrackedSurface(
+              name: AppRoutes.locked,
+              child: LockedPage(
+                  email: widget.user.email, hasSteady: widget.user.hasSteady)),
           ActivationActive() => widget.child,
         },
       );
@@ -91,8 +98,11 @@ class _Blank extends StatelessWidget {
   const _Blank();
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-        color: Theme.of(context).extension<KashiColors>()!.ground,
-        child: const SizedBox.expand(),
+  Widget build(BuildContext context) => TrackedSurface(
+        name: AppRoutes.loading,
+        child: ColoredBox(
+          color: Theme.of(context).extension<KashiColors>()!.ground,
+          child: const SizedBox.expand(),
+        ),
       );
 }

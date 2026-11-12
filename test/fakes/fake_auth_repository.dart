@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:pahlevani/domain/entities/auth/app_user.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 import 'package:pahlevani/domain/repositories/auth_repository.dart';
 
 class FakeAuthRepository implements AuthRepository {
@@ -11,6 +12,8 @@ class FakeAuthRepository implements AuthRepository {
   bool throwOnDeleteAccount = false;
   int deleteAccountCallCount = 0;
   bool throwOnGoogleSignIn = false;
+  bool throwOnSteadySignIn = false;
+  int signInWithSteadyCallCount = 0;
   bool throwOnSignUpWithInviteCode = false;
   bool throwInvalidInviteCode = false;
   bool throwOnSignInWithUsername = false;
@@ -114,6 +117,14 @@ class FakeAuthRepository implements AuthRepository {
     return user;
   }
 
+  /// Like Supabase: only opens the browser. The session arrives later via
+  /// [emitUser], the way the real deep link feeds [authStateChanges].
+  @override
+  Future<void> signInWithSteady() async {
+    signInWithSteadyCallCount++;
+    if (throwOnSteadySignIn) throw Exception('could not open browser');
+  }
+
   @override
   Future<void> initializeGoogleSignIn() async {
     initializeGoogleSignInCallCount++;
@@ -167,4 +178,10 @@ class FakeAuthRepository implements AuthRepository {
     _controller.close();
     _googleEventsController.close();
   }
+
+  /// What [classifyError] answers.
+  AuthErrorKind errorKind = AuthErrorKind.other;
+
+  @override
+  AuthErrorKind classifyError(Object error) => errorKind;
 }

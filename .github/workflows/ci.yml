@@ -124,6 +124,14 @@ jobs:
             echo "GOOGLE_SERVICES_JSON not set — using the committed placeholder."
           fi
 
+      # The runner's default JDK moved to 25, which Gradle 8.10 can't run on
+      # (fails with just "What went wrong: 25.0.5"). Pin the JDK Android uses.
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Build Android APK (debug)
         run: |
           flutter build apk --debug \

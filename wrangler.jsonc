@@ -25,6 +25,11 @@
   "env": {
     "staging": {
       "name": "pahlevani"
+    },
+    // release/staging code against the PROD database (Cloudflare project
+    // "staging-prod", deploy command: npx wrangler deploy --env staging_prod).
+    "staging_prod": {
+      "name": "staging-prod"
     }
   }
 }

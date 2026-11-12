@@ -109,6 +109,32 @@ void main() {
   });
   tearDown(getIt.reset);
 
+  testWidgets(
+      'web: the video\'s own view cannot take the tap that shows the '
+      'controls', (tester) async {
+    // On the web the <video> platform view joins the gesture arena and wins
+    // it, so the stage's tap never fired (found in a real browser).
+    _video.viewClaimsTaps = true;
+    await _pump(tester, _snapshot(_videoMedia));
+    _video.sendInitialized(0);
+    await tester.pump();
+
+    await tester.tap(find.bySemanticsLabel('Show progress'));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('Pause video'), findsOneWidget);
+  });
+
+  testWidgets('full screen has no move list arrow', (tester) async {
+    await _pump(tester, _snapshot(_videoMedia));
+    expect(find.byTooltip('All moves'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+    await tester.pump();
+
+    expect(find.byTooltip('All moves'), findsNothing);
+  });
+
   testWidgets('⛶ shows the same video full screen; ✕ goes back',
       (tester) async {
     await _pump(tester, _snapshot(_videoMedia));

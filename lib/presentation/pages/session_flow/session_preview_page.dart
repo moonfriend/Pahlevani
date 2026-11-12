@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_links.dart';
 import '../../../core/di/dependency_injection.dart';
@@ -24,18 +23,27 @@ import '../../layout/kashi_layout.dart';
 import '../library/learning_card_page.dart';
 import '../library/open_move_card.dart';
 import 'session_start.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/back_signals.dart';
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
+import '../../../domain/services/usage_tracker.dart';
+import '../../widgets/usage/tap_probe.dart';
+import '../../widgets/usage/tap_probe_ids.dart';
 
 /// Opens [session]'s preview — the way into every session. Provides the
 /// app-wide morshed choice to the new route (the shell's providers don't
 /// reach pushed routes).
-Future<void> openSessionPreview(
-        BuildContext context, TrainingSession session) =>
+Future<void> openSessionPreview(BuildContext context, TrainingSession session,
+        {PreviewSource source = PreviewSource.other}) =>
     Navigator.push(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.sessionPreview),
         builder: (_) => BlocProvider.value(
           value: getIt<AudioCatalogCubit>()..load(),
-          child: SessionPreviewPage(session: session),
+          child: SessionPreviewPage(session: session, source: source),
         ),
       ),
     );
@@ -50,9 +58,16 @@ Future<void> openSessionPreview(
 /// Zoorkhaneh mode is not offered here; it is a long-press on a session card.
 /// Expects [TrainingSessionCubit] and [AudioCatalogCubit] above it.
 class SessionPreviewPage extends StatefulWidget {
-  const SessionPreviewPage({super.key, required this.session, this.onStart});
+  const SessionPreviewPage(
+      {super.key,
+      required this.session,
+      this.source = PreviewSource.other,
+      this.onStart});
 
   final TrainingSession session;
+
+  /// Where the preview was opened from, for the usage study.
+  final PreviewSource source;
 
   /// Starts the session; defaults to [startSession]. For tests.
   final void Function(BuildContext context, PlayerMode mode)? onStart;
@@ -62,7 +77,55 @@ class SessionPreviewPage extends StatefulWidget {
 }
 
 class _SessionPreviewPageState extends State<SessionPreviewPage> {
+  // For the usage study: the RQ5 "lost before Start?" question.
+  final DateTime _openedAt = DateTime.now();
+  int _movesOpened = 0;
+  bool _leftLogged = false;
+
+  /// Kept from initState: dispose can't look up the context.
+  late final UsageTracker _usage;
+
+  int get _sessionId => widget.session.id;
+
+  @override
+  void initState() {
+    super.initState();
+    _usage = context.usage;
+    final moves = context
+            .read<TrainingSessionCubit>()
+            .getSessionDetail(_sessionId)
+            ?.items
+            .length ??
+        0;
+    _usage.track(SessionPreviewed(
+        sessionId: _sessionId, source: widget.source, moves: moves));
+  }
+
+  @override
+  void dispose() {
+    _left(PreviewExit.back);
+    super.dispose();
+  }
+
+  /// Logged once per preview visit: Start, or leaving without starting.
+  void _left(PreviewExit how) {
+    if (_leftLogged) return;
+    _leftLogged = true;
+    _usage.track(PreviewLeft(
+      sessionId: _sessionId,
+      how: how,
+      seconds: DateTime.now().difference(_openedAt).inMilliseconds / 1000,
+      movesOpened: _movesOpened,
+    ));
+  }
+
   void _start(PlayerMode mode) {
+    context.usage.track(PreviewModeTapped(
+        sessionId: _sessionId,
+        mode: mode == PlayerMode.athlete
+            ? UsageSessionMode.athlete
+            : UsageSessionMode.learning));
+    _left(PreviewExit.start);
     final onStart = widget.onStart;
     if (onStart != null) {
       onStart(context, mode);
@@ -71,12 +134,18 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
     }
   }
 
-  Future<void> _openMove(ItemDetail detail) {
+  Future<void> _openMove(ItemDetail detail, int position) {
+    _movesOpened++;
+    context.usage.track(PreviewMoveOpened(
+        sessionId: _sessionId,
+        movementId: detail.exercise.id,
+        position: position));
     final seconds =
         context.read<TrainingSessionCubit>().moveDurationSeconds(detail.item);
     return openMoveCard(
       context,
       detail.exercise,
+      from: CardSource.preview,
       target: _countedTarget(detail),
       minutes: seconds == null ? null : _wholeMinutes(seconds),
       hint: learnFirstHint,
@@ -110,7 +179,7 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
           name: moves[i].exercise.name,
           reps: _countedTarget(moves[i]),
           seconds: seconds[i],
-          onTap: () => _openMove(moves[i]),
+          onTap: () => _openMove(moves[i], i),
         ),
     ];
     final startButtons = Column(
@@ -118,10 +187,12 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.session.needsMeel) const _MeelGuide(),
-        Text('Warm up first, and stop if anything hurts.',
-            textAlign: TextAlign.center,
-            style: KashiTextStyles.ui
-                .copyWith(fontSize: 12.5, color: colors.textMuted)),
+        TapProbe(
+            id: TapProbeIds.previewWarmupNote,
+            child: Text('Warm up first, and stop if anything hurts.',
+                textAlign: TextAlign.center,
+                style: KashiTextStyles.ui
+                    .copyWith(fontSize: 12.5, color: colors.textMuted))),
         const SizedBox(height: 8),
         // Learning mode: cards show for moves not yet learnt.
         KashiActionButton(
@@ -175,11 +246,13 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
 
   Widget _review(KashiColors colors) => Padding(
         padding: const EdgeInsets.only(top: 6, bottom: 10),
-        child: Text(_reviewText,
-            style: KashiTextStyles.ui.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary)),
+        child: TapProbe(
+            id: TapProbeIds.previewReviewText,
+            child: Text(_reviewText,
+                style: KashiTextStyles.ui.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary))),
       );
 
   /// Tablet and web: the lajvard session panel (header, still, morshed and
@@ -238,9 +311,11 @@ class _SessionPreviewPageState extends State<SessionPreviewPage> {
                   padding: EdgeInsets.fromLTRB(listSide, 40, listSide, 32),
                   children: [
                     _review(colors),
-                    Text('MOVES · TAP ONE TO WATCH HOW',
-                        style: KashiTextStyles.label
-                            .copyWith(color: colors.textMuted)),
+                    TapProbe(
+                        id: TapProbeIds.previewMovesLabel,
+                        child: Text('MOVES · TAP ONE TO WATCH HOW',
+                            style: KashiTextStyles.label
+                                .copyWith(color: colors.textMuted))),
                     const SizedBox(height: 14),
                     ...moveRows,
                   ],
@@ -270,8 +345,8 @@ class _MeelGuide extends StatelessWidget {
             style: KashiTextStyles.ui
                 .copyWith(fontSize: 12.5, color: colors.textMuted)),
         TextButton(
-          onPressed: () => launchUrl(Uri.parse(AppLinks.meelGuide),
-              mode: LaunchMode.externalApplication),
+          onPressed: () => openExternalLink(
+              context, ExternalLink.meelGuide, AppLinks.meelGuide),
           child: const Text('How to get your meel'),
         ),
       ],
@@ -343,7 +418,7 @@ class _Header extends StatelessWidget {
               Material(
                 color: Colors.white.withValues(alpha: .1),
                 child: InkWell(
-                  onTap: () => Navigator.maybePop(context),
+                  onTap: () => popWithAppBarBack(context),
                   child: const SizedBox.square(
                     dimension: 44,
                     child:
@@ -357,21 +432,27 @@ class _Header extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _FramedStill(src: still, height: embedded ? 240 : 140),
+          TapProbe(
+              id: TapProbeIds.previewSessionStill,
+              child: _FramedStill(src: still, height: embedded ? 240 : 140)),
           const SizedBox(height: 18),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
               Expanded(
-                child: Text(session.title,
-                    style: KashiTextStyles.heading
-                        .copyWith(fontSize: 26, color: Colors.white)),
+                child: TapProbe(
+                    id: TapProbeIds.previewSessionTitle,
+                    child: Text(session.title,
+                        style: KashiTextStyles.heading
+                            .copyWith(fontSize: 26, color: Colors.white))),
               ),
               const SizedBox(width: 10),
-              Text(meta,
-                  style: KashiTextStyles.ui
-                      .copyWith(fontSize: 12.5, color: KashiPalette.sky300)),
+              TapProbe(
+                  id: TapProbeIds.previewSessionMeta,
+                  child: Text(meta,
+                      style: KashiTextStyles.ui.copyWith(
+                          fontSize: 12.5, color: KashiPalette.sky300))),
             ],
           ),
           const SizedBox(height: 12),
@@ -446,8 +527,8 @@ class _MorshedDropdown extends StatelessWidget {
 
     Future<void> pick(int id) async {
       final sessions = context.read<TrainingSessionCubit>();
-      await chooseMorshed(
-          context, state.morsheds.firstWhere((m) => m.id == id));
+      await chooseMorshed(context, state.morsheds.firstWhere((m) => m.id == id),
+          from: MorshedSource.preview);
       await sessions.refreshAudioSelection();
     }
 

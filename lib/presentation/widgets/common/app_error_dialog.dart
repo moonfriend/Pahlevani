@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../usage/app_routes.dart';
 
 /// The one error-surfacing pattern meant to be reused everywhere a Cubit
 /// failure needs to reach the user — call this from a `BlocListener` (or
@@ -13,6 +14,7 @@ Future<void> showAppErrorDialog(
 }) {
   return showDialog<void>(
     context: context,
+    routeSettings: AppRoutes.settings(AppRoutes.errorDialog),
     builder: (context) => AlertDialog(
       title: Text(title),
       content: Text(message),

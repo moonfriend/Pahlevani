@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/presentation/pages/library/learning_card_page.dart';
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
@@ -28,6 +27,7 @@ import 'package:pahlevani/presentation/pages/player/training_session_player_page
 import 'package:pahlevani/presentation/pages/session_flow/complete_page.dart';
 import 'package:pahlevani/presentation/pages/session_flow/rep_log_page.dart';
 import 'package:pahlevani/presentation/pages/training_session/edit_training_session_page.dart';
+import 'package:pahlevani/presentation/widgets/player/kashi/move_list_drawer.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/rep_star.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/segment_progress.dart';
 import 'package:pahlevani/presentation/widgets/player/kashi/video_scrub_bar.dart';
@@ -43,6 +43,10 @@ import '../../../fakes/fake_training_history_repository.dart';
 import '../../../fakes/fake_training_session_repository.dart';
 import '../../../fakes/fake_wakelock_plus_platform.dart';
 import '../../../fakes/test_seed_data.dart';
+import '../../../fakes/fake_usage_tracker.dart';
+import 'package:pahlevani/presentation/usage/usage_scope.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/domain/entities/usage/usage_event.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,9 +65,11 @@ void _registerFakes(DomainSnapshot snapshot) {
 }
 
 Widget _buildPage(DomainSnapshot snapshot,
-    {PlayerMode mode = PlayerMode.athlete}) {
+    {PlayerMode mode = PlayerMode.athlete,
+    UsageTracker? usage,
+    bool repLogging = true}) {
   // The Rep log tests below need it on; release 1 switches it off.
-  return BlocProvider(
+  final page = BlocProvider(
     create: (_) => TrainingSessionCubit(
       sessionRepository: FakeTrainingSessionRepository(snapshot),
       downloadRepository: FakeDownloadRepository(),
@@ -72,9 +78,10 @@ Widget _buildPage(DomainSnapshot snapshot,
     child: MaterialApp(
       theme: PahlevaniTheme.dark(),
       home: AudioPlayerPage(
-          trainingSession: testSession1, mode: mode, repLogging: true),
+          trainingSession: testSession1, mode: mode, repLogging: repLogging),
     ),
   );
+  return usage == null ? page : UsageScope(tracker: usage, child: page);
 }
 
 // Allow async work from the cubit (loadTracks, _loadSourceAtIndex) to complete.
@@ -343,6 +350,78 @@ void main() {
     expect(find.text('Move 2 of 2'), findsOneWidget);
   });
 
+  testWidgets('the player logs to the app tracker; How to is logged',
+      (tester) async {
+    final usage = FakeUsageTracker();
+    await tester.pumpWidget(_buildPage(buildTestSnapshot(), usage: usage));
+    await _pumpAndLoad(tester);
+    expect(usage.names, contains('session.started'));
+
+    await tester.tap(find.byTooltip('How to'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final howTo = usage.of<PlayerHowToOpened>().single;
+    expect(howTo.index, 0);
+    expect(usage.of<LearningCardOpened>().single.from, CardSource.player);
+  });
+
+  group('move list', () {
+    Finder list() => find.byType(MoveListDrawer);
+    Finder inList(String text) =>
+        find.descendant(of: list(), matching: find.text(text));
+
+    // The audio wave animates while playing, so nothing ever settles: pump
+    // through the drawer's open/close animation instead.
+    Future<void> pumpDrawer(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('the arrow on the right edge opens the list of all moves',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      expect(list(), findsNothing);
+
+      await tester.tap(find.byTooltip('All moves'));
+      await pumpDrawer(tester);
+
+      expect(inList('Shena'), findsOneWidget);
+      expect(inList('Kabbadeh'), findsOneWidget);
+      expect(
+          tester
+              .widget<MoveListDrawer>(list())
+              .moves
+              .indexWhere((m) => m.isCurrent),
+          0);
+    });
+
+    testWidgets('swiping left from the right edge opens it', (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+
+      await tester.dragFrom(const Offset(795, 450), const Offset(-300, 0));
+      await pumpDrawer(tester);
+
+      expect(list(), findsOneWidget);
+    });
+
+    testWidgets('tapping a move closes the list and plays that move',
+        (tester) async {
+      await tester.pumpWidget(_buildPage(buildTestSnapshot()));
+      await _pumpAndLoad(tester);
+      await tester.tap(find.byTooltip('All moves'));
+      await pumpDrawer(tester);
+
+      await tester.tap(inList('Kabbadeh'));
+      await pumpDrawer(tester);
+
+      expect(list(), findsNothing);
+      expect(find.text('Move 2 of 2'), findsOneWidget);
+      expect(_playerCubit(tester).state.isPlaying, isTrue);
+    });
+  });
+
   testWidgets('How to pauses playback and opens the learning card',
       (tester) async {
     await tester.pumpWidget(_buildPage(buildTestSnapshot()));
@@ -394,39 +473,6 @@ void main() {
       expect(find.byType(VideoScrubBar), findsOneWidget);
       expect(find.byTooltip('Pause'), findsOneWidget,
           reason: 'tapping the video no longer pauses');
-    });
-
-    testWidgets(
-        'web: the video\'s browser element cannot swallow the tap — an '
-        'interceptor covers the whole stage, under the controls',
-        (tester) async {
-      await open(tester);
-      final stageRect = tester.getRect(stage());
-      await tester.tap(stage());
-      await tester.pump();
-
-      final interceptor = find.byType(PointerInterceptor);
-      expect(interceptor, findsOneWidget);
-      expect(
-          tester.widget<PointerInterceptor>(interceptor).intercepting, isFalse,
-          reason: 'only the web has a browser element to intercept');
-      expect(tester.getRect(interceptor), stageRect);
-
-      // Painted before (below) the pause button, so the button stays on top.
-      final stack = tester.widget<Stack>(
-          find.ancestor(of: interceptor, matching: find.byType(Stack)).first);
-      final interceptorIndex = stack.children.indexWhere((c) => find
-          .descendant(of: find.byWidget(c), matching: interceptor)
-          .evaluate()
-          .isNotEmpty);
-      final controlsIndex = stack.children.indexWhere((c) => find
-          .descendant(
-              of: find.byWidget(c),
-              matching: find.bySemanticsLabel('Pause video'))
-          .evaluate()
-          .isNotEmpty);
-      expect(interceptorIndex, isNonNegative);
-      expect(interceptorIndex, lessThan(controlsIndex));
     });
 
     testWidgets(
@@ -573,6 +619,42 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();
     expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets(
+      'release 1 (no Rep log): a flagged move still shows the rep counter, '
+      'not the timer', (tester) async {
+    const shena = Exercise(
+      id: 101,
+      name: 'Shena',
+      audioFileUrl: 'https://example.com/shena.mp3',
+      repetitionsDefault: 3,
+    );
+    const counted = TrainingItem(
+      id: 10001,
+      sessionId: 1,
+      exerciseId: 101,
+      position: 1,
+      prescription: RepsPresc(40),
+      isTracked: true,
+    );
+    final snap = DomainSnapshot(
+      sessionsById: {testSession1.id: testSession1},
+      itemsBySessionId: {
+        testSession1.id: [counted]
+      },
+      exercisesById: {101: shena},
+    );
+    await getIt.reset();
+    _registerFakes(snap);
+
+    await tester.pumpWidget(_buildPage(snap, repLogging: false));
+    await _pumpAndLoad(tester);
+
+    expect(find.text('of 40'), findsOneWidget);
+    expect(find.text('remaining'), findsNothing);
+    expect(find.text('Follow the morshed’s count'), findsOneWidget,
+        reason: 'nothing to confirm without the Rep log');
   });
 
   // ── Error state ────────────────────────────────────────────────────────────
@@ -1475,7 +1557,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Download'));
       await tester.pumpAndSettle();
       // The download completes; the files are now on the device.
-      downloads.localAudioPathBuilder = (item) => '/cached/${item.item.id}.mp3';
+      downloads.localAudioPathBuilder = cachedAudioPath;
       await tester.tap(find.descendant(
           of: find.byType(AlertDialog),
           matching: find.textContaining('Download ')));

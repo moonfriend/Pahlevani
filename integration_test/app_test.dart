@@ -55,6 +55,9 @@ import '../test/fakes/fake_auth_repository.dart';
 import '../test/fakes/fake_connectivity_service.dart';
 import '../test/fakes/fake_download_repository.dart';
 import '../test/fakes/fake_learnt_exercises_repository.dart';
+import 'package:pahlevani/data/repositories_impl/open_session_store_impl.dart';
+import 'package:pahlevani/domain/services/usage_tracker.dart';
+import 'package:pahlevani/domain/usage/open_session.dart';
 import '../test/fakes/fake_onboarding_repository.dart';
 import '../test/fakes/fake_training_history_repository.dart';
 import '../test/fakes/fake_training_session_repository.dart';
@@ -146,6 +149,9 @@ void main() {
             historyRepository: getIt<TrainingHistoryRepository>()));
     getIt.registerLazySingleton<AudioCatalogCubit>(
         () => AudioCatalogCubit(repository: getIt<AudioCatalogRepository>()));
+    // The app shell logs the usage study; these journeys record nothing.
+    getIt.registerSingleton<UsageTracker>(const NoOpUsageTracker());
+    getIt.registerLazySingleton<OpenSessionStore>(() => OpenSessionStoreImpl());
   });
 
   tearDownAll(() async => getIt.reset());

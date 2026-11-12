@@ -370,4 +370,74 @@ void main() {
       await tester.pump();
     });
   });
+
+  group('Get ready', () {
+    Future<FakeAudioPlayerService> open(WidgetTester tester,
+        {required int audioAnchorMs, required int videoAnchorMs}) async {
+      final exercise = Exercise(
+        id: 10,
+        name: 'Video Ex',
+        audioFileUrl: 'https://audio.mp3',
+        repetitionsDefault: 1,
+        audioAnchorMs: audioAnchorMs,
+        media: ExerciseMedia(
+          type: 'video',
+          src: 'https://cdn.example.com/clip.mp4',
+          videoAnchorMs: videoAnchorMs,
+        ),
+      );
+      final snap = DomainSnapshot(
+        sessionsById: {testSession1.id: testSession1},
+        itemsBySessionId: {
+          testSession1.id: [
+            const TrainingItem(
+                id: 10001,
+                sessionId: 1,
+                exerciseId: 10,
+                position: 0,
+                prescription: RepsPresc(1))
+          ]
+        },
+        exercisesById: {10: exercise},
+      );
+      late FakeAudioPlayerService audio;
+      _registerFakes(snap, onAudioServiceCreated: (a) => audio = a);
+      await tester.binding.setSurfaceSize(const Size(800, 900));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+      await tester.pumpWidget(_buildPage(snap));
+      await tester.pump();
+      await tester.pump();
+      fakePlatform.sendInitialized(0, duration: const Duration(seconds: 30));
+      await tester.pump();
+      audio.emitDuration(const Duration(seconds: 30));
+      await tester.pump();
+      return audio;
+    }
+
+    testWidgets(
+        'a video waiting more than a second for the beat says Get ready '
+        'until it starts', (tester) async {
+      // offset = 500 - 3000 = -2500 ms.
+      final audio = await open(tester, audioAnchorMs: 3000, videoAnchorMs: 500);
+      expect(find.text('Get ready'), findsOneWidget);
+
+      audio.emitPosition(const Duration(milliseconds: 2000));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Get ready'), findsOneWidget);
+
+      audio.emitPosition(const Duration(milliseconds: 2600));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Get ready'), findsNothing);
+    });
+
+    testWidgets('a wait of a second or less says nothing', (tester) async {
+      // offset = 1200 - 2000 = -800 ms.
+      await open(tester, audioAnchorMs: 2000, videoAnchorMs: 1200);
+      expect(find.text('Get ready'), findsNothing);
+    });
+  });
 }

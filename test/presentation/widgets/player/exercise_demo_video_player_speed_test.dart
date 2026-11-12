@@ -55,9 +55,16 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<Duration> getPosition(int playerId) async => Duration.zero;
 
+  /// Like the web's <video> platform view: the view claims taps.
+  bool viewClaimsTaps = false;
+
   @override
-  Widget buildViewWithOptions(VideoViewOptions options) =>
-      const SizedBox.shrink();
+  Widget buildViewWithOptions(VideoViewOptions options) => viewClaimsTaps
+      ? GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {},
+          child: const SizedBox.expand())
+      : const SizedBox.shrink();
 
   @override
   Future<void> dispose(int playerId) async {}
@@ -89,6 +96,21 @@ void main() {
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     await tester.pump();
   }
+
+  testWidgets(
+      'web: a tap on the picture plays it, though the video view claims taps',
+      (tester) async {
+    // On the web the <video> platform view joins the gesture arena and wins
+    // it, so the card's tap never fired (found in a real browser).
+    platform.viewClaimsTaps = true;
+    await pump(tester);
+
+    final video = tester.getRect(find.byType(ExerciseDemoVideoPlayer));
+    await tester.tapAt(video.centerLeft + const Offset(40, 0));
+    await tester.pump();
+
+    expect(platform.calls, contains('play'));
+  });
 
   testWidgets('starts at 1× and cycles 1.5×, 2×, back to 1×', (tester) async {
     await pump(tester);

@@ -14,6 +14,7 @@ import '../session_flow/session_start.dart';
 import '../profile/profile_page.dart';
 import '../progress/progress_page.dart';
 import 'app_shell.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 
 /// The app's four tabs. Services are looked up lazily, when a tab is first
 /// shown. The full session list opens from Home's "All sessions".
@@ -38,7 +39,8 @@ List<ShellTab> mainTabs() => [
           builder: (context, state) => LibraryPage(
             moves: context.read<TrainingSessionCubit>().libraryMoves,
             sessions: homeSessionsFrom(state),
-            onOpenSession: (s) => openSessionPreview(context, s),
+            onOpenSession: (s) =>
+                openSessionPreview(context, s, source: PreviewSource.library),
             onSessionMenu: (s) => showSessionPlayMenu(context, s),
           ),
         ),

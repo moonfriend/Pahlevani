@@ -15,6 +15,9 @@ class AppUser extends Equatable {
   /// Agreed to marketing emails (optional; never required to use the app).
   final bool marketingOptIn;
 
+  /// A Steady account is linked (signed in with Steady at least once).
+  final bool hasSteady;
+
   const AppUser({
     required this.id,
     this.email,
@@ -23,6 +26,7 @@ class AppUser extends Equatable {
     this.consentedAt,
     this.termsVersion,
     this.marketingOptIn = false,
+    this.hasSteady = false,
   });
 
   /// Has accepted the safety terms and privacy summary at [version] or later.
@@ -36,6 +40,7 @@ class AppUser extends Equatable {
     DateTime? consentedAt,
     int? termsVersion,
     bool? marketingOptIn,
+    bool? hasSteady,
   }) =>
       AppUser(
         id: id,
@@ -45,6 +50,7 @@ class AppUser extends Equatable {
         consentedAt: consentedAt ?? this.consentedAt,
         termsVersion: termsVersion ?? this.termsVersion,
         marketingOptIn: marketingOptIn ?? this.marketingOptIn,
+        hasSteady: hasSteady ?? this.hasSteady,
       );
 
   @override
@@ -55,6 +61,7 @@ class AppUser extends Equatable {
         consentAccepted,
         consentedAt,
         termsVersion,
-        marketingOptIn
+        marketingOptIn,
+        hasSteady
       ];
 }

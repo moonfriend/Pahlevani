@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:pahlevani/domain/entities/download/download_plan.dart';
 import 'package:pahlevani/domain/entities/download/download_progress.dart';
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/presentation/pages/training_session/download_status.dart';
 
@@ -48,12 +47,11 @@ class FakeDownloadRepository implements DownloadRepository {
 
   /// Sessions are downloaded before they play, so by default every track's
   /// audio is on the device; tests about missing media override this.
-  String? Function(ItemDetail item) localAudioPathBuilder =
-      (item) => '/cached/${item.item.id}.mp3';
+  String? Function(String audioUrl) localAudioPathBuilder = cachedAudioPath;
 
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async =>
-      localAudioPathBuilder(item);
+  Future<String?> getLocalAudioPath(String audioUrl) async =>
+      localAudioPathBuilder(audioUrl);
 
   @override
   Future<String?> getLocalImagePath(String imageUrl) async => null;
@@ -61,3 +59,7 @@ class FakeDownloadRepository implements DownloadRepository {
   @override
   Future<String?> getLocalVideoPath(String videoUrl) async => null;
 }
+
+/// Where the fakes pretend a recording is cached: `/cached/<its file name>`.
+String cachedAudioPath(String audioUrl) =>
+    '/cached/${audioUrl.split('/').last}';

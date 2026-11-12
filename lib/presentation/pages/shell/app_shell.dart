@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/kashi/kashi_colors.dart';
+import '../../../domain/entities/usage/usage_event.dart';
 import '../../layout/kashi_layout.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/usage_scope.dart';
 import '../../widgets/kashi/kashi_side_rail.dart';
 import '../../widgets/kashi/kashi_tab_bar.dart';
 
@@ -47,14 +50,42 @@ class AppShellState extends State<AppShell> {
   final Set<int> _visited = {0};
 
   /// Switches to tab [index].
-  void select(int index) => _select(index);
+  void select(int index) => _select(index, via: NavVia.button);
 
-  void _select(int index) {
+  /// Switches to the tab named [label]; no-op if there is none.
+  void selectLabel(String label) {
+    final index = widget.tabs.indexWhere((tab) => tab.label == label);
+    if (index >= 0) _select(index, via: NavVia.button);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    context.screens?.setSurface(_tabName(_index), NavVia.gate);
+  }
+
+  String _tabName(int index) => AppRoutes.tab(widget.tabs[index].label);
+
+  void _select(int index, {NavVia via = NavVia.tab}) {
+    _logSelect(index, via);
     if (index != _index) widget.tabs[index].onSelected?.call();
     setState(() {
       _index = index;
       _visited.add(index);
     });
+  }
+
+  void _logSelect(int index, NavVia via) {
+    final from = _tabName(_index), to = _tabName(index);
+    if (via == NavVia.tab) {
+      context.usage.track(
+          NavTabSelected(from: from, to: to, reselected: index == _index));
+    }
+    if (via == NavVia.back) {
+      final kind = context.screens?.back.consume();
+      if (kind != null) context.usage.track(NavBack(kind: kind, from: from));
+    }
+    context.screens?.setSurface(to, via);
   }
 
   @override
@@ -77,7 +108,7 @@ class AppShellState extends State<AppShell> {
     return PopScope(
       canPop: _index == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _select(0);
+        if (!didPop) _select(0, via: NavVia.back);
       },
       child: Scaffold(
         backgroundColor: Theme.of(context).extension<KashiColors>()!.ground,

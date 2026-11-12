@@ -37,7 +37,10 @@ void main() {
     clock.onEnginePosition(ms(9800));
     clock.onEnginePosition(ms(150)); // the engine looped
     expect(clock.wrapCount, 1);
-    clock.seekTo(ms(500)); // a user seek back
+    clock.jumpTo(
+        index: 0,
+        clipPosition: ms(500),
+        completed: Duration.zero); // a user seek back
     clock.onEnginePosition(ms(500));
     clock.restartLoop(ms(4000)); // we restarted the clip ourselves
     clock.onEnginePosition(ms(0));
@@ -56,22 +59,53 @@ void main() {
     expect(clock.onEnginePosition(ms(4000)), ms(4000));
   });
 
-  group('seekTo', () {
-    test('returns the in-clip engine target and sets the loop count', () {
-      expect(clock.seekTo(ms(12000)), ms(2000));
+  group('jumpTo', () {
+    test('re-bases the timeline at the given clip and position', () {
+      clock.jumpTo(index: 0, clipPosition: ms(2000), completed: ms(10000));
       expect(clock.logicalPosition, ms(12000));
       expect(clock.onEnginePosition(ms(2200)), ms(12200));
     });
 
-    test('a backward seek is not counted as a loop', () {
+    test('a backward jump is not counted as a loop', () {
       clock.onEnginePosition(ms(9000));
-      expect(clock.seekTo(ms(1000)), ms(1000));
+      clock.jumpTo(index: 0, clipPosition: ms(1000), completed: Duration.zero);
       expect(clock.onEnginePosition(ms(1100)), ms(1100));
+      expect(clock.wrapCount, 0);
+    });
+  });
+
+  group('a queue of several clips', () {
+    setUp(() => clock = PlaybackClock()..start(ms(10000), clipCount: 2));
+
+    test('the engine moving on to the next clip adds the finished one', () {
+      clock.onEnginePosition(ms(9900), index: 0);
+      clock.setClipLength(1, ms(6000));
+      expect(clock.onEnginePosition(ms(100), index: 1), ms(10100));
+      expect(clock.index, 1);
+      expect(clock.wrapCount, 1);
     });
 
-    test('seeking exactly to a loop boundary lands at engine 0', () {
-      expect(clock.seekTo(ms(20000)), Duration.zero);
-      expect(clock.logicalPosition, ms(20000));
+    test('wrapping from the last clip back to the first keeps counting', () {
+      clock.onEnginePosition(ms(9900), index: 0);
+      clock.setClipLength(1, ms(6000));
+      clock.onEnginePosition(ms(5900), index: 1);
+      expect(clock.onEnginePosition(ms(50), index: 0), ms(16050));
+      expect(clock.wrapCount, 2);
+    });
+
+    test('a clip whose length never came is counted by its last reading', () {
+      clock.onEnginePosition(ms(4000), index: 1);
+      // Clip 0 was skipped over by a jump — count only what was heard.
+      clock.jumpTo(index: 1, clipPosition: ms(5800), completed: ms(10000));
+      expect(clock.onEnginePosition(ms(50), index: 0), ms(15850));
+      expect(clock.clipLength(1), ms(5800));
+    });
+
+    test('a jump to another clip is not counted as moving on', () {
+      clock.jumpTo(index: 1, clipPosition: ms(2000), completed: ms(10000));
+      expect(clock.index, 1);
+      expect(clock.onEnginePosition(ms(2100), index: 1), ms(12100));
+      expect(clock.wrapCount, 0);
     });
   });
 

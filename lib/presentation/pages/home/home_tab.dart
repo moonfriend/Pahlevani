@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../domain/entities/info/info_link.dart';
 import '../../../domain/entities/training_session/training_session.dart';
 import '../../bloc/announcement/announcement_cubit.dart';
@@ -12,6 +10,10 @@ import '../progress/calendar_page.dart';
 import '../session_flow/session_preview_page.dart';
 import '../session_flow/session_start.dart';
 import 'home_page.dart';
+import '../../usage/app_routes.dart';
+import '../../usage/usage_ui.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../usage/usage_scope.dart';
 
 /// Wires [HomePage] to the app: sessions from [TrainingSessionCubit], the
 /// play flow (preview → player), the calendar and the info card from
@@ -25,7 +27,7 @@ class HomeTab extends StatelessWidget {
   Future<void> _openSession(
       BuildContext context, TrainingSession session) async {
     final history = context.read<TrainingHistoryCubit>();
-    await openSessionPreview(context, session);
+    await openSessionPreview(context, session, source: PreviewSource.home);
     await history.load();
   }
 
@@ -42,6 +44,7 @@ class HomeTab extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
+        settings: AppRoutes.settings(AppRoutes.calendar),
         builder: (_) =>
             BlocProvider.value(value: history, child: const CalendarPage()),
       ),
@@ -53,7 +56,8 @@ class HomeTab extends StatelessWidget {
   /// of the card as seen.
   Future<void> _openInfo(BuildContext context, InfoLink link) async {
     final announcement = context.read<AnnouncementCubit>();
-    await launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication);
+    context.usage.track(const HomeAnnouncementTapped());
+    await openExternalLink(context, ExternalLink.announcement, link.url);
     await announcement.markSeen();
   }
 

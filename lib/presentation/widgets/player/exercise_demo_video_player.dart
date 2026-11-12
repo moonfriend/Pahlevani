@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import 'kashi/video_scrub_bar.dart';
+import 'passive_video.dart';
 
 /// Standalone demonstration-video player, shared by the ⓘ info page and
 /// Learning Mode's pre-track prompt — plays with its own original audio and
@@ -16,8 +17,13 @@ import 'kashi/video_scrub_bar.dart';
 /// seconds to skip through the video. A speed button (1× → 1.5× → 2×) lets
 /// people get through a long explanation faster.
 class ExerciseDemoVideoPlayer extends StatefulWidget {
-  const ExerciseDemoVideoPlayer({super.key, required this.src});
+  const ExerciseDemoVideoPlayer(
+      {super.key, required this.src, this.controlsTop = 8});
   final String src;
+
+  /// Distance of the speed button from the top — larger when something sits
+  /// above it (the learning card's video toggle).
+  final double controlsTop;
 
   @override
   State<ExerciseDemoVideoPlayer> createState() =>
@@ -120,7 +126,7 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                   child: SizedBox(
                     width: _controller.value.size.width,
                     height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
+                    child: PassiveVideo(_controller),
                   ),
                 )
               else
@@ -144,7 +150,7 @@ class _ExerciseDemoVideoPlayerState extends State<ExerciseDemoVideoPlayer> {
                 ),
               if (_ready)
                 Positioned(
-                  top: 8,
+                  top: widget.controlsTop,
                   right: 8,
                   child: _SpeedButton(
                     speed: _speeds[_speedIndex],

@@ -8,16 +8,54 @@ import '../../bloc/auth/auth_cubit.dart';
 import '../../bloc/tracking/training_history_cubit.dart';
 import '../../widgets/kashi/kashi_tab_bar.dart';
 import '../../widgets/kashi/khatam_window.dart';
+import '../../widgets/access/sign_out.dart';
+import 'app_shell.dart';
+
+/// Under the email in the account menu and on Profile.
+const steadyLinkedLabel = 'Steady account linked';
 
 /// The foot of the web side rail: the user's avatar, name and the number
-/// of sessions they have finished. Reads [AuthCubit] and
-/// [TrainingHistoryCubit] from the context.
+/// of sessions they have finished. Tapping it opens the account menu: who
+/// is signed in (and whether Steady is linked), Profile and Sign out.
+/// Reads [AuthCubit] and [TrainingHistoryCubit] from the context.
 class RailUser extends StatelessWidget {
   const RailUser({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final name = context.watch<AuthCubit>().state.displayName;
+    final auth = context.watch<AuthCubit>().state;
+    final user = auth is AuthAuthenticated ? auth.user : null;
+    return PopupMenuButton<_MenuAction>(
+      tooltip: 'Account',
+      position: PopupMenuPosition.over,
+      onSelected: (action) => switch (action) {
+        _MenuAction.profile => AppShell.of(context).selectLabel('Profile'),
+        _MenuAction.signOut => signOutWithSteadyNote(context),
+      },
+      itemBuilder: (_) => [
+        if (user?.email case final email?)
+          PopupMenuItem<_MenuAction>(
+            enabled: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Signed in as $email'),
+                if (user!.hasSteady)
+                  Text(steadyLinkedLabel,
+                      style: KashiTextStyles.ui.copyWith(fontSize: 12)),
+              ],
+            ),
+          ),
+        if (user?.email != null) const PopupMenuDivider(),
+        const PopupMenuItem(value: _MenuAction.profile, child: Text('Profile')),
+        const PopupMenuItem(
+            value: _MenuAction.signOut, child: Text('Sign out')),
+      ],
+      child: _summary(context, auth.displayName),
+    );
+  }
+
+  Widget _summary(BuildContext context, String name) {
     final history = context.watch<TrainingHistoryCubit>().state;
     final sessions =
         history is TrainingHistoryLoaded ? history.completions.length : 0;
@@ -55,3 +93,5 @@ class RailUser extends StatelessWidget {
     );
   }
 }
+
+enum _MenuAction { profile, signOut }

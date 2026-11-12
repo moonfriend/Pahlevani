@@ -8,6 +8,10 @@ import '../bloc/first_run/first_run_state.dart';
 import '../bloc/onboarding/onboarding_cubit.dart';
 import '../pages/onboarding/onboarding_page.dart';
 import '../pages/splash/splash_page.dart';
+import '../usage/app_routes.dart';
+import '../usage/tracked_surface.dart';
+import '../../domain/entities/usage/usage_event.dart';
+import '../usage/usage_scope.dart';
 
 /// Shows the first-open flow (splash, then onboarding) once, otherwise
 /// [child].
@@ -23,9 +27,12 @@ class FirstRunGate extends StatelessWidget {
   Widget build(BuildContext context) =>
       BlocBuilder<FirstRunCubit, FirstRunState>(
         builder: (context, state) => switch (state) {
-          FirstRunChecking() => ColoredBox(
-              color: Theme.of(context).extension<KashiColors>()!.ground,
-              child: const SizedBox.expand(),
+          FirstRunChecking() => TrackedSurface(
+              name: AppRoutes.loading,
+              child: ColoredBox(
+                color: Theme.of(context).extension<KashiColors>()!.ground,
+                child: const SizedBox.expand(),
+              ),
             ),
           FirstRunPending() =>
             _FirstOpenFlow(onFinished: context.read<FirstRunCubit>().complete),
@@ -48,6 +55,14 @@ class _FirstOpenFlow extends StatefulWidget {
 
 class _FirstOpenFlowState extends State<_FirstOpenFlow> {
   bool _onboarding = false;
+  final DateTime _splashShownAt = DateTime.now();
+
+  void _begin() {
+    context.usage.track(SplashBeginTapped(
+        seconds:
+            DateTime.now().difference(_splashShownAt).inMilliseconds / 1000));
+    setState(() => _onboarding = true);
+  }
 
   @override
   void initState() {
@@ -61,10 +76,18 @@ class _FirstOpenFlowState extends State<_FirstOpenFlow> {
   Widget build(BuildContext context) => AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
         child: _onboarding
-            ? BlocBuilder<OnboardingCubit, List<OnboardingCard>>(
-                builder: (context, cards) =>
-                    OnboardingPage(cards: cards, onFinished: widget.onFinished),
+            ? TrackedSurface(
+                key: const ValueKey(AppRoutes.onboarding),
+                name: AppRoutes.onboarding,
+                child: BlocBuilder<OnboardingCubit, List<OnboardingCard>>(
+                  builder: (context, cards) => OnboardingPage(
+                      cards: cards, onFinished: widget.onFinished),
+                ),
               )
-            : SplashPage(onBegin: () => setState(() => _onboarding = true)),
+            : TrackedSurface(
+                key: const ValueKey(AppRoutes.splash),
+                name: AppRoutes.splash,
+                child: SplashPage(onBegin: _begin),
+              ),
       );
 }

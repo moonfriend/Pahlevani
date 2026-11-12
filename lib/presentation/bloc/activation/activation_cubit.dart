@@ -5,6 +5,8 @@ import '../../../core/utils/app_logger.dart';
 import '../../../domain/entities/activation/locked_screen_text.dart';
 import '../../../domain/repositories/activation_repository.dart';
 import '../../../domain/services/retry_cooldown.dart';
+import '../../../domain/entities/usage/usage_event.dart';
+import '../../../domain/services/usage_tracker.dart';
 
 sealed class ActivationState extends Equatable {
   const ActivationState();
@@ -43,25 +45,36 @@ class ActivationLocked extends ActivationState {
 /// The activation gate for the signed-in account: checks it, and redeems a
 /// code on the locked screen.
 class ActivationCubit extends Cubit<ActivationState> {
-  ActivationCubit(
-      {required ActivationRepository repository, DateTime Function()? clock})
-      : _repo = repository,
+  ActivationCubit({
+    required ActivationRepository repository,
+    DateTime Function()? clock,
+    UsageTracker usage = const NoOpUsageTracker(),
+  })  : _repo = repository,
+        _usage = usage,
         _cooldown = RetryCooldown(clock: clock),
         super(const ActivationChecking());
 
   final ActivationRepository _repo;
   final RetryCooldown _cooldown;
+  final UsageTracker _usage;
   String? _userId;
+
+  /// Codes tried on the locked screen for this account, for the study.
+  int _attempts = 0;
 
   static const invalidCodeMessage =
       'That code isn’t valid or has been used up. Check it, or ask us '
       'on Steady.';
+  static const noMembershipMessage =
+      'We couldn’t find a Gowd membership for this account yet. If you '
+      'just joined, wait a minute and check again.';
   static const offlineMessage =
       'Couldn’t check the code. Try again with an internet connection.';
 
   /// Checks [userId]; locked accounts get the locked screen's text.
   Future<void> check(String userId) async {
     _userId = userId;
+    _attempts = 0;
     emit(const ActivationChecking());
     final active = await _repo.isActivated(userId);
     if (isClosed || _userId != userId) return;
@@ -78,16 +91,20 @@ class ActivationCubit extends Cubit<ActivationState> {
     final userId = _userId;
     if (current is! ActivationLocked || userId == null) return;
     if (_cooldown.blockedUntil != null) return;
+    _attempts++;
     if (code.trim().isEmpty) {
+      _entered(CodeResult.invalid);
       emit(ActivationLocked(text: current.text, error: invalidCodeMessage));
       return;
     }
     emit(ActivationLocked(text: current.text, submitting: true));
     try {
       await _repo.redeem(userId, code);
+      _entered(CodeResult.ok);
       _cooldown.reset();
       if (!isClosed) emit(const ActivationActive());
     } on InvalidActivationCodeException {
+      _entered(CodeResult.invalid);
       if (!isClosed) {
         emit(ActivationLocked(
           text: current.text,
@@ -97,11 +114,29 @@ class ActivationCubit extends Cubit<ActivationState> {
       }
     } catch (error) {
       AppLogger.w('Redeeming the activation code failed', error: error);
+      _entered(CodeResult.offline);
       if (!isClosed) {
         emit(ActivationLocked(text: current.text, error: offlineMessage));
       }
     }
   }
+
+  /// The locked screen's "Check my membership again": asks again (for a
+  /// Steady account, Steady itself) without leaving the locked screen.
+  Future<void> recheckMembership() async {
+    final current = state;
+    final userId = _userId;
+    if (current is! ActivationLocked || userId == null) return;
+    emit(ActivationLocked(text: current.text, submitting: true));
+    final active = await _repo.isActivated(userId);
+    if (isClosed || _userId != userId) return;
+    emit(active
+        ? const ActivationActive()
+        : ActivationLocked(text: current.text, error: noMembershipMessage));
+  }
+
+  void _entered(CodeResult result) =>
+      _usage.track(AccessCodeEntered(result: result, attempt: _attempts));
 
   /// The locked screen's text, for the sign-in screen's "no code yet?" link.
   Future<LockedScreenText> lockedScreenText() => _repo.lockedScreenText();

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pahlevani/data/mappers/snapshot_builders.dart';
+import 'package:pahlevani/domain/entities/audio/audio_clip.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/morshed.dart';
 import 'package:pahlevani/domain/entities/audio_catalog/movement_audio_track.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
@@ -100,7 +101,7 @@ void main() {
     final queue = await build(_snapshot(
         const [Exercise(id: 1, name: 'A', audioFileUrl: 'https://a.mp3')]));
 
-    expect(queue.items.single.track.audioFilePath, '/cached/10000.mp3');
+    expect(queue.items.single.track.recordings.single.path, '/cached/a.mp3');
     expect(queue.audioMissing, isFalse);
   });
 
@@ -110,7 +111,7 @@ void main() {
     final queue = await build(_snapshot(
         const [Exercise(id: 1, name: 'A', audioFileUrl: 'https://a.mp3')]));
 
-    expect(queue.items.single.track.audioFilePath, '');
+    expect(queue.items.single.track.recordings.single.path, '');
     expect(queue.audioMissing, isTrue);
   });
 
@@ -120,6 +121,7 @@ void main() {
     final queue = await build(_snapshot(const [Exercise(id: 1, name: 'A')]));
 
     expect(queue.audioMissing, isFalse);
+    expect(queue.items.single.track.recordings, isEmpty);
   });
 
   test('web: remote URLs, never missing', () async {
@@ -130,7 +132,7 @@ void main() {
             const [Exercise(id: 1, name: 'A', audioFileUrl: 'https://a.mp3')]),
         useRemoteMedia: true);
 
-    expect(queue.items.single.track.audioFilePath, 'https://a.mp3');
+    expect(queue.items.single.track.recordings.single.path, 'https://a.mp3');
     expect(queue.audioMissing, isFalse);
   });
 
@@ -170,7 +172,65 @@ void main() {
     final item = queue.items.single;
     expect(item.source.exercise.audioFileUrl, 'https://two.mp3');
     expect(item.track.defaultRepetitions, 4);
-    expect(item.track.videoStartOffsetMs, 700, reason: '1000 − 300');
+    expect(item.track.recordings.single.videoOffsetMs, 700,
+        reason: '1000 − 300');
+  });
+
+  group("a Morshed's several recordings of the move (variants)", () {
+    setUp(() {
+      catalog
+        ..morsheds = const [Morshed(id: 1, name: 'One', isDefault: true)]
+        ..tracks = const [
+          MovementAudioTrack(
+              id: 1,
+              movementTypeId: 7,
+              morshedId: 1,
+              audioUrl: 'https://cdn/aram.mp3',
+              repetitionsDefault: 10,
+              durationSeconds: 20,
+              audioAnchorMs: 300),
+          MovementAudioTrack(
+              id: 2,
+              movementTypeId: 7,
+              morshedId: 1,
+              audioUrl: 'https://cdn/aram-avaz.mp3',
+              repetitionsDefault: 8,
+              audioAnchorMs: 500),
+        ];
+    });
+
+    const move = Exercise(
+        id: 1,
+        name: 'Aram',
+        movementTypeId: 7,
+        media: ExerciseMedia(
+            type: 'video', src: 'https://v.mp4', videoAnchorMs: 1000));
+
+    test('each one is a clip with its own file, reps, length and offset',
+        () async {
+      final queue = await build(_snapshot(const [move]));
+
+      expect(queue.items.single.track.recordings, const [
+        AudioClip(
+            path: '/cached/aram.mp3',
+            reps: 10,
+            estimatedLength: Duration(seconds: 20),
+            videoOffsetMs: 700),
+        AudioClip(path: '/cached/aram-avaz.mp3', reps: 8, videoOffsetMs: 500),
+      ]);
+      expect(queue.items.single.track.defaultRepetitions, 10,
+          reason: 'the main recording');
+      expect(queue.audioMissing, isFalse);
+    });
+
+    test('any one of them not on the device → audioMissing', () async {
+      downloads.localAudioPathBuilder =
+          (url) => url.endsWith('avaz.mp3') ? null : '/cached/aram.mp3';
+
+      final queue = await build(_snapshot(const [move]));
+
+      expect(queue.audioMissing, isTrue);
+    });
   });
 
   test("resolving the Morshed's recording keeps the move's learning content",
@@ -284,10 +344,11 @@ void main() {
       Exercise(
           id: 1,
           name: 'A',
+          audioFileUrl: 'https://a.mp3',
           audioAnchorMs: 300,
           media: ExerciseMedia(type: 'video', src: 'https://v.mp4')),
     ]));
 
-    expect(queue.items.single.track.videoStartOffsetMs, isNull);
+    expect(queue.items.single.track.recordings.single.videoOffsetMs, isNull);
   });
 }

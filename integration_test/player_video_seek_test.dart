@@ -26,7 +26,6 @@ import 'package:pahlevani/data/mappers/snapshot_builders.dart';
 import 'package:pahlevani/data/services/audio_players_service_impl.dart';
 import 'package:pahlevani/data/services/no_op_notification_service.dart';
 import 'package:pahlevani/domain/entities/training_session/exercise.dart';
-import 'package:pahlevani/domain/entities/training_session/session_details.dart';
 import 'package:pahlevani/domain/repositories/audio_catalog_repository.dart';
 import 'package:pahlevani/domain/repositories/download_repository.dart';
 import 'package:pahlevani/domain/repositories/learnt_exercises_repository.dart';
@@ -52,7 +51,7 @@ late String _clipPath;
 
 class _LocalFixtureDownloadRepository extends FakeDownloadRepository {
   @override
-  Future<String?> getLocalAudioPath(ItemDetail item) async => _tonePath;
+  Future<String?> getLocalAudioPath(String audioUrl) async => _tonePath;
   @override
   Future<String?> getLocalVideoPath(String videoUrl) async => _clipPath;
 }
